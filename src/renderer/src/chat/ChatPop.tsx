@@ -5,8 +5,16 @@ import { CHAT_OPERATOR_ID } from '../../../shared/chat';
 import { REPORT_PRIVATE_ATTR } from '../../../shared/report-private';
 import { usePopPlace } from '../operator/pop-place';
 import { toolHereNow } from '../simple/simple-features-store';
-import { motionOff } from '../ui/motion';
-import { arrivals, popAfter, popChangesAt, popPhase, popWords, type ChatPop } from './chat-pop';
+import { duration, motionOff } from '../ui/motion';
+import {
+  arrivals,
+  CHAT_POP_FADE_TOKEN,
+  popAfter,
+  popChangesAt,
+  popPhase,
+  popWords,
+  type ChatPop,
+} from './chat-pop';
 import { connectChat, useChat } from './chat-store';
 
 /** Only the operator shells mount this: no audience, stage, phone or stream imports it. */
@@ -80,6 +88,9 @@ export function ChatPopView({ pop, leaving, still, onOpen, onDismiss }: ChatPopV
   );
 }
 
+/** The fade's length now: app.css's token, none with reduced motion or interface motion Off. */
+const fadeNow = (): number => (motionOff() ? 0 : duration(CHAT_POP_FADE_TOKEN));
+
 /** Subscribe even with Chat folded. Mode switches do not replay already received messages. */
 const usePop = create<{ pop: ChatPop | null }>(() => ({ pop: null }));
 let watching = false;
@@ -90,7 +101,7 @@ function watchChatPop(): void {
     if (next.view === before.view) return;
     const came = arrivals(before.view?.messages ?? null, next.view?.messages ?? [], CHAT_OPERATOR_ID);
     usePop.setState((s) => ({
-      pop: next.view?.messages.length ? popAfter(s.pop, came, Date.now(), motionOff()) : null,
+      pop: next.view?.messages.length ? popAfter(s.pop, came, Date.now(), fadeNow()) : null,
     }));
   });
   connectChat();
@@ -102,12 +113,12 @@ export function ChatPopup() {
   const still = motionOff();
   useEffect(watchChatPop, []);
   useEffect(() => {
-    const at = popChangesAt(pop, Date.now(), motionOff());
+    const at = popChangesAt(pop, Date.now(), fadeNow());
     if (at === null) return;
     const timer = setTimeout(() => setNow(Date.now()), Math.max(0, at - Date.now()));
     return () => clearTimeout(timer);
   }, [pop, now]);
-  const phase = popPhase(pop, now, still);
+  const phase = popPhase(pop, now, fadeNow());
   const place = usePopPlace((s) => s.place);
   const view = (
     <ChatPopView

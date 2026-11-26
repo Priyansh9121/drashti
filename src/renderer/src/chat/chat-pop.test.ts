@@ -7,7 +7,7 @@ import { REPORT_PRIVATE_ATTR } from '../../../shared/report-private';
 import {
   arrivals,
   CHAT_POP_CHARS,
-  CHAT_POP_FADE_MS,
+  CHAT_POP_FADE_TOKEN,
   CHAT_POP_MS,
   type ChatPop,
   popAfter,
@@ -39,6 +39,8 @@ const message = (who: { id: string; name: string }, text: string): ChatMessage =
 };
 
 const T0 = 1_000_000;
+/** The fade's length as the window reads it from app.css's --dur-notice (motion.test.ts holds the token at 200 ms). */
+const FADE = 200;
 
 describe('which messages pop up', () => {
   it('none from the first view: what was in the chat as the window opened is no news', () => {
@@ -74,40 +76,40 @@ describe('which messages pop up', () => {
 describe('a newer message replaces it, and while several come it says how many more', () => {
   it('the first: no more, up from now', () => {
     const one = message(A, 'Placeholder one');
-    expect(popAfter(null, [one], T0, false)).toEqual({ message: one, more: 0, at: T0 });
+    expect(popAfter(null, [one], T0, FADE)).toEqual({ message: one, more: 0, at: T0 });
   });
 
   it('a newer one while it is up replaces it, counting the one it replaced; again, two more', () => {
     const one = message(A, 'Placeholder one');
     const two = message(B, 'Placeholder two');
     const three = message(A, 'Placeholder three');
-    const first = popAfter(null, [one], T0, false);
-    const second = popAfter(first, [two], T0 + 3000, false);
+    const first = popAfter(null, [one], T0, FADE);
+    const second = popAfter(first, [two], T0 + 3000, FADE);
     expect(second).toEqual({ message: two, more: 1, at: T0 + 3000 });
-    expect(popAfter(second, [three], T0 + 4000, false)).toEqual({ message: three, more: 2, at: T0 + 4000 });
+    expect(popAfter(second, [three], T0 + 4000, FADE)).toEqual({ message: three, more: 2, at: T0 + 4000 });
   });
 
   it('several in one change: the newest shows, the others counted', () => {
     const one = message(A, 'Placeholder one');
     const two = message(B, 'Placeholder two');
     const three = message(A, 'Placeholder three');
-    expect(popAfter(null, [one, two, three], T0, false)).toEqual({ message: three, more: 2, at: T0 });
+    expect(popAfter(null, [one, two, three], T0, FADE)).toEqual({ message: three, more: 2, at: T0 });
   });
 
   it('one coming as it fades still counts the one it replaces; once it has gone, the count starts again', () => {
     const one = message(A, 'Placeholder one');
     const two = message(B, 'Placeholder two');
-    const first = popAfter(null, [one], T0, false);
-    expect(popAfter(first, [two], T0 + CHAT_POP_MS + 10, false)?.more).toBe(1);
-    expect(popAfter(first, [two], T0 + CHAT_POP_MS + CHAT_POP_FADE_MS, false)?.more).toBe(0);
+    const first = popAfter(null, [one], T0, FADE);
+    expect(popAfter(first, [two], T0 + CHAT_POP_MS + 10, FADE)?.more).toBe(1);
+    expect(popAfter(first, [two], T0 + CHAT_POP_MS + FADE, FADE)?.more).toBe(0);
     // With reduced motion there is no fade: gone at 10 s.
-    expect(popAfter(first, [two], T0 + CHAT_POP_MS, true)?.more).toBe(0);
+    expect(popAfter(first, [two], T0 + CHAT_POP_MS, 0)?.more).toBe(0);
   });
 
   it('nothing new: the popup as it was', () => {
-    const first = popAfter(null, [message(A, 'Placeholder one')], T0, false);
-    expect(popAfter(first, [], T0 + 1000, false)).toBe(first);
-    expect(popAfter(null, [], T0, false)).toBeNull();
+    const first = popAfter(null, [message(A, 'Placeholder one')], T0, FADE);
+    expect(popAfter(first, [], T0 + 1000, FADE)).toBe(first);
+    expect(popAfter(null, [], T0, FADE)).toBeNull();
   });
 });
 
@@ -116,28 +118,28 @@ describe('it stays about 10 s, then fades (no fade with reduced motion)', () => 
 
   it('up for 10 s, fading for a moment after, then gone', () => {
     expect(CHAT_POP_MS).toBe(10_000);
-    expect(popPhase(pop, T0, false)).toBe('up');
-    expect(popPhase(pop, T0 + CHAT_POP_MS - 1, false)).toBe('up');
-    expect(popPhase(pop, T0 + CHAT_POP_MS, false)).toBe('leaving');
-    expect(popPhase(pop, T0 + CHAT_POP_MS + CHAT_POP_FADE_MS - 1, false)).toBe('leaving');
-    expect(popPhase(pop, T0 + CHAT_POP_MS + CHAT_POP_FADE_MS, false)).toBe('gone');
-    expect(popPhase(null, T0, false)).toBe('gone');
-    expect(CHAT_POP_FADE_MS).toBeGreaterThan(0);
-    expect(CHAT_POP_FADE_MS).toBeLessThanOrEqual(500);
+    expect(popPhase(pop, T0, FADE)).toBe('up');
+    expect(popPhase(pop, T0 + CHAT_POP_MS - 1, FADE)).toBe('up');
+    expect(popPhase(pop, T0 + CHAT_POP_MS, FADE)).toBe('leaving');
+    expect(popPhase(pop, T0 + CHAT_POP_MS + FADE - 1, FADE)).toBe('leaving');
+    expect(popPhase(pop, T0 + CHAT_POP_MS + FADE, FADE)).toBe('gone');
+    expect(popPhase(null, T0, FADE)).toBe('gone');
+    // Set in one place: the notices' token in app.css.
+    expect(CHAT_POP_FADE_TOKEN).toBe('dur-notice');
   });
 
   it('with reduced motion (or interface motion Off): up for 10 s, then gone at once', () => {
-    expect(popPhase(pop, T0 + CHAT_POP_MS - 1, true)).toBe('up');
-    expect(popPhase(pop, T0 + CHAT_POP_MS, true)).toBe('gone');
+    expect(popPhase(pop, T0 + CHAT_POP_MS - 1, 0)).toBe('up');
+    expect(popPhase(pop, T0 + CHAT_POP_MS, 0)).toBe('gone');
   });
 
   it('when it next changes, for the window’s one timer', () => {
-    expect(popChangesAt(pop, T0, false)).toBe(T0 + CHAT_POP_MS);
-    expect(popChangesAt(pop, T0 + CHAT_POP_MS, false)).toBe(T0 + CHAT_POP_MS + CHAT_POP_FADE_MS);
-    expect(popChangesAt(pop, T0 + CHAT_POP_MS + CHAT_POP_FADE_MS, false)).toBeNull();
-    expect(popChangesAt(pop, T0 + 2000, true)).toBe(T0 + CHAT_POP_MS);
-    expect(popChangesAt(pop, T0 + CHAT_POP_MS, true)).toBeNull();
-    expect(popChangesAt(null, T0, false)).toBeNull();
+    expect(popChangesAt(pop, T0, FADE)).toBe(T0 + CHAT_POP_MS);
+    expect(popChangesAt(pop, T0 + CHAT_POP_MS, FADE)).toBe(T0 + CHAT_POP_MS + FADE);
+    expect(popChangesAt(pop, T0 + CHAT_POP_MS + FADE, FADE)).toBeNull();
+    expect(popChangesAt(pop, T0 + 2000, 0)).toBe(T0 + CHAT_POP_MS);
+    expect(popChangesAt(pop, T0 + CHAT_POP_MS, 0)).toBeNull();
+    expect(popChangesAt(null, T0, FADE)).toBeNull();
   });
 });
 

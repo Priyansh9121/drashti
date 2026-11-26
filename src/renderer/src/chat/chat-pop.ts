@@ -1,7 +1,8 @@
 import type { ChatMessage } from '../../../shared/chat';
 
 export const CHAT_POP_MS = 10_000;
-export const CHAT_POP_FADE_MS = 200;
+/** Its fade's length, the one place it is set: app.css's token (the notices' --dur-notice), read by ChatPop.tsx. */
+export const CHAT_POP_FADE_TOKEN = 'dur-notice';
 export const CHAT_POP_CHARS = 160;
 
 export interface ChatPop {
@@ -22,28 +23,29 @@ export function arrivals(
   return messages.filter((m) => !seen.has(m.id) && m.from.id !== meId);
 }
 
-export function popPhase(pop: ChatPop | null, now: number, still: boolean): PopPhase {
-  if (!pop || now >= pop.at + CHAT_POP_MS + (still ? 0 : CHAT_POP_FADE_MS)) return 'gone';
+/** `fade`: the fade's length in ms (0 with reduced motion or interface motion Off). */
+export function popPhase(pop: ChatPop | null, now: number, fade: number): PopPhase {
+  if (!pop || now >= pop.at + CHAT_POP_MS + fade) return 'gone';
   return now < pop.at + CHAT_POP_MS ? 'up' : 'leaving';
 }
 
-export function popChangesAt(pop: ChatPop | null, now: number, still: boolean): number | null {
-  const phase = popPhase(pop, now, still);
+export function popChangesAt(pop: ChatPop | null, now: number, fade: number): number | null {
+  const phase = popPhase(pop, now, fade);
   if (!pop || phase === 'gone') return null;
-  return pop.at + CHAT_POP_MS + (phase === 'leaving' ? CHAT_POP_FADE_MS : 0);
+  return pop.at + CHAT_POP_MS + (phase === 'leaving' ? fade : 0);
 }
 
 export function popAfter(
   pop: ChatPop | null,
   came: readonly ChatMessage[],
   now: number,
-  still: boolean,
+  fade: number,
 ): ChatPop | null {
   const message = came.at(-1);
   if (!message) return pop;
   return {
     message,
-    more: came.length - 1 + (pop && popPhase(pop, now, still) !== 'gone' ? pop.more + 1 : 0),
+    more: came.length - 1 + (pop && popPhase(pop, now, fade) !== 'gone' ? pop.more + 1 : 0),
     at: now,
   };
 }
