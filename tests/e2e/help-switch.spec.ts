@@ -1,7 +1,9 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
+import type { PageGlobals } from './helpers';
 import { chooseMenuItem, holdStill, launchApp, operatorPage, operatorReady, relaunchApp } from './helpers';
+import { CI_WINDOW } from './window-size';
 
 /*
  * Help on demand (alpha.24, the owner's "we also want a really innovative and non-congusted UI"): the status bar's Help
@@ -11,8 +13,35 @@ import { chooseMenuItem, holdStill, launchApp, operatorPage, operatorReady, rela
  * and every key shows as before. It is remembered on this computer. Simple Mode the same, with no ? of its own.
  */
 
-/** Whether a key is where the eye sees it (hidden to the eye it is a box of 1 px, read out all the same). */
-const seen = (key: Locator) => key.evaluate((k) => k.getBoundingClientRect().width > 1);
+/**
+ * Whether a key is where the eye sees it. Hidden to the eye it is a box of 1 px, or (in a show control, which keeps
+ * its room) drawn see-through; read out all the same either way.
+ */
+const seen = (key: Locator) =>
+  key.evaluate((k) => {
+    if (k.getBoundingClientRect().width <= 1) return false;
+    for (let at: Element | null = k; at; at = at.parentElement) {
+      const style = getComputedStyle(at);
+      if (style.visibility !== 'visible' || Number(style.opacity) < 0.05) return false;
+    }
+    return true;
+  });
+
+/** Every show control along the bottom, in the quick bar and under LIVE (Back, Next, Oops): where it is, how big. */
+const showControls = (win: Page) =>
+  win.evaluate(() =>
+    [
+      ...document.querySelectorAll(
+        '[data-zone="bar"] button, [data-testid="quick-bar"] button, [data-testid="show-back"], [data-testid="show-next"], [data-testid="show-oops"]',
+      ),
+    ]
+      .filter((el) => el.getClientRects().length > 0 && !el.matches('[data-what-is-this]'))
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        const name = el.getAttribute('data-testid') ?? el.getAttribute('aria-label') ?? el.textContent.trim();
+        return `${name}: ${r.left.toFixed(1)}, ${r.top.toFixed(1)}, ${r.width.toFixed(1)} × ${r.height.toFixed(1)}`;
+      }),
+  );
 
 /** Every ? in the window. */
 const asks = (win: Page) => win.locator('[data-what-is-this]');
@@ -151,5 +180,63 @@ test('Simple Mode: the keys hidden at rest, Alt held shows them, Help on shows t
   await expect.poll(() => seen(nextKey)).toBe(true);
   await expect(asks(win)).toHaveCount(0);
   await expectNoSeriousA11yIssues(win, 'Simple Mode, Help on');
+  await app.close();
+});
+
+test('the show controls never move as their keys come and go: Help off, Alt held and Help on draw each in its place, at 1024 × 645 and 1280 × 720, in Pro and Simple Mode', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // Two pins in the quick bar (Pro Mode's), so its keys are measured too.
+  const set = await win.evaluate(() =>
+    (globalThis as PageGlobals).drashti.quickBar.set([
+      { kind: 'message', templateId: 'placeholder-message-1', label: 'Placeholder hello' },
+      { kind: 'message', templateId: 'placeholder-message-2', label: 'Placeholder thanks' },
+    ]),
+  );
+  expect(set.ok).toBe(true);
+  await expect(win.getByTestId('quick-bar').getByRole('button')).toHaveCount(2);
+  const help = win.getByTestId('help-toggle');
+  const nextKey = win.getByTestId('show-next').locator('kbd');
+  for (const mode of ['pro', 'simple'] as const) {
+    if (mode === 'simple') {
+      await chooseMenuItem(app, 'switch-mode');
+      await expect(win.getByTestId('simple-mode')).toBeVisible();
+    }
+    for (const size of [CI_WINDOW, { width: 1280, height: 720 }]) {
+      const where = `${mode === 'pro' ? 'Pro' : 'Simple'} Mode at ${String(size.width)} × ${String(size.height)}`;
+      await win.setViewportSize(size);
+      await expect(help).toHaveAttribute('aria-pressed', 'false');
+      await expect.poll(() => seen(nextKey), { message: `${where}: Next's key hidden` }).toBe(false);
+      const atRest = await showControls(win);
+      expect(atRest.length, `${where}: the show controls measured`).toBeGreaterThanOrEqual(
+        mode === 'pro' ? 13 : 8,
+      );
+      // Alt held for a look: the keys come, and nothing moves all the while it is held.
+      await win.keyboard.down('Alt');
+      await expect.poll(() => seen(nextKey), { message: `${where}: Next's key shown with Alt` }).toBe(true);
+      await holdStill(
+        async () => JSON.stringify(await showControls(win)) === JSON.stringify(atRest),
+        600,
+        `${where}: Alt held, every show control where it was`,
+      );
+      expect(await showControls(win), `${where}: Alt held`).toEqual(atRest);
+      await win.keyboard.up('Alt');
+      await expect.poll(() => seen(nextKey), { message: `${where}: Next's key hidden again` }).toBe(false);
+      expect(await showControls(win), `${where}: Alt let go`).toEqual(atRest);
+      // Help on: the keys come, and nothing moves; Help off again.
+      await help.dispatchEvent('click');
+      await expect(help).toHaveAttribute('aria-pressed', 'true');
+      await expect
+        .poll(() => seen(nextKey), { message: `${where}: Next's key shown with Help on` })
+        .toBe(true);
+      expect(await showControls(win), `${where}: Help on`).toEqual(atRest);
+      await help.dispatchEvent('click');
+      await expect(help).toHaveAttribute('aria-pressed', 'false');
+      await expect.poll(() => seen(nextKey)).toBe(false);
+      expect(await showControls(win), `${where}: Help off again`).toEqual(atRest);
+    }
+  }
   await app.close();
 });
