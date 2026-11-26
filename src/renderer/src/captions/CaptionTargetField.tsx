@@ -5,9 +5,11 @@ import {
   type CaptionTarget,
 } from '../../../shared/caption-translation';
 import type { CaptionSettings, CaptionsStatus } from '../../../shared/captions';
+import { Button } from '../ui/Button';
 import { Field, Select } from '../ui/Field';
 import { Notice } from '../ui/Notice';
 import {
+  captionTargetReason,
   captionTargetWhyNot,
   chosenTarget,
   chosenUnavailableText,
@@ -17,6 +19,7 @@ import {
   TRANSLATION_HOW,
   TRANSLATION_TRIAL_WARNING,
   translationOf,
+  triedAgainOnChoosing,
 } from './caption-target-words';
 
 /**
@@ -39,6 +42,8 @@ export function CaptionTargetField({
   const speaker = settings.language;
   const t = translationOf(view);
   const whyNot = captionTargetWhyNot(view);
+  // Greyed out while choosing cannot mend it; after slowness or the engine's fault choosing again tries once more.
+  const greyed = whyNot !== null && !triedAgainOnChoosing(captionTargetReason(view) ?? null);
   // A pair that translates (2d): "as heard", Sanskrit and the speaker's own language show the speaker's words.
   const translating = translationTarget(speaker, chosen) !== null;
   const same = sameLanguageText(view);
@@ -59,13 +64,13 @@ export function CaptionTargetField({
           value={chosen}
           // Nothing to choose but the speaker's own words: greyed out, its hint says why. A translation chosen
           // earlier keeps it open, so the speaker's own words can be chosen again.
-          disabled={whyNot !== null && chosen === 'same'}
+          disabled={greyed && chosen === 'same'}
           onChange={(e) => {
             save({ ...settings, captionLanguage: e.target.value as CaptionTarget });
           }}
         >
           {CAPTION_TARGETS.map((id) => (
-            <option key={id} value={id} disabled={id !== 'same' && (whyNot !== null || id === speaker)}>
+            <option key={id} value={id} disabled={id !== 'same' && (greyed || id === speaker)}>
               {CAPTION_TARGET_NAMES[id]}
             </option>
           ))}
@@ -77,7 +82,24 @@ export function CaptionTargetField({
         </p>
       )}
       {unavailable !== null && (
-        <Notice tone={unavailable.tone} data-testid="captions-target-unavailable">
+        <Notice
+          tone={unavailable.tone}
+          data-testid="captions-target-unavailable"
+          actions={
+            unavailable.retry ? (
+              // A select cannot choose its own value again: Try again saves the same choice again.
+              <Button
+                size="sm"
+                data-testid="captions-target-retry"
+                onClick={() => {
+                  save({ ...settings });
+                }}
+              >
+                Try again
+              </Button>
+            ) : undefined
+          }
+        >
           {unavailable.text}
         </Notice>
       )}

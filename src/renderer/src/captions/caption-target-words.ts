@@ -43,23 +43,38 @@ export function unavailableText(reason: CaptionTranslationUnavailable | null): s
     case 'speaker-sanskrit':
       return 'Sanskrit speech is not translated: captions show the speaker’s own words.';
     case 'too-slow':
-      return 'This computer cannot keep up with translated captions, so they are off. They are offered only where live captions keep up.';
+      return 'This computer could not keep up with translated captions, so they stopped. They are offered only where live captions keep up. Choosing a language in Captions in again tries once more.';
+    case 'engine-fault':
+      return 'The translation engine stopped or could not load its model, so translated captions are off. Choosing a language in Captions in again tries once more.';
     case null:
       return 'Translated captions are not ready on this computer.';
   }
 }
 
 /**
+ * Whether choosing "Captions in" again mends it (df4a47045: main forgets a stop for slowness or the engine's fault and
+ * loads the model once more), so the translations stay choosable while it says so.
+ */
+export const triedAgainOnChoosing = (reason: CaptionTranslationUnavailable | null): boolean =>
+  reason === 'too-slow' || reason === 'engine-fault';
+
+/**
  * Why the translations in "Captions in" are greyed out now, or null while one can be chosen. A reason main left out is
  * the speaker's language's own where it has one ("as heard", Sanskrit).
  */
 export function captionTargetWhyNot(view: CaptionsStatus): string | null {
+  const reason = captionTargetReason(view);
+  return reason === undefined ? null : unavailableText(reason);
+}
+
+/** Why this computer cannot translate now (null: no reason given), or undefined while it can. */
+export function captionTargetReason(view: CaptionsStatus): CaptionTranslationUnavailable | null | undefined {
   const t = translationOf(view);
-  if (t.offered) return null;
+  if (t.offered) return undefined;
   const speaker = view.settings.language;
-  const reason =
-    t.unavailable ?? (speaker === 'auto' ? 'speaker-as-heard' : speaker === 'sa' ? 'speaker-sanskrit' : null);
-  return unavailableText(reason);
+  return (
+    t.unavailable ?? (speaker === 'auto' ? 'speaker-as-heard' : speaker === 'sa' ? 'speaker-sanskrit' : null)
+  );
 }
 
 /** Phrases skipped since captions started (2c): late, failed, or could not be shown. */
@@ -83,7 +98,7 @@ export function sameLanguageText(view: CaptionsStatus): string | null {
 /** A translation chosen but not possible now: what the screens show meanwhile (2c: never the speaker's words). */
 export function chosenUnavailableText(
   view: CaptionsStatus,
-): { tone: 'warning' | 'danger'; text: string } | null {
+): { tone: 'warning' | 'danger'; text: string; retry: boolean } | null {
   const target = chosenTarget(view);
   if (target === 'same' || target === view.settings.language) return null;
   const why = captionTargetWhyNot(view);
@@ -91,9 +106,11 @@ export function chosenUnavailableText(
   const t = translationOf(view);
   const speakers = t.unavailable === 'speaker-as-heard' || t.unavailable === 'speaker-sanskrit';
   if (speakers || translationTarget(view.settings.language, target) === null)
-    return { tone: 'warning', text: why };
+    return { tone: 'warning', text: why, retry: false };
   return {
     tone: 'danger',
+    // Choosing again tries once more after slowness or the engine's fault: Try again does so.
+    retry: triedAgainOnChoosing(captionTargetReason(view) ?? null),
     text: `${why} Until then the audience screens and the stream show no captions, and the stage screens keep the speaker’s words. Choose Same as the speaker to show the speaker’s own words everywhere.`,
   };
 }
@@ -109,6 +126,8 @@ function shortReason(reason: CaptionTranslationUnavailable | null): string | nul
       return 'this copy of Drashti cannot use the translation pack’s model';
     case 'too-slow':
       return 'this computer cannot keep up with them';
+    case 'engine-fault':
+      return 'the translation engine stopped';
     case 'speaker-as-heard':
     case 'speaker-sanskrit':
     case null:
