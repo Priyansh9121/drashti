@@ -175,14 +175,39 @@ for (const simple of [false, true]) {
     await win.getByTestId('chat-text-box').press('Enter');
     await expect(win.getByTestId('chat-text-box')).toHaveValue('');
     await expect(pop).toHaveCount(0);
-    // The real lifetime and reduced-motion rule; no change to the engine or chat clock.
+    // The real lifetime and reduced-motion rule; no change to the engine or chat clock. Timed inside the page, on the
+    // app's own clock (review S1): when the popup comes and goes there, against the time Main gave the message.
     await win.emulateMedia({ reducedMotion: 'reduce' });
+    await win.evaluate(() => {
+      const times: { shown?: number; gone?: number } = {};
+      (globalThis as typeof globalThis & { popTimes?: typeof times }).popTimes = times;
+      const up = () => document.querySelector('[data-testid="chat-pop"]') !== null;
+      new MutationObserver((_, watching) => {
+        if (times.shown === undefined) {
+          if (up()) times.shown = Date.now();
+        } else if (!up()) {
+          times.gone = Date.now();
+          watching.disconnect();
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    });
     await send('Placeholder no fade');
     await expect(pop).toBeVisible();
     expect(await pop.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe('0s');
-    const appeared = Date.now();
     await expect(pop).toHaveCount(0, { timeout: 12_000 });
-    expect(Date.now() - appeared).toBeGreaterThanOrEqual(9_000);
+    const times = await win.evaluate(async () => {
+      const { shown, gone } =
+        (globalThis as typeof globalThis & { popTimes?: { shown?: number; gone?: number } }).popTimes ?? {};
+      const view = await (globalThis as PageGlobals).drashti.chat.view();
+      const sent = view.messages.find((m) => m.text === 'Placeholder no fade')?.at;
+      return { shown, gone, sent: sent === undefined ? undefined : Date.parse(sent) };
+    });
+    if (times.shown === undefined || times.gone === undefined || times.sent === undefined)
+      throw new Error(`The popup's times were not all seen: ${JSON.stringify(times)}`);
+    // Never gone before 10 s from the message's arrival (with no fade, gone at once then), and up on screen for 9 s
+    // of it at least, however late the page drew it.
+    expect(times.gone - times.sent).toBeGreaterThanOrEqual(10_000);
+    expect(times.gone - times.shown).toBeGreaterThanOrEqual(9_000);
     await app.close();
   });
 }
