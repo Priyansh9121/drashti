@@ -127,8 +127,7 @@ function setup(reply: (sourceText: string) => string = () => 'प्लेसह
     translation: {
       status: (speaker: SpeechLanguage | 'auto', target: CaptionTarget | undefined, tooSlow: boolean) => ({
         ...NO_CAPTION_TRANSLATION,
-        target:
-          target === undefined || target === 'same' || speaker === target ? null : (target as SpeechLanguage),
+        target: target === undefined || target === 'same' || speaker === target ? null : target,
         offered: !tooSlow,
         unavailable: null,
       }),
@@ -164,7 +163,12 @@ function setup(reply: (sourceText: string) => string = () => 'प्लेसह
   };
   const last = () => screens.at(-1) ?? null;
   const everything = () =>
-    JSON.stringify([screens, asked.map((a) => a.sourceText), coordinator.view().current, coordinator.view().previous]);
+    JSON.stringify([
+      screens,
+      asked.map((a) => a.sourceText),
+      coordinator.view().current,
+      coordinator.view().previous,
+    ]);
   return { service, coordinator, clean, say, screens, asked, last, everything };
 }
 
@@ -206,7 +210,10 @@ describe('the alpha.24 captions join: the early final, words left out and transl
     t.say('પહેલો બીજો ત્રીજો', true, 's1');
     await vi.advanceTimersByTimeAsync(300);
     expect(t.asked.map((a) => a.sourceText)).toEqual(['પહેલો બીજો ત્રીજો']);
-    expect(t.last()).toMatchObject({ lines: ['प्लेसहोल्डर अनुवाद'], stage: { lines: ['પહેલો બીજો ત્રીજો'] } });
+    expect(t.last()).toMatchObject({
+      lines: ['प्लेसहोल्डर अनुवाद'],
+      stage: { lines: ['પહેલો બીજો ત્રીજો'] },
+    });
     t.service.close();
   });
 

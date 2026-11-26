@@ -339,9 +339,7 @@ export class CaptionCoordinator {
   /** The screens show a translation of the session's phrases (not the speaker's own words). */
   private translating(): boolean {
     return (
-      this.options.output === 'translation' &&
-      this.pair !== null &&
-      this.pair.source !== this.pair.target
+      this.options.output === 'translation' && this.pair !== null && this.pair.source !== this.pair.target
     );
   }
 
