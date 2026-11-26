@@ -24,6 +24,8 @@ let hooks: {
   discard: boolean;
   /** Each removal asked for, as it was asked. */
   discards: Promise<unknown>[];
+  /** A removal has actually been requested, after a real copy completes. */
+  discardAsked?: () => void;
   /** An import or a deck's preparation is going (a22-review-combine2 R-S1). */
   importing: boolean;
   /** The copy's file is held (Windows): a removal removes nothing and keeps its row, as discardUnlisted does then. */
@@ -100,6 +102,7 @@ function service(destination: string) {
           ? Promise.resolve(0)
           : discardUnlisted({ db: fixture.db, mediaDir: fixture.dir, ...made, keep, allowed });
       hooks.discards.push(asked.catch(() => undefined));
+      hooks.discardAsked?.();
       return asked;
     },
     // As the app has it: nothing playing, off air, not recording, and no import or deck preparation going.
@@ -320,13 +323,17 @@ it('Drashti closing just after the copy into Media: the next start removes what 
   const deps = service(dest);
   // The library closes before the removal can run, as at a quit or a crash.
   hooks.discard = false;
+  const firstCleanup = new Promise<void>((resolve) => {
+    hooks.discardAsked = resolve;
+  });
   hooks.imported = () => {
     clips.close();
   };
   expect(await clips.start(adding)).toMatchObject({ ok: true });
-  await vi.waitFor(() => {
-    expect(rows()).toBe(2);
-  });
+  // The copy and its refused cleanup have finished before simulating another start.
+  await firstCleanup;
+  await Promise.all(hooks.discards);
+  expect(rows()).toBe(2);
   expect(stored()).toHaveLength(1);
   const before = fixture.db.prepare("SELECT id FROM media WHERE id <> 'source'").get() as { id: string };
   // The next start, quiet: what was left goes before the export, kept as asked, runs again.
@@ -450,7 +457,7 @@ it('Stop on air after the copy into Media removes nothing on air; the next start
   };
   // Copying and validating a clip uses real FFmpeg. Wait for its actual post-import waiting callback,
   // rather than assuming that work finishes inside vi.waitFor's one-second default on a busy Mac.
-  let copiedAndWaiting = () => undefined;
+  let copiedAndWaiting: () => void = () => undefined;
   const waiting = new Promise<void>((resolve) => {
     copiedAndWaiting = resolve;
   });
