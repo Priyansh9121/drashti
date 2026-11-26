@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -10,11 +11,11 @@ import { endWindow, freshWindow } from './fresh-window';
  * (what-is-this.test.ts, help-store.test.ts). Drawn to markup: unit tests run without a page.
  */
 
-/** The switch as a new start of the window draws it, in this mode, Help on or off. */
-async function toggle(mode: OperatorMode, helpOn: boolean): Promise<string> {
+/** The switch as a new start of the window draws it, in this mode, Help on or off, with the bar's own ? if given. */
+async function toggle(mode: OperatorMode, helpOn: boolean, ask: ReactNode = null): Promise<string> {
   freshWindow(mode, helpOn);
   const { HelpSwitch } = await import('./HelpSwitch');
-  return renderToStaticMarkup(createElement(HelpSwitch, { platform: 'darwin' }));
+  return renderToStaticMarkup(createElement(HelpSwitch, { platform: 'darwin', ask }));
 }
 
 afterEach(endWindow);
@@ -40,6 +41,16 @@ describe('the status bar’s Help switch', () => {
     expect(button).toEqual(expect.arrayContaining(['max-[1280px]:w-6', 'max-[1280px]:px-0', 'min-h-6']));
     const word = /<span class="([^"]*)">Help<\/span>/u.exec(off)?.[1]?.split(' ') ?? [];
     expect(word).toEqual(['max-[1280px]:sr-only']);
+  });
+
+  it('has the status bar’s own ? after it, gone below 1280 px as the header’s are, so a narrow bar is as full as before', async () => {
+    const ask = createElement('button', { 'data-testid': 'what-is-this-statusbar' }, '?');
+    const on = await toggle('pro', true, ask);
+    expect(on).toMatch(
+      /Help<\/span><\/button><\/span><span class="max-\[1280px\]:hidden"><button data-testid="what-is-this-statusbar">\?<\/button><\/span>$/u,
+    );
+    // None (Help off, or Simple Mode): nothing after the switch.
+    expect(await toggle('pro', false, null)).toMatch(/Help<\/span><\/button><\/span>$/u);
   });
 
   it('says in its tooltip words what it shows, with the Mac’s Option and Windows’ Alt', async () => {
