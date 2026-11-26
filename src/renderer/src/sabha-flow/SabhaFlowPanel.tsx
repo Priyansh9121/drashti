@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useState } from 'react';
+import { droppedPaths, hasFiles } from '../playlists/drag';
 import { NO_FLOW } from '../../../shared/sabha-flow-lines';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { useOperateOnly } from '../simple/simple-features-store';
@@ -14,6 +15,9 @@ import { FlowReadList, FlowStatusNotice, flowViews } from './FlowViews';
 import { FlowPage } from './FlowPage';
 import {
   chooseFlow,
+  dropFlowFiles,
+  cancelDroppedFlow,
+  confirmDroppedFlow,
   connectFlow,
   flowBack,
   flowNext,
@@ -42,6 +46,10 @@ const TABS: { id: FlowView; label: string }[] = [
 
 export function SabhaFlowPanel() {
   const open = useFlowPanel((s) => s.open);
+  const setup = !useOperateOnly();
+  const [dragging, setDragging] = useState(false);
+  const dropped = useFlow((s) => s.dropped);
+  const flow = useFlow((s) => s.flow);
   const titleId = useId();
   const bodyId = useId();
   const help = useWhatIsThis('sabhaflow', { compact: true });
@@ -64,7 +72,56 @@ export function SabhaFlowPanel() {
     [],
   );
   return (
-    <section aria-labelledby={titleId} className="flex min-h-0 flex-1 flex-col" data-testid="sabha-flow">
+    <section
+      aria-labelledby={titleId}
+      className="relative flex min-h-0 flex-1 flex-col"
+      data-testid="sabha-flow"
+      onDragOver={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'copy';
+        setDragging(true);
+      }}
+      onDragEnter={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+      }}
+      onDrop={(e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setDragging(false);
+        setFlowPanelOpen(true);
+        dropFlowFiles(droppedPaths(e), setup);
+      }}
+    >
+      {dragging && (
+        <div
+          data-testid="flow-drop-overlay"
+          className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center border-2 border-heading bg-panel p-3 text-center text-sm text-fg"
+        >
+          {setup ? 'Drop the PDF to use it as the running order' : 'The running order is chosen in Pro Mode'}
+        </div>
+      )}
+      {dropped && (
+        <ConfirmDialog
+          title="Replace the running order?"
+          confirmLabel="Replace"
+          testId="flow-replace-confirm"
+          onCancel={cancelDroppedFlow}
+          onConfirm={confirmDroppedFlow}
+        >
+          <p>
+            Use “{dropped.name}” instead of “{flow?.fileName}”? Now will start again.
+          </p>
+        </ConfirmDialog>
+      )}
       <header
         ref={setHeader}
         className="flex min-h-9 shrink-0 items-center gap-1 py-1 pr-3 pl-3"
@@ -138,6 +195,7 @@ function FlowBody({ onNeed }: { onNeed: (px: number) => void }) {
   const loaded = useFlow((s) => s.loaded);
   const choosing = useFlow((s) => s.choosing);
   const problem = useFlow((s) => s.problem);
+  const note = useFlow((s) => s.note);
   // Choose PDF…, Replace… and Remove set the flow up: Pro Mode's (Simple Mode shows it, and marks Now).
   const setup = !useOperateOnly();
   // The view chosen, for the flow it was chosen for: a new PDF opens on its read list (or its page, when nothing could
@@ -278,6 +336,11 @@ function FlowBody({ onNeed }: { onNeed: (px: number) => void }) {
           without moving Now and Next up, the splitter or the playlists (lead 2, CI 8967). */}
       {choosing && <Loading label="Reading the PDF…" immediate className="shrink-0 py-1" />}
       {problemNotice}
+      {note && (
+        <Notice compact className="mx-3 mt-2" data-testid="flow-note">
+          {note}
+        </Notice>
+      )}
       {views.length > 1 ? (
         // The read list scrolls on its own, Now and Next up staying in view above it; the page view has its own.
         <TabPanel
