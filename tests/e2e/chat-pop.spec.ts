@@ -193,7 +193,7 @@ const settled = (win: Page) =>
     () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
   );
 
-test('a popup click opens Chat only where it is this mode’s: in Simple Mode without Chat it only closes, and a click never carries over to the other mode', async () => {
+test('a popup click opens Chat only where it is this mode’s: in Simple Mode without Chat it only closes, a click never carries over to the other mode, and an old click never unfolds Chat again', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -225,17 +225,26 @@ test('a popup click opens Chat only where it is this mode’s: in Simple Mode wi
   await settled(win);
   await expect(chat).toHaveCount(0);
   expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.simpleFeatures())).toEqual([]);
-  // Pro Mode: a click opens Chat.
+  // Pro Mode: Chat folded as at each start (nothing from Simple Mode's click), and a click opens it.
   await setMode('pro');
   const toggle = win.getByTestId('group-chat-toggle');
+  await settled(win);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await send('Placeholder in Pro Mode');
   await expect(pop).toContainText('Placeholder in Pro Mode');
   await win.getByTestId('chat-pop-open').click();
   await expect(pop).toHaveCount(0);
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  // The operator folds it again.
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   // Back in Simple Mode, that click never adds Chat there.
   await setMode('simple');
   await settled(win);
   await expect(chat).toHaveCount(0);
+  // And in Pro Mode again Chat is as the operator left it, folded: an old click never unfolds it again.
+  await setMode('pro');
+  await settled(win);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await app.close();
 });
