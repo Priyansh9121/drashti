@@ -116,6 +116,11 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
     point?: { x: number; y: number };
   } | null>(null);
   const drag = useRef<{ id: number; x: number; y: number; left: number; top: number } | null>(null);
+  // Whether a drag can move the pages now, read from the box as laid out.
+  const measureMovable = useCallback(() => {
+    const el = box.current;
+    if (el) setMovable(canMove(el));
+  }, []);
   const changeZoom = useCallback((next: number, point?: { x: number; y: number }) => {
     const el = box.current;
     const before = renderedZoom.current;
@@ -153,7 +158,9 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
       el.scrollTop = zoomPosition(move.top, move.y, move.before, zoom, move.paddingY, y);
       pending.current = null;
     }
-  }, [zoom]);
+    // The cursor says it with the zoom itself, before it is drawn: a ResizeObserver reports only at the next frame drawn.
+    measureMovable();
+  }, [zoom, measureMovable]);
   const applyDraft = () => {
     const next = parseZoom(draft);
     if (next === null) {
@@ -176,21 +183,18 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
       el.removeEventListener('wheel', onWheel);
     };
   }, [changeZoom]);
-  // The grab cursor only while a drag can move the pages: kept current as the box or the pages change size (a zoom, a
-  // page drawn, a scrollbar, the window resized).
+  // The grab cursor only while a drag can move the pages: measured as each zoom is laid out and as each page is drawn,
+  // and kept current as the box or the pages change size otherwise (a scrollbar, the panel or the window resized).
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const check = () => {
-      setMovable(canMove(el));
-    };
-    const sizes = new ResizeObserver(check);
+    const sizes = new ResizeObserver(measureMovable);
     sizes.observe(el);
     if (sheet.current) sizes.observe(sheet.current);
     return () => {
       sizes.disconnect();
     };
-  }, []);
+  }, [measureMovable]);
   const endDrag = (el: HTMLElement, pointerId: number) => {
     drag.current = null;
     setDragging(false);
@@ -334,6 +338,7 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
                 loading="lazy"
                 decoding="async"
                 draggable={false}
+                onLoad={measureMovable}
                 data-testid="flow-page"
                 className="pointer-events-none block h-auto w-full bg-white shadow-sm"
               />
