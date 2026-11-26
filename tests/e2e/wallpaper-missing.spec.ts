@@ -124,7 +124,7 @@ test('a wallpaper whose picture is missing says so (its tile, the panel with Fin
       tile.getByTestId('wallpaper-missing').evaluate((el) => {
         const box = el.getBoundingClientRect();
         const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-        const clipped: string[] = [];
+        const clipped: { text: string; box: number[]; ink: number[] }[] = [];
         for (let node = walker.nextNode(); node; node = walker.nextNode()) {
           if (!node.textContent?.trim()) continue;
           const range = document.createRange();
@@ -136,7 +136,11 @@ test('a wallpaper whose picture is missing says so (its tile, the panel with Fin
               rect.top < box.top - 0.5 ||
               rect.bottom > box.bottom + 0.5
             )
-              clipped.push(node.textContent);
+              clipped.push({
+                text: node.textContent,
+                box: [box.left, box.top, box.right, box.bottom],
+                ink: [rect.left, rect.top, rect.right, rect.bottom],
+              });
           }
         }
         return clipped;
