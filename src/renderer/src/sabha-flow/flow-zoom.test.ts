@@ -24,6 +24,9 @@ describe('PDF zoom', () => {
     expect(zoomStep(0.25, -1)).toBe(0.25);
     expect(zoomStep(4, 1)).toBe(4);
   });
+  it('keeps the centre when a scrollbar changes the viewport size', () => {
+    expect(zoomPosition(100, 80, 1, 2, 8, 72)).toBe(280);
+  });
   it('keeps the centre or pointer over the same page coordinate, accounting for padding', () => {
     expect(zoomPosition(100, 80, 1, 2, 8)).toBe(272);
     expect(zoomPosition(272, 80, 2, 1, 8)).toBe(100);
