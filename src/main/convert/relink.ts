@@ -4,7 +4,8 @@ import { VideoCaptionsRepo } from '../db/video-captions';
 /*
  * After a conversion, everything that used the original uses the converted
  * file: slides' background and sound cues, pictures and videos placed on
- * slides, playlist items, props, theme backgrounds and kirtan recordings.
+ * slides, playlist items, props, theme backgrounds, kirtan recordings and
+ * wallpapers' pictures.
  * What was moved is kept, so Undo puts back exactly those rows that still
  * point at the converted file. And what is added after (Session 51) lands on
  * the converted file too (copyFinder).
@@ -21,6 +22,11 @@ export interface Moved {
   tracks?: string[];
   /** Deck slides whose own videos and sounds moved (Session 54, C2; left out by conversions made before). */
   decks?: string[];
+  /**
+   * Wallpapers' pictures, each as "wallpaper id:place" (QA24-WALLBLACK-1; left out by conversions made before, which
+   * left a wallpaper on its original: a photo Drashti cannot draw as it is, black on the screens).
+   */
+  wallpapers?: string[];
 }
 
 export const NOTHING_MOVED: Moved = {
@@ -32,6 +38,7 @@ export const NOTHING_MOVED: Moved = {
   themes: [],
   tracks: [],
   decks: [],
+  wallpapers: [],
 };
 
 /**
@@ -169,16 +176,20 @@ export function moveMedia(db: Db, from: string, to: string): Moved {
     const elements = ids(
       "SELECT id FROM elements WHERE kind IN ('image', 'video') AND json_extract(props, '$.mediaId') = ?",
     );
+    const wallpapers = ids(
+      "SELECT wallpaper_id || ':' || position AS id FROM wallpaper_pictures WHERE media_id = ? ORDER BY wallpaper_id, position",
+    );
     db.prepare('UPDATE slide_cues SET media_id = ? WHERE media_id = ?').run(to, from);
     db.prepare('UPDATE playlist_items SET media_id = ? WHERE media_id = ?').run(to, from);
     db.prepare('UPDATE audio_playlist_tracks SET media_id = ? WHERE media_id = ?').run(to, from);
     db.prepare('UPDATE kirtans SET audio_media_id = ? WHERE audio_media_id = ?').run(to, from);
+    db.prepare('UPDATE wallpaper_pictures SET media_id = ? WHERE media_id = ?').run(to, from);
     const element = db.prepare("UPDATE elements SET props = json_set(props, '$.mediaId', ?) WHERE id = ?");
     for (const id of elements) element.run(to, id);
     const props = swapJson(db, 'props', from, to);
     const themes = swapJson(db, 'themes', from, to);
     const decks = swapDecks(db, from, to);
-    return { cues, items, kirtans, elements, props, themes, tracks, decks };
+    return { cues, items, kirtans, elements, props, themes, tracks, decks, wallpapers };
   })();
 }
 
@@ -203,6 +214,13 @@ export function moveBack(db: Db, moved: Moved, from: string, to: string): void {
     swapJson(db, 'props', to, from, moved.props);
     swapJson(db, 'themes', to, from, moved.themes);
     swapDecks(db, to, from, moved.decks ?? []);
+    const picture = db.prepare(
+      'UPDATE wallpaper_pictures SET media_id = ? WHERE wallpaper_id = ? AND position = ? AND media_id = ?',
+    );
+    for (const key of moved.wallpapers ?? []) {
+      const [, wallpaper, place] = /^(.+):(\d+)$/u.exec(key) ?? [];
+      if (wallpaper !== undefined && place !== undefined) picture.run(from, wallpaper, Number(place), to);
+    }
   })();
 }
 

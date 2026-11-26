@@ -175,6 +175,8 @@ const movedSchema = z.object({
   tracks: z.array(z.string()).optional(),
   // A deck's slides whose own videos and sounds moved (Session 54, C2).
   decks: z.array(z.string()).optional(),
+  // Wallpapers' pictures (QA24-WALLBLACK-1), as "wallpaper id:place".
+  wallpapers: z.array(z.string()).optional(),
 });
 
 const KIND_OF: Record<ConvertTarget, MediaRow['kind']> = {
@@ -684,6 +686,9 @@ export class ConvertService {
       props: [...was.props, ...more.props],
       themes: [...was.themes, ...more.themes],
       tracks: [...(was.tracks ?? []), ...(more.tracks ?? [])],
+      // Kept for Undo as the first move kept them (they were left out here before).
+      decks: [...(was.decks ?? []), ...(more.decks ?? [])],
+      wallpapers: [...(was.wallpapers ?? []), ...(more.wallpapers ?? [])],
     };
     db.prepare('UPDATE media_conversions SET moved = ? WHERE id = ?').run(JSON.stringify(merged), done.id);
     this.deps.log('info', said);
