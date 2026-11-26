@@ -466,7 +466,7 @@ Zooming the picture on the screens has no key either: scroll or pinch over the *
 
 **Moving one slide without dragging.** With the keyboard on a presentation’s, PDF’s or deck’s slide row in an open playlist, **Alt+↑** / **Alt+↓** (on a Mac, Alt is the ⌥ Option key) moves it within that deck, stays at the ends and has Undo. Its number stays its own and the library is unchanged; focus follows the row. In Pro Mode, its menu (**Shift+F10**) has **Make it an item of its own**, directly after the deck, with Undo. In Simple Mode that menu has **Edit slides…** and Remove from playlist instead, while the within-deck key move works there too.
 
-In the slide editor (on a Mac, Alt is the ⌥ Option key):
+In the slide editor:
 
 | Key                                                            | What it does                                                                                                 |
 | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
