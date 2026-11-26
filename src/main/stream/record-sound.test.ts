@@ -235,9 +235,11 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
     await expect(stream.quitting()).resolves.toBe('finished');
     expect(stream.startSoundRecording()).toEqual({ ok: false, message: 'Drashti is quitting.' });
     // It did not go ahead (a source that would not stop in time): Drashti is as it was before the quit.
+    // The stream's page, which nothing needed once the WAV was finished, closed then; Record sound opens it again.
     stream.cancelQuitting();
     expect(stream.startSoundRecording()).toMatchObject({ ok: true });
-    if (createProgram.mock.calls.length > 1) webContents.emit('did-finish-load');
+    await vi.waitFor(() => expect(createProgram).toHaveBeenCalledTimes(2));
+    webContents.emit('did-finish-load');
     await pass(1000, TONE);
     await vi.waitFor(() =>
       expect(stream.status().recording).toMatchObject({ kind: 'sound', state: 'recording' }),

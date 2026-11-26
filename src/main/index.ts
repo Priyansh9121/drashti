@@ -10481,6 +10481,12 @@ function start(): void {
       quitting = false;
       quitConfirmed = false;
     },
+    // Told as the quit went ahead (before-quit, below), before the source stop's gate refused it (bughunt S3-2).
+    partsBack: () => {
+      streaming.cancelQuitting();
+      studio.cancelQuitting();
+      slideEditor?.cancelQuitting();
+    },
     screens: () => {
       manager.cancelQuitting();
     },
