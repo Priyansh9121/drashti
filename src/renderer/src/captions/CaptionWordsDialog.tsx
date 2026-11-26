@@ -16,7 +16,7 @@ import { Field, Select, TextInput } from '../ui/Field';
 import { ArrowUp, Trash2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { Toggle } from '../ui/Toggle';
-import { captionWordLettersText, captionWordsHintText } from './caption-words-text';
+import { captionWordLettersText, captionWordsLine } from './caption-words-text';
 
 /*
  * File › Live Captions… › Caption Words… (alpha.22; Pro Mode): the names and terms a speaker says, each spelt as
@@ -223,7 +223,7 @@ function CaptionWordsDialog({
           </Button>
         </form>
         <p className="text-sm text-muted" data-testid="caption-words-hints">
-          {captionWordsHintText(name, mine.length, view?.hinted[language] ?? 0, listening, language, hintsOn)}
+          {captionWordsLine(mine, view?.hinted[language] ?? 0, listening, language, hintsOn)}
         </p>
         <Toggle
           checked={hintsOn}

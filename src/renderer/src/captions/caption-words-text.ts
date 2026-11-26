@@ -1,3 +1,4 @@
+import { CAPTION_WORD_LANGUAGE_NAMES, type CaptionWord } from '../../../shared/caption-words';
 import { otherLetters } from '../../../shared/language-letters';
 import type { SpeechLanguage } from '../../../shared/speech';
 import { plural } from '../../../shared/text';
@@ -27,21 +28,41 @@ export function captionWordsHintText(
   return `${words}. The first ${String(hinted)} fit in the captions engine’s hints, so put the most important first; all of them fix spellings.`;
 }
 
-const CAPTION_NAMES: Readonly<Record<SpeechLanguage, string>> = {
+/** The letters each language's caption words are typed in, for the line under the list. */
+const LETTERS: Readonly<Record<SpeechLanguage, string>> = {
   gu: 'Gujarati',
-  hi: 'Hindi',
-  sa: 'Sanskrit',
+  hi: 'Devanagari',
+  sa: 'Gujarati or Devanagari',
   en: 'English',
 };
 
 /**
+ * The line under the list, from this language's entries (alpha.24, review R2-1): only those in the language's own
+ * letters are counted, as only they are given as hints and show while it is chosen; with none in them, it says so.
+ */
+export function captionWordsLine(
+  entries: readonly CaptionWord[],
+  hinted: number,
+  listening: SpeechLanguage | 'auto',
+  language: SpeechLanguage,
+  on = true,
+): string {
+  const name = CAPTION_WORD_LANGUAGE_NAMES[language];
+  const count = entries.filter((w) => otherLetters(w.word, language) === null).length;
+  if (count === 0 && entries.length > 0)
+    return `No ${name} caption words in ${LETTERS[language]} letters yet.`;
+  return captionWordsHintText(name, count, hinted, listening, language, on);
+}
+
+/**
  * Beside an entry under Gujarati, Hindi or Sanskrit typed in other letters than its language's (alpha.24, lead 2):
- * it is kept as typed, but captions with that language chosen keep to its letters, so it never shows. Null for any
- * other entry (English's too).
+ * it is kept as typed, but captions with that language chosen keep to its letters, so it never shows then (as heard
+ * is not kept to letters). Null for any other entry (English's too).
  */
 export function captionWordLettersText(word: string, language: SpeechLanguage): string | null {
   if (language === 'en') return null;
   const other = otherLetters(word, language);
   if (other === null) return null;
-  return `Typed in ${other} letters: it won’t show in ${CAPTION_NAMES[language]} captions.`;
+  const name = CAPTION_WORD_LANGUAGE_NAMES[language];
+  return `Typed in ${other} letters: it won’t show in ${name} captions while ${name} is chosen.`;
 }
