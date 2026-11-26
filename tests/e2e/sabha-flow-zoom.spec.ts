@@ -310,25 +310,27 @@ test('the grab cursor shows only while the PDF can move', async () => {
   try {
     const { input, region } = await chooseScan(app, scan);
     const cursor = () => region.evaluate((el) => getComputedStyle(el).cursor);
+    // Said with the zoom itself, not a frame later (CI's window draws few frames: its ResizeObserver lagged seconds).
+    const AT_ONCE = 'the cursor as the zoom shows, with no frame drawn between';
     // At 25% the page fits its box: nothing to move, so no grab cursor.
     await input.fill('25');
     await input.press('Enter');
     await expect(input).toHaveValue('25%');
+    expect(await cursor(), AT_ONCE).toBe('auto');
     await expect
       .poll(() =>
         region.evaluate((el) => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight),
       )
       .toBe(true);
-    await expect.poll(cursor).toBe('auto');
     await input.fill('400');
     await input.press('Enter');
     await expect(input).toHaveValue('400%');
-    await expect.poll(cursor).toBe('grab');
+    expect(await cursor(), AT_ONCE).toBe('grab');
     // Back to 25%: nothing to move again.
     await input.fill('25');
     await input.press('Enter');
     await expect(input).toHaveValue('25%');
-    await expect.poll(cursor).toBe('auto');
+    expect(await cursor(), AT_ONCE).toBe('auto');
   } finally {
     await app.close();
   }
