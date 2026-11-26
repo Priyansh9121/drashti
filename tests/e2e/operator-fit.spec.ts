@@ -22,6 +22,7 @@ import { makeTestImage, makeTestTone, makeTestVideo, setWebmDuration } from './t
 import { dispatch, row, slideWithVideos } from './time-bar-helpers';
 import type { MayEndInEllipsis } from './fit';
 import { fitFaults } from './fit';
+import { helpOn } from './help';
 import { CI_WINDOW, liveColumnToTop, sizeOperatorWindow } from './window-size';
 
 /*
@@ -224,43 +225,70 @@ async function fill(app: ElectronApplication, win: Page, mode: 'pro' | 'simple')
   await expect(win.getByTestId('operator-notice')).toBeVisible();
 }
 
+/**
+ * The window at `size` in `mode` with everything in it (fill), Help off or on: with the columns at their least and at
+ * their most (Pro Mode's library open over the playlists too), each scroller at its top and its end, nothing is cut,
+ * over another, out of its column or under the notice, and every target is 24 px.
+ */
+async function fitsEverywhere(
+  mode: 'pro' | 'simple',
+  size: { width: number; height: number },
+  help: boolean,
+) {
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await sizeOperatorWindow(app, win, size);
+  await fill(app, win, mode);
+  // Help on (alpha.24: off at a first start): every ? and every key beside a button's words drawn, as in alpha.23.
+  if (help) await helpOn(win);
+  await win.evaluate(() => document.fonts.ready.then(() => undefined));
+  const findings: string[] = [];
+  // Pro Mode's library over the playlists too.
+  for (const library of mode === 'pro' ? [false, true] : [false]) {
+    if (library) await openLibrary(win);
+    for (const [name, columns] of Object.entries(COLUMNS)) {
+      await setColumns(win, columns);
+      for (const end of [false, true]) {
+        await scrollAll(win, end);
+        // Still there after the columns moved (a resize sends no command).
+        await expect(win.getByTestId('operator-notice')).toBeVisible();
+        const faults = [...(await fitFaults(win, NAMES)), ...(await smallTargets(win))];
+        const where = `${library ? 'the library open, ' : ''}${name}${end ? ', scrolled to the end' : ''}`;
+        findings.push(...faults.map((f) => `${where}: ${f}`));
+        if (faults.length > 0)
+          await test.info().attach(`${mode}-${String(size.width)}-${where}`, {
+            body: await win.screenshot(),
+            contentType: 'image/png',
+          });
+      }
+    }
+  }
+  console.log(
+    `${mode} ${String(size.width)} × ${String(size.height)}${help ? ' (Help on)' : ''}: ${String(findings.length)} findings\n${findings.join('\n')}`,
+  );
+  expect(findings).toEqual([]);
+  await app.close();
+}
+
 for (const mode of ['pro', 'simple'] as const)
   for (const size of SIZES)
     test(`${mode === 'pro' ? 'Pro' : 'Simple'} Mode at ${String(size.width)} × ${String(size.height)}: with the columns at their least and at their most, nothing is cut, over another, out of its column or under the notice, and every target is 24 px`, async () => {
       test.setTimeout(180_000);
-      const { app } = await launchApp(NETWORK_ENV);
-      const win = await operatorPage(app);
-      await operatorReady(win);
-      await sizeOperatorWindow(app, win, size);
-      await fill(app, win, mode);
-      await win.evaluate(() => document.fonts.ready.then(() => undefined));
-      const findings: string[] = [];
-      // Pro Mode's library over the playlists too.
-      for (const library of mode === 'pro' ? [false, true] : [false]) {
-        if (library) await openLibrary(win);
-        for (const [name, columns] of Object.entries(COLUMNS)) {
-          await setColumns(win, columns);
-          for (const end of [false, true]) {
-            await scrollAll(win, end);
-            // Still there after the columns moved (a resize sends no command).
-            await expect(win.getByTestId('operator-notice')).toBeVisible();
-            const faults = [...(await fitFaults(win, NAMES)), ...(await smallTargets(win))];
-            const where = `${library ? 'the library open, ' : ''}${name}${end ? ', scrolled to the end' : ''}`;
-            findings.push(...faults.map((f) => `${where}: ${f}`));
-            if (faults.length > 0)
-              await test.info().attach(`${mode}-${String(size.width)}-${where}`, {
-                body: await win.screenshot(),
-                contentType: 'image/png',
-              });
-          }
-        }
-      }
-      console.log(
-        `${mode} ${String(size.width)} × ${String(size.height)}: ${String(findings.length)} findings\n${findings.join('\n')}`,
-      );
-      expect(findings).toEqual([]);
-      await app.close();
+      await fitsEverywhere(mode, size, false);
     });
+
+// With Help on (alpha.24): every ?, and every button with its key, as alpha.23 drew them all the time (the release
+// lead's review of uihelp, MUST-1): in CI's window in both modes, and in the owner's.
+for (const [mode, size] of [
+  ['pro', CI_WINDOW],
+  ['simple', CI_WINDOW],
+  ['pro', OWNERS_WINDOW],
+] as const)
+  test(`${mode === 'pro' ? 'Pro' : 'Simple'} Mode at ${String(size.width)} × ${String(size.height)} with Help on: every ? and key drawn, with the columns at their least and at their most, nothing is cut, over another, out of its column or under the notice, and every target is 24 px`, async () => {
+    test.setTimeout(180_000);
+    await fitsEverywhere(mode, size, true);
+  });
 
 /** A tablet's feed opened as its stage display's page opens it (paired-seats.spec.ts): the hello, then the welcome. */
 async function connectTablet(port: number, token: string): Promise<WebSocket> {
