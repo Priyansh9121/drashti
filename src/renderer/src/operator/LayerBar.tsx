@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { isLayerEmpty } from '../../../shared/engine/state';
@@ -6,9 +7,10 @@ import { shortcutText, SIMPLE_KEYMAP } from '../../../shared/keymap';
 import { practiceKey, useShowState } from '../practice/practice-store';
 import { useKeymapNow } from './single-keys-store';
 import { dispatch } from './actions';
-import type { ClearedLayer } from './layer-clears';
-import { LAYER_CLEARS } from './layer-clears';
+import type { ClearedLayer, ClearLook } from './layer-clears';
+import { clearLook, clearTrace, LAYER_CLEARS, TRACE_TIMING, traceFrames } from './layer-clears';
 import { cx } from '../ui/cx';
+import { duration, easing, motionOff } from '../ui/motion';
 import type { Icon } from '../ui/icons';
 import {
   BlackOut,
@@ -42,6 +44,15 @@ import { Tooltip } from '../ui/Tooltip';
  * with Clear all (and Put it back after it), Slide, Background and Audio beside it (Session 56, the owner: "The Slide,
  * Background and Audio buttons at the bottom, beside Clear all"), the Wallpaper and Black-out; its dimmed Clear all and
  * clears stay stops of the Tab key's (Part 13's answer: a volunteer's Tab order never changes).
+ *
+ * What is up, at a glance (alpha.24, the owner's calmer window): a layer's clear with nothing up is compact, its icon
+ * alone in a 32 px square, its words and key in its tooltip (the mouse resting on it, or Simple Mode's keyboard on
+ * it), the same name read out and the same test id; lit, it is as before. Each keeps the room its lit look takes (an
+ * unseen copy of its words and key holds it), so no button along the bar ever moves as layers go up and come off, and
+ * the bar is one row from 1008 px in every state as before. A clear still changes in the same frame as the screens and
+ * never moves itself; as it lights up or goes out a trace in its room (decoration only) grows from the icon or shrinks
+ * into it, once, in transform and opacity (layer-clears.ts, clearTrace): not as the window opens, nor with interface
+ * motion Off or reduced motion.
  */
 
 /** Simple Mode's clears beside its Clear all (Session 56), in the order of their keys (F2, F3, F5). */
@@ -72,12 +83,121 @@ const BAR_BUTTON =
 const DIMMED = 'border-layer-edge bg-transparent text-faint';
 /** Its layer up: lit, as LIVE's edge. */
 const LIT = 'border-live-edge bg-layer text-fg hover:bg-panel-3';
+/** A layer's clear with nothing up (alpha.24): its icon alone, a square as tall as the bar's buttons. */
+const COMPACT = 'relative inline-flex size-8 shrink-0 items-center justify-center rounded-md border';
 /** A cover on (the Wallpaper, Black-out): LIVE's red. */
 const ON = 'border-live bg-live text-white hover:brightness-110';
 
 function BarIcon({ shape }: { shape: Icon }) {
   const IconShape = shape;
   return <IconShape size={15} aria-hidden="true" className="hidden shrink-0 min-[1280px]:block" />;
+}
+
+/** The window has opened settled (ui/motion.ts says so on the page). */
+const windowOpened = () => document.documentElement.dataset['opened'] !== undefined;
+
+/**
+ * A layer's clear in its room: lit, its words and key; compact, its icon (alpha.24). The room is its lit look's, held
+ * by an unseen copy, so nothing beside it moves; the trace over it plays once as it lights up or goes out.
+ */
+function LayerClear({
+  layer,
+  label,
+  look,
+  known,
+  keyText,
+  simple,
+  onClear,
+}: {
+  layer: ClearedLayer;
+  label: string;
+  look: ClearLook;
+  /** The show's state has come (nothing plays from the first state the window hears). */
+  known: boolean;
+  keyText: string;
+  simple: boolean;
+  onClear: () => void;
+}) {
+  const on = look === 'lit';
+  const button = useRef<HTMLButtonElement>(null);
+  const trace = useRef<HTMLSpanElement>(null);
+  const was = useRef<ClearLook | null>(null);
+  // After the clear has changed (in the same frame as the screens): its trace, from what it was to what it is; a
+  // change before it ends, or the bar going, stops it.
+  useLayoutEffect(() => {
+    const now = known ? look : null;
+    const kind = clearTrace(was.current, now, { moves: !motionOff(), opened: windowOpened() });
+    was.current = now;
+    const el = trace.current;
+    const room = el?.parentElement?.getBoundingClientRect().width ?? 0;
+    // The compact button is a square as tall as the lit one.
+    const square = button.current?.getBoundingClientRect().height ?? 0;
+    if (kind === null || !el || room <= 0) return;
+    const { time, curve } = TRACE_TIMING[kind];
+    const played = el.animate(traceFrames(kind, square / room), {
+      duration: duration(time),
+      easing: easing(curve),
+    });
+    return () => {
+      played.cancel();
+    };
+  }, [look, known]);
+  const IconShape = icons[layer];
+  return (
+    <Tooltip content={`Clear ${label.toLowerCase()}`} kbd={keyText} describes={false}>
+      <span className="relative inline-grid shrink-0 place-items-center" data-clear-room={layer}>
+        {/* The room its lit look takes, kept while it is compact. */}
+        <span aria-hidden="true" className={cx(BAR_BUTTON, 'invisible col-start-1 row-start-1 pr-3.5')}>
+          <BarIcon shape={IconShape} />
+          <WordsAndKey words={label} keyText={keyText} />
+        </span>
+        <button
+          ref={button}
+          type="button"
+          // Simple Mode's stay Tab stops, dimmed, as its Clear all (Part 13's answer); Pro Mode's are not
+          // pressable while their layer has nothing up.
+          disabled={!simple && !on}
+          aria-disabled={simple && !on ? true : undefined}
+          data-testid={simple ? `simple-clear-${layer}` : undefined}
+          data-lit={on ? 'true' : undefined}
+          data-dimmed={on ? undefined : 'true'}
+          data-show-control
+          onClick={() => {
+            if (on) onClear();
+          }}
+          aria-label={`Clear ${label.toLowerCase()}${on ? ' (on screen)' : ''}`}
+          // Lit: wide enough that the dot keeps clear of its key.
+          className={cx(
+            'col-start-1 row-start-1',
+            on ? cx(BAR_BUTTON, 'pr-3.5', LIT) : cx(COMPACT, DIMMED, 'cursor-not-allowed'),
+          )}
+        >
+          {on ? (
+            <>
+              <BarIcon shape={IconShape} />
+              <WordsAndKey words={label} keyText={keyText} />
+              {/* In the corner beside its key. */}
+              <span
+                aria-hidden="true"
+                className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-live-edge"
+              />
+            </>
+          ) : (
+            <IconShape size={15} aria-hidden="true" className="shrink-0" />
+          )}
+        </button>
+        {/* Decoration only: never pressed, read out or seen at rest. */}
+        <span
+          ref={trace}
+          aria-hidden="true"
+          className={cx(
+            'pointer-events-none absolute inset-0 rounded-md opacity-0',
+            on ? 'bg-live-edge' : 'bg-layer-edge',
+          )}
+        />
+      </span>
+    </Tooltip>
+  );
 }
 
 /** The Wallpaper or Black-out: on in LIVE's red, saying so in words; off, dimmed and pressable. */
@@ -199,45 +319,20 @@ export function LayerBar({
           aria-label="Clear one layer"
           className="flex items-center gap-1 min-[1280px]:gap-1.5"
         >
-          {LAYER_CLEARS.filter((c) => !simple || SIMPLE_CLEARS.includes(c.layer)).map((c) => {
-            const on = layers ? !isLayerEmpty(layers, c.layer) : false;
-            return (
-              <Tooltip
-                key={c.layer}
-                content={`Clear ${c.label.toLowerCase()}`}
-                kbd={key(c.action)}
-                describes={false}
-              >
-                <button
-                  type="button"
-                  // Simple Mode's stay Tab stops, dimmed, as its Clear all (Part 13's answer); Pro Mode's are not
-                  // pressable while their layer has nothing up.
-                  disabled={!simple && !on}
-                  aria-disabled={simple && !on ? true : undefined}
-                  data-testid={simple ? `simple-clear-${c.layer}` : undefined}
-                  data-lit={on ? 'true' : undefined}
-                  data-dimmed={on ? undefined : 'true'}
-                  data-show-control
-                  onClick={() => {
-                    if (on) run(c.action);
-                  }}
-                  aria-label={`Clear ${c.label.toLowerCase()}${on ? ' (on screen)' : ''}`}
-                  // Wide enough that the lit dot keeps clear of its key.
-                  className={cx(BAR_BUTTON, 'pr-3.5', on ? LIT : cx(DIMMED, 'cursor-not-allowed'))}
-                >
-                  <BarIcon shape={icons[c.layer]} />
-                  <WordsAndKey words={c.label} keyText={key(c.action)} />
-                  {/* In the corner beside its key. */}
-                  {on && (
-                    <span
-                      aria-hidden="true"
-                      className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-live-edge"
-                    />
-                  )}
-                </button>
-              </Tooltip>
-            );
-          })}
+          {LAYER_CLEARS.filter((c) => !simple || SIMPLE_CLEARS.includes(c.layer)).map((c) => (
+            <LayerClear
+              key={c.layer}
+              layer={c.layer}
+              label={c.label}
+              look={clearLook(layers, c.layer)}
+              known={layers !== undefined}
+              keyText={key(c.action)}
+              simple={simple}
+              onClear={() => {
+                run(c.action);
+              }}
+            />
+          ))}
         </div>
         {/* The ? and the two covers at the far end. */}
         <span className="ml-auto flex">{help.button}</span>

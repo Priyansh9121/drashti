@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { emptyLayers } from '../../../shared/engine/state';
 import { KEYMAP, shortcutText } from '../../../shared/keymap';
@@ -49,11 +47,9 @@ describe('the layer bar’s clears', () => {
  * or with interface motion Off or the computer set to reduce motion. The clear itself changes at once (Session 25).
  */
 
-const css = readFileSync(join(__dirname, '..', 'styles', 'app.css'), 'utf8');
-const tokenMs = (name: string): number => {
-  const value = new RegExp(`--${name}:\\s*([0-9.]+)ms;`, 'u').exec(css)?.[1];
-  return value === undefined ? Number.NaN : Number(value);
-};
+/** The motion table's times (app.css; src/main/motion.test.ts holds each token to its value). */
+const TABLE_MS: Readonly<Record<string, number>> = { 'dur-move': 180, 'dur-exit': 150 };
+const tokenMs = (name: string): number => TABLE_MS[name] ?? Number.NaN;
 const CAN = { moves: true, opened: true } as const;
 
 describe('a layer’s clear, lit or compact', () => {
@@ -108,15 +104,14 @@ describe('a clear’s trace as it lights up or goes out', () => {
 
   it('takes a token of the motion table for its time and curve, quick: 120 to 250 ms', () => {
     for (const trace of ['grow', 'shrink'] as const) {
-      const { duration, easing } = TRACE_TIMING[trace];
-      expect(duration, trace).toMatch(/^dur-/u);
-      expect(easing, trace).toMatch(/^ease-/u);
-      expect(css, `${trace}'s easing`).toContain(`--${easing}:`);
-      const ms = tokenMs(duration);
-      expect(ms, `${trace}: --${duration}`).toBeGreaterThanOrEqual(120);
-      expect(ms, `${trace}: --${duration}`).toBeLessThanOrEqual(250);
+      const { time, curve } = TRACE_TIMING[trace];
+      expect(time, trace).toMatch(/^dur-/u);
+      expect(['ease-out', 'ease-in-out'], `${trace}'s curve`).toContain(curve);
+      const ms = tokenMs(time);
+      expect(ms, `${trace}: --${time}`).toBeGreaterThanOrEqual(120);
+      expect(ms, `${trace}: --${time}`).toBeLessThanOrEqual(250);
     }
     // Going out is quicker than lighting up (the motion table: an exit about 70% of its entrance).
-    expect(tokenMs(TRACE_TIMING.shrink.duration)).toBeLessThan(tokenMs(TRACE_TIMING.grow.duration));
+    expect(tokenMs(TRACE_TIMING.shrink.time)).toBeLessThan(tokenMs(TRACE_TIMING.grow.time));
   });
 });
