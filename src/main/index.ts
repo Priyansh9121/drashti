@@ -3620,8 +3620,9 @@ function start(): void {
   /** The displays read again (their own identities), the outputs following, then each one plugged in given its job. */
   const displaysRead = () => {
     void displayIds.refresh().then(() => {
-      // Read as Drashti quits, after the library has closed: nothing to do.
-      if (db === null) return;
+      // Read as Drashti quits (QA24-QUITRACE-1: the start's reading can end after the quit has begun), or after the
+      // library has closed: nothing to do.
+      if (db === null || quitStarted) return;
       manager.reconcile();
       autoScreens.check();
     });
@@ -10434,6 +10435,9 @@ function start(): void {
     operatorWindow = null;
     // Output windows would otherwise keep the app alive.
     app.quit();
+    // In a quit, app.quit() does nothing more: an output opened once it had begun (QA24-QUITRACE-1: Electron closes
+    // only the windows open as it began) closes here, with every other, and none opens again.
+    if (quitStarted) manager.closeAll();
   });
   let quitSavingSound = false;
   app.on('before-quit', (event) => {
@@ -10446,6 +10450,9 @@ function start(): void {
     // quit says whether Drashti or what came after was slow.
     if (!quitStarted) log.info('Quitting');
     quitStarted = true;
+    // No output opens or is put back now (QA24-QUITRACE-1: the start's display reading, ending 16 ms after Quitting,
+    // opened again the output the quit had just closed, and Drashti ran on).
+    manager.quitting();
     const soundSaved = streaming.quitting();
     studio.quitting();
     // The HEVC question's own page, if it is still asking (it can be held for seconds): it goes now.
@@ -11488,8 +11495,8 @@ function start(): void {
   manager.reconcile();
   displaysRead();
   watchDisplays(() => {
-    // A display change noticed as Drashti quits comes after the library has closed: nothing to do.
-    if (db === null) return;
+    // A display change noticed as Drashti quits (QA24-QUITRACE-1), or after the library has closed: nothing to do.
+    if (db === null || quitStarted) return;
     manager.reconcile();
     displaysRead();
   });

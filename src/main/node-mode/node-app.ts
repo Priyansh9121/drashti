@@ -1276,6 +1276,10 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   });
   nodeWindow.on('closed', () => {
     nodeWindow = null;
+    // The node quits with its window: every output closes now and none opens again (QA24-QUITRACE-1). An output opened
+    // once a quit had begun (a display change, Main's screens) is one Electron's quit never closes, and app.quit() again
+    // does nothing while it quits: it would keep the node running.
+    manager.closeAll();
     app.quit();
   });
   deps.atQuit('Main’s access', () => {
