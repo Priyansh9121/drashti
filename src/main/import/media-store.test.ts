@@ -136,6 +136,34 @@ describe('MediaStore', () => {
     expect(await store.importFile(path, { kind: 'media', path })).toMatchObject({ outcome: 'skipped' });
   });
 
+  it('finds deleted media gone at a start again with Find missing media…: the same item, back everywhere (QA24-WALLBLACK-1)', async () => {
+    const { db, store, mediaDir, file } = setup();
+    const path = file('Placeholder wallpaper.png', 'placeholder wallpaper bytes');
+    const first = await store.importFile(path, { kind: 'media', path });
+    if (!('mediaId' in first)) throw new Error('not imported');
+    // A wallpaper's picture (it points at the item by its id, as slides and playlists do).
+    db.exec("INSERT INTO wallpapers (id, name, position) VALUES ('placeholder-wallpaper', 'Placeholder', 0)");
+    db.prepare(
+      "INSERT INTO wallpaper_pictures (wallpaper_id, position, media_id) VALUES ('placeholder-wallpaper', 0, ?)",
+    ).run(first.mediaId);
+    const removal = new MediaRemoval(db, { onScreens: () => new Set() });
+    removal.remove([first.mediaId]);
+    expect(await removal.purge(mediaDir, new Set())).toBe(1);
+    expect(store.missing().map((m) => m.id)).toEqual([first.mediaId]);
+    // Found where it was (the folder the operator picks): the same item, its file back, deleted no more.
+    const found = await store.fillMissing(first.mediaId, path);
+    expect(found).toMatchObject({ outcome: 'imported', mediaId: first.mediaId });
+    expect(
+      db.prepare("SELECT path <> '' AS has, missing, deleted_at FROM media WHERE id = ?").get(first.mediaId),
+    ).toEqual({
+      has: 1,
+      missing: 0,
+      deleted_at: null,
+    });
+    expect(store.missing()).toEqual([]);
+    expect(storedFiles(mediaDir)).toHaveLength(1);
+  });
+
   it('copies a media file in under its sha256 and records where it came from', async () => {
     const { db, store, mediaDir, file } = setup();
     const path = file('Background Loop.MP4', 'placeholder video bytes');

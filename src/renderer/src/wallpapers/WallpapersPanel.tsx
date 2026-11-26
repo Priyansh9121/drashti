@@ -1,15 +1,24 @@
 import { useEffect, useId, useState } from 'react';
 import type { DragEvent } from 'react';
 import type { Wallpaper } from '../../../shared/wallpapers';
+import { wallpaperMissing } from '../../../shared/wallpaper-missing';
 import type { FileTarget } from '../files/file-menu';
 import { fileMenuProps } from '../files/FileMenu';
 import { useWhatIsThis } from '../help/WhatIsThis';
+import { relinkMedia } from '../library/import-store';
 import { dragKind, droppedIds, droppedPaths, hasFiles } from '../playlists/drag';
 import { MediaStill } from '../render/MediaStill';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Dialog } from '../ui/Dialog';
-import { Check, ImagePlus, Repeat2, Wallpaper as WallpaperIcon } from '../ui/icons';
+import {
+  AlertTriangle,
+  Check,
+  FileQuestion,
+  ImagePlus,
+  Repeat2,
+  Wallpaper as WallpaperIcon,
+} from '../ui/icons';
 import { useScrolls } from '../ui/scrolls';
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
@@ -87,14 +96,17 @@ function Tile({ wallpaper, chosen }: { wallpaper: Wallpaper; chosen: boolean }) 
   const [over, setOver] = useState(false);
   const shown = wallpaper.pictures.find((p) => !p.missing);
   const count = wallpaper.pictures.length;
+  // Its pictures gone from the library (QA24-WALLBLACK-1): said, never a black square.
+  const missing = wallpaperMissing(wallpaper);
   return (
     <li>
       <button
         type="button"
         data-testid="wallpaper-tile"
         data-wallpaper-id={wallpaper.id}
+        data-missing={missing ? missing.kind : undefined}
         aria-pressed={chosen}
-        aria-label={`${wallpaper.name}${count > 1 ? `, ${String(count)} pictures in turn` : ''}`}
+        aria-label={`${wallpaper.name}${count > 1 ? `, ${String(count)} pictures in turn` : ''}${missing ? `, ${missing.label}` : ''}`}
         title={chosen ? `${wallpaper.name}: in use (click for none)` : `${wallpaper.name}: click to use it`}
         className={cx(
           'group flex w-full min-w-0 flex-col rounded-md border p-1 text-left transition-colors',
@@ -121,7 +133,28 @@ function Tile({ wallpaper, chosen }: { wallpaper: Wallpaper; chosen: boolean }) 
         {...fileMenuProps(() => wallpaperTarget(wallpaper, chosen))}
       >
         <span className="relative block aspect-video w-full overflow-hidden rounded bg-black">
-          {shown && <MediaStill mediaId={shown.mediaId} media="image" />}
+          {shown ? (
+            <MediaStill mediaId={shown.mediaId} media="image" />
+          ) : (
+            <span
+              data-testid="wallpaper-missing"
+              className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 bg-warning-bg px-1 text-center text-[11px] leading-tight font-medium text-warning-fg"
+            >
+              <FileQuestion size={14} aria-hidden="true" />
+              {missing?.tile}
+            </span>
+          )}
+          {shown && missing && (
+            // Some of its pictures missing, the rest going round: a mark, its words in the tile's name.
+            <span
+              data-testid="wallpaper-some-missing"
+              aria-hidden="true"
+              className="absolute top-0.5 right-0.5 flex items-center gap-0.5 rounded bg-warning-bg px-1 text-[10px] leading-4 text-warning-fg tabular-nums"
+            >
+              <FileQuestion size={10} />
+              {missing.count}
+            </span>
+          )}
           {chosen && (
             <span
               className="absolute top-0.5 left-0.5 flex size-4 items-center justify-center rounded-full bg-accent text-white"
@@ -143,6 +176,36 @@ function Tile({ wallpaper, chosen }: { wallpaper: Wallpaper; chosen: boolean }) 
         <Truncate text={wallpaper.name} className="mt-0.5 block w-full text-xs" />
       </button>
     </li>
+  );
+}
+
+/**
+ * The chosen wallpaper's pictures gone from the library (QA24-WALLBLACK-1: deleted from Media, or gone at a start
+ * after it): what the screens show for it, and Find… (Find missing media…, in a folder the operator picks).
+ */
+function MissingNotice({ wallpaper }: { wallpaper: Wallpaper }) {
+  const missing = wallpaperMissing(wallpaper);
+  if (!missing) return null;
+  return (
+    <div
+      role="status"
+      data-testid="wallpaper-missing-notice"
+      className="mx-2 mb-1.5 flex shrink-0 items-start gap-2 rounded-md border border-l-4 border-warning/60 border-l-warning bg-warning-bg px-2 py-1.5 text-xs text-warning-fg"
+    >
+      <AlertTriangle size={14} aria-hidden="true" className="mt-0.5 shrink-0" />
+      <p className="min-w-0 flex-1">{missing.notice}</p>
+      {missing.find.length > 0 && (
+        <Button
+          size="sm"
+          variant="secondary"
+          title="Look for it in a folder on this computer"
+          data-testid="wallpaper-find-missing"
+          onClick={() => void relinkMedia(missing.find)}
+        >
+          Find…
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -190,6 +253,7 @@ export function WallpapersPanel({ fill = false }: { fill?: boolean } = {}) {
     addWhenEndsToMenu();
   }, []);
   const wallpapers = view?.wallpapers ?? [];
+  const chosenOne = wallpapers.find((w) => w.id === view?.chosenId) ?? null;
   // With the text large, the empty card scrolls with nothing focusable in it: it takes the keyboard while it does.
   const [emptyBox, emptyScrolls] = useScrolls();
   return (
@@ -236,6 +300,7 @@ export function WallpapersPanel({ fill = false }: { fill?: boolean } = {}) {
         {help.button}
       </div>
       {help.card}
+      {chosenOne && <MissingNotice wallpaper={chosenOne} />}
       {wallpapers.length === 0 ? (
         <div
           ref={emptyBox}
