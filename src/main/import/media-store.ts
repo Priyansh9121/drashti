@@ -765,6 +765,13 @@ export class MediaStore {
           { markers: string | null } | undefined
       )?.markers;
       const took = this.db.transaction((): ReturnType<MediaStore['takeMarkers']> => {
+        // The duplicate may itself have been deleted or lost. Record the file staged by this first Find,
+        // so its surviving references can use it immediately and the next startup does not purge it again.
+        this.db
+          .prepare(
+            "UPDATE media SET path = ?, bytes = ?, missing = 0, deleted_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? AND (missing = 1 OR deleted_at IS NOT NULL)",
+          )
+          .run(stored.rel, stored.bytes, existing.id);
         repoint(mediaId, into);
         this.db.prepare('DELETE FROM media WHERE id = ?').run(mediaId);
         this.markPlayable(existing.id, stored);
