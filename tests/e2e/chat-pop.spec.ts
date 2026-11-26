@@ -114,7 +114,11 @@ for (const simple of [false, true]) {
           .filter((el) => {
             const r = el.getBoundingClientRect();
             return (
-              r.width > 0 && r.left < card.right && card.left < r.right && r.top < card.bottom && card.top < r.bottom
+              r.width > 0 &&
+              r.left < card.right &&
+              card.left < r.right &&
+              r.top < card.bottom &&
+              card.top < r.bottom
             );
           })
           .map((el) => `${el.getAttribute('data-testid') ?? 'a button'} ${el.textContent.trim()}`);
@@ -232,9 +236,7 @@ test('a popup click opens Chat only where it is this mode’s: in Simple Mode wi
   const pop = win.getByTestId('chat-pop');
   const chat = win.getByTestId('section-chat');
   const send = async (text: string) =>
-    expect((await apiCall(port, CHAT_API.send, { method: 'POST', token, body: { text } })).status).toBe(
-      200,
-    );
+    expect((await apiCall(port, CHAT_API.send, { method: 'POST', token, body: { text } })).status).toBe(200);
   const setMode = async (mode: 'pro' | 'simple') => {
     await win.evaluate((m) => (globalThis as PageGlobals).drashti.app.setMode(m), mode);
     await expect(win.getByTestId('simple-mode')).toHaveCount(mode === 'simple' ? 1 : 0);

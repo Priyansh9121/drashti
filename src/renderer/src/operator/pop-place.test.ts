@@ -16,7 +16,11 @@ afterEach(() => {
 const render = () => {
   vi.stubGlobal('window', { innerWidth: 1024 });
   return renderToStaticMarkup(
-    createElement(Columns, { left: 'Placeholder left', middle: 'Placeholder middle', right: 'Placeholder right' }),
+    createElement(Columns, {
+      left: 'Placeholder left',
+      middle: 'Placeholder middle',
+      right: 'Placeholder right',
+    }),
   );
 };
 
