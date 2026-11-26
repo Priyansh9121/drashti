@@ -75,7 +75,7 @@ function setup(o: { unavailable?: CaptionTranslationStatus['unavailable'] } = {}
       begun = false;
       events.push('end');
     }),
-    retry: vi.fn(() => events.push('retry')),
+    retry: vi.fn(),
   };
   const coordinator = new CaptionCoordinator({
     clock: () => Date.now(),
@@ -253,8 +253,14 @@ describe('"Captions in" in the captions service (alpha.24, QA24-CAPLANG-2)', () 
     const t = setup();
     t.choose({ language: 'gu', captionLanguage: 'hi' });
     await t.service.setOn(true);
+    expect(t.translation.retry).toHaveBeenCalledTimes(1);
     t.choose({ captionLanguage: 'hi' });
-    expect(t.events).toEqual(['retry', 'begin gu>hi', 'retry']);
+    expect(t.translation.retry).toHaveBeenCalledTimes(2);
+    // The same pair runs on: not begun again.
+    expect(t.events).toEqual(['begin gu>hi']);
+    // The speaker's own words: nothing to try.
+    t.choose({ captionLanguage: 'same' });
+    expect(t.translation.retry).toHaveBeenCalledTimes(2);
     t.service.close();
   });
 });
