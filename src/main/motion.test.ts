@@ -12,6 +12,8 @@ import { describe, expect, it } from 'vitest';
 
 const renderer = join(__dirname, '..', 'renderer', 'src');
 const css = readFileSync(join(renderer, 'styles', 'app.css'), 'utf8');
+/** The operator window's newer motion (alpha.24, uimotion): the sections' folds and the controls' answers. */
+const motionCss = readFileSync(join(renderer, 'ui', 'motion.css'), 'utf8');
 
 /** The :root block that holds the tokens. */
 const rootBlock = (() => {
@@ -54,6 +56,11 @@ const TABLE: Record<string, string> = {
   'ease-glide': 'cubic-bezier(0.2, 0, 0, 1)',
   'rise-arrive': '6px',
   'press-scale': '0.97',
+  // alpha.24 (uimotion, the owner's "more interactive, more animated, more transitions"): out on an ease-in (the
+  // release lead's "ease-out in, ease-in out"), a press dims, a hover lifts a pixel (Lively).
+  'ease-in': 'cubic-bezier(0.32, 0, 0.67, 0)',
+  'press-dim': '0.92',
+  lift: '1px',
   // Lively (Session 42): the band sweeps in once as the appearance changes, a block every 40 ms, all of it within
   // the motion skills' 500 ms (one entry under 800 ms, the stagger under 500 ms in all).
   'dur-sweep': '320ms',
@@ -112,8 +119,8 @@ describe('motion in the interface is tokens', () => {
     expect(css).toMatch(/--animate-spin:\s*spin var\(--dur-spin\)/u);
   });
 
-  it('app.css uses no number of its own for an animation or transition', () => {
-    const outside = css.replace(rootBlock, '');
+  it('app.css and ui/motion.css use no number of their own for an animation or transition', () => {
+    const outside = `${css.replace(rootBlock, '')}\n${motionCss}`;
     const own = [...outside.matchAll(/\b(animation|transition)(?:-duration|-delay)?\s*:\s*([^;]+);/gu)]
       .map((m) => m[0])
       .filter((d) => /\d+(?:\.\d+)?m?s\b/u.test(d.replace(/var\([^)]*\)/gu, '')));
@@ -161,24 +168,33 @@ describe('motion in the interface is tokens', () => {
     const ONE_AFTER_ANOTHER = new Set([join('operator', 'StartHere.tsx'), join('setup', 'Welcome.tsx')]);
     // Lively (Session 40), Priyansh's choice beside Calm: a playlist's cards just opened arrive one after another,
     // and a folded panel's insides as it opens; never a show control, never while the show changes (ui/motion.ts).
+    // alpha.24 (uimotion): a tab's panel arrives as another tab is chosen (Lively), in ui/Tabs.tsx.
     const LIVELY = new Set([
       join('playlists', 'OpenPlaylist.tsx'),
       join('ui', 'Panel.tsx'),
+      join('ui', 'Tabs.tsx'),
       join('ui', 'motion.ts'),
     ]);
     const arriving: string[] = [];
     const staggered: string[] = [];
     const lively: string[] = [];
+    const folding: string[] = [];
+    const tabsArrive: boolean[] = [];
     for (const file of files(renderer)) {
       const text = readFileSync(file, 'utf8');
       const at = relative(renderer, file);
       if (text.includes('data-motion=') && !ARRIVING.has(at)) arriving.push(at);
       if (text.includes("'--i'") && !ONE_AFTER_ANOTHER.has(at) && !LIVELY.has(at)) staggered.push(at);
       if (text.includes('data-lively=') && !LIVELY.has(at)) lively.push(at);
+      // A section's fold (alpha.24): only a Panel or a PanelGroup folds.
+      if (text.includes('data-fold=') && at !== join('ui', 'Panel.tsx')) folding.push(at);
+      if (at === join('ui', 'Tabs.tsx')) tabsArrive.push(text.includes('data-lively='));
     }
     expect(arriving).toEqual([]);
     expect(staggered).toEqual([]);
     expect(lively).toEqual([]);
+    expect(folding).toEqual([]);
+    expect(tabsArrive).toEqual([true]);
   });
 
   it('the window’s code says no duration, delay or easing of its own', () => {
@@ -191,5 +207,70 @@ describe('motion in the interface is tokens', () => {
       });
     }
     expect(found).toEqual([]);
+  });
+
+  /*
+   * alpha.24 (uimotion; the owner's QA24-UI-3 "more interactive and more animated, more transitions"; the release
+   * lead's perf rules: transform and opacity, nothing while the window opens, nothing without a graphics chip, as a
+   * live look's touch): a section under LIVE folds and unfolds, the controls that are not show controls answer the
+   * pointer and the keyboard, and Off and reduced motion stop all of it (app.css's own rules).
+   */
+  /** Every rule of a style sheet: its selectors and its declarations (no nesting in these files). */
+  const rules = (text: string) =>
+    [...text.replace(/\/\*[\s\S]*?\*\//gu, '').matchAll(/([^{}@]+)\{([^{}]*)\}/gu)].map((m) => ({
+      selectors: (m[1] ?? '').split(',').map((sel) => sel.trim().replace(/\s+/gu, ' ')),
+      body: (m[2] ?? '').trim(),
+    }));
+  const ruleFor = (text: string, selector: string) =>
+    rules(text).find((r) => r.selectors.includes(selector))?.body ?? '';
+
+  it('a section’s fold: Calm fades its insides in, Lively unrolls them; what folds away leaves as a copy (Calm fading, Lively rolling up)', () => {
+    expect(ruleFor(motionCss, "[data-fold='calm']")).toMatch(
+      /^animation:\s*fade-in var\(--dur-open\) var\(--ease-out\) both;$/u,
+    );
+    expect(ruleFor(motionCss, "[data-leaving='fold']")).toMatch(
+      /^animation:\s*fade-out var\(--dur-exit\) var\(--ease-in\) both;$/u,
+    );
+    expect(ruleFor(motionCss, "[data-leaving='fold-lively']")).toMatch(
+      /^animation:\s*fold-up calc\(var\(--dur-exit\) \* var\(--lively-time\)\) var\(--ease-in\) both;$/u,
+    );
+    // Lively's unroll: its insides shown from the top down and faded in, by clip and opacity alone (no box moves).
+    expect(ruleFor(css, ":root[data-interface-motion='lively'] [data-lively='open']")).toMatch(
+      /^animation:\s*lively-open calc\(var\(--dur-open\) \* var\(--lively-time\)\) var\(--ease-out\) both;$/u,
+    );
+    const keyframes = (text: string, name: string) =>
+      new RegExp(`@keyframes ${name} \\{([\\s\\S]*?)\\n\\}`, 'u').exec(text)?.[1] ?? '';
+    expect(keyframes(css, 'lively-open')).toMatch(/clip-path:\s*inset\(0 0 100% 0\)/u);
+    expect(keyframes(css, 'lively-open')).not.toMatch(/transform|translate|height/u);
+    expect(keyframes(motionCss, 'fold-up')).toMatch(/clip-path:\s*inset\(0 0 100% 0\)/u);
+    expect(keyframes(motionCss, 'fold-up')).not.toMatch(/transform|translate|height/u);
+  });
+
+  it('the controls’ answers reach no show control, and start only once the window has opened, with a graphics chip', () => {
+    const MOVES = /(?:^|;)\s*(?:transition[a-z-]*|translate|filter|rotate)\s*:/u;
+    const moving = rules(motionCss).filter((r) => MOVES.test(r.body) && !r.selectors[0]?.startsWith('['));
+    expect(moving.length).toBeGreaterThan(0);
+    const wrong = moving.flatMap((r) =>
+      r.selectors.filter(
+        (sel) =>
+          !sel.startsWith(":root[data-opened][data-chip='yes']") ||
+          (/\[data-variant\]|\[data-row\]|role='tab'|role\^='menuitem'/u.test(sel) &&
+            !sel.includes(':not([data-show-control]')),
+      ),
+    );
+    expect(wrong).toEqual([]);
+    // Every control kind named, the fold's chevron too.
+    const named = moving.flatMap((r) => r.selectors).join('\n');
+    for (const kind of [
+      '[data-variant]',
+      '[data-row]',
+      "[role='tab']",
+      "[role^='menuitem']",
+      '[data-fold-chevron]',
+    ])
+      expect(named, kind).toContain(kind);
+    // The ring eases in from further out; its width never changes (the keyboard's checks read it at once).
+    expect(motionCss).not.toMatch(/outline-width|outline-style/u);
+    expect(motionCss).toMatch(/outline-offset:\s*var\(--rise-sm\)/u);
   });
 });

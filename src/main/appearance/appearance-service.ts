@@ -55,6 +55,8 @@ export interface AppearanceDeps {
   cores?: number;
   /** Whether Chromium draws with a graphics chip: unknown until its GPU process has said (Main's warm-up choices). */
   chip?: () => 'unknown' | 'yes' | 'no';
+  /** A new install (the stand-in before its rule, red first). */
+  newInstall?: boolean;
 }
 
 export class AppearanceService {

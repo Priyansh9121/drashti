@@ -94,6 +94,11 @@ export function readAppearance(userData: string, say: (line: string) => void): A
   return { ...DEFAULT_APPEARANCE, own: [], favourites: [] };
 }
 
+/** A data folder Drashti has never started in (the stand-in before its rule, red first). */
+export function isNewInstall(_userData: string): boolean {
+  return false;
+}
+
 /** Keep the choice (written whole, then put in place). */
 export function writeAppearance(userData: string, settings: AppearanceSettings): void {
   const file = join(userData, APPEARANCE_FILE);
