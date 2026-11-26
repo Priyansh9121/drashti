@@ -53,14 +53,15 @@ function deferredPort() {
   return { port, translate, requests, finish };
 }
 
-function setup(port: CaptionTranslationPort, target: 'hi' | 'en' = 'hi') {
+function setup(port: CaptionTranslationPort, target: 'hi' | 'en' = 'hi', lease: () => boolean = () => true) {
   const shown: (CaptionsShown | null)[] = [];
   const skips: CaptionSkip[] = [];
   const painted = vi.fn();
+  let settings = DEFAULT_CAPTION_SETTINGS;
   const coordinator = new CaptionCoordinator({
-    mayTranslate: () => true,
+    mayTranslate: lease,
     clock: () => Date.now(),
-    settings: () => DEFAULT_CAPTION_SETTINGS,
+    settings: () => settings,
     show: (c) => shown.push(c),
     changed: vi.fn(),
     translation: port,
@@ -87,7 +88,11 @@ function setup(port: CaptionTranslationPort, target: 'hi' | 'en' = 'hi') {
     endAt: Date.now(),
     status,
   });
-  return { coordinator, clause, shown, skips, painted, last: () => shown.at(-1) ?? null };
+  const audience = (on: boolean) => {
+    settings = { ...settings, audience: on };
+    coordinator.refresh();
+  };
+  return { coordinator, clause, shown, skips, painted, audience, last: () => shown.at(-1) ?? null };
 }
 
 describe('translated captions through the coordinator (alpha.24, QA24-CAPLANG-2)', () => {
@@ -227,5 +232,51 @@ describe('translated captions through the coordinator (alpha.24, QA24-CAPLANG-2)
     await vi.advanceTimersByTimeAsync(300);
     expect(last()?.lines).toEqual(['चौथा']);
     expect(c.view().omitted).toBe(3);
+  });
+
+  it('gives a late phrase up once: never queued or counted again while the next one is heard (a24-review F1)', async () => {
+    const { port, translate } = deferredPort();
+    const { coordinator: c, clause, skips } = setup(port);
+    c.accept(clause('First placeholder', 1, 'settled'));
+    await vi.advanceTimersByTimeAsync(2_150);
+    expect(skips).toEqual(['late']);
+    // The next phrase heard bit by bit: the late one is still eligible for its 6 s, but is not asked or counted again.
+    for (let r = 1; r <= 3; r++) {
+      c.accept(clause('Next placeholder words'.split(' ').slice(0, r).join(' '), r, 'provisional', 's2'));
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
+    expect(skips).toEqual(['late']);
+    expect(translate).toHaveBeenCalledTimes(1);
+    expect(c.view().omitted).toBe(1);
+  });
+
+  it('counts nothing where nothing is translated: the speaker’s own language, or the lease closed (a24-review F2)', async () => {
+    const own = setup(deferredPort().port, 'en');
+    for (const id of ['s1', 's2', 's3', 's4']) {
+      own.coordinator.accept(own.clause(`Placeholder ${id}`, 1, 'settled', id));
+      await vi.advanceTimersByTimeAsync(500);
+    }
+    expect(own.skips).toEqual([]);
+    expect(own.coordinator.view().omitted).toBe(0);
+    const closed = setup(deferredPort().port, 'hi', () => false);
+    for (const id of ['s1', 's2', 's3', 's4']) {
+      closed.coordinator.accept(closed.clause(`Placeholder ${id}`, 1, 'settled', id));
+      await vi.advanceTimersByTimeAsync(500);
+    }
+    expect(closed.skips).toEqual([]);
+  });
+
+  it('takes the last page off when the audience choice changes after the phrase’s own time (a24-review F5)', async () => {
+    const { port, finish } = deferredPort();
+    const { coordinator: c, clause, last, audience } = setup(port);
+    c.accept(clause('A long placeholder sentence', 1, 'settled'));
+    finish(0, Array.from({ length: 4 }, () => 'placeholder sentence carries ordinary words').join(' '));
+    await vi.advanceTimersByTimeAsync(300 + 3_200 + 3_200);
+    expect(last()?.page).toEqual({ n: 3, of: 3 });
+    // The audience screens chosen too (a new output policy: the old translation is dropped, never shown again).
+    audience(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(last()).toBeNull();
+    expect(c.view()).toMatchObject({ current: null, canCorrect: false });
   });
 });

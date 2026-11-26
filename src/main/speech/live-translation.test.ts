@@ -3,7 +3,7 @@ import type { CaptionTranslationRequest } from '../../shared/caption-coordinator
 import { TRANSLATION_STOP_AFTER_LATE } from '../../shared/caption-translation';
 import type { TranslationLanguage } from '../../shared/prepared-translations';
 import { HelperError } from '../translation/translation-helper';
-import { LiveTranslation, type LiveTranslationEngine } from './live-translation';
+import { LiveTranslation, translationChoosable, type LiveTranslationEngine } from './live-translation';
 
 /*
  * The coordinator's translation slot (alpha.24, QA24-CAPLANG-2): each settled phrase translated greedily by its own
@@ -312,5 +312,58 @@ describe('live translation for captions (alpha.24, QA24-CAPLANG-2)', () => {
     const sent = String(spy(engine).translate.mock.calls[0]?.[0]);
     expect(sent).toContain('8:15 વાગ્યે');
     expect(sent).not.toContain('સવા આઠ');
+  });
+
+  it('counts no skip toward the stop while it is not translating, stopped or faulted, nor overwrites the fault (a24-review F2)', async () => {
+    // Not begun (chosen but not offered: no pack): nothing counted, never "too slow".
+    const idle = new LiveTranslation({ engine: fakeEngine(), log });
+    for (let i = 0; i < TRANSLATION_STOP_AFTER_LATE + 1; i++) idle.skipped('late');
+    expect(idle.status('gu', 'hi', false)).toMatchObject({
+      offered: true,
+      unavailable: null,
+      skipped: 0,
+      fault: null,
+    });
+    // The engine stopped: it stays the engine's fault, in its own words; the phrase it failed on is counted.
+    const live = new LiveTranslation({
+      engine: fakeEngine({
+        translate: vi.fn(() => Promise.reject(new HelperError('ended', 'The translation engine stopped.'))),
+      }),
+      log,
+    });
+    live.begin('gu', 'hi');
+    await live.translate(request('placeholder words'), new AbortController().signal);
+    for (let i = 0; i < TRANSLATION_STOP_AFTER_LATE + 1; i++) live.skipped('late');
+    expect(live.status('gu', 'hi', false)).toMatchObject({
+      offered: false,
+      unavailable: 'engine-fault',
+      fault: 'The translation engine stopped.',
+      skipped: 1,
+    });
+  });
+
+  it('lets a translation be chosen again where choosing again mends it: too slow, the engine’s fault (a24-review F3)', () => {
+    const base = { target: null, skipped: 0, fault: null } as const;
+    expect(translationChoosable({ ...base, offered: true, unavailable: null })).toBe(true);
+    expect(translationChoosable({ ...base, offered: false, unavailable: 'too-slow' })).toBe(true);
+    expect(translationChoosable({ ...base, offered: false, unavailable: 'engine-fault' })).toBe(true);
+    for (const why of [
+      'no-engine',
+      'no-pack',
+      'unknown-model',
+      'speaker-as-heard',
+      'speaker-sanskrit',
+    ] as const)
+      expect(translationChoosable({ ...base, offered: false, unavailable: why })).toBe(false);
+  });
+
+  it('says when it begins, so Prepare translations’ drafts stop (lead 2’s decision a)', () => {
+    const onBegin = vi.fn();
+    const live = new LiveTranslation({ engine: fakeEngine(), log, onBegin });
+    live.begin('gu', 'hi');
+    expect(onBegin).toHaveBeenCalledTimes(1);
+    expect(live.running()).toBe(true);
+    live.end();
+    expect(live.running()).toBe(false);
   });
 });

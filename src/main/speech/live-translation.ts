@@ -52,6 +52,16 @@ export interface LiveTranslationOptions {
   log: { info(line: string): void; warn(line: string): void };
   /** How translated captions stand changed (a skip, a fault): tell the dialog. */
   changed?: () => void;
+  /** Translation began for a pair (lead 2's decision a: Prepare translations' drafts stop and wait meanwhile). */
+  onBegin?: () => void;
+}
+
+/**
+ * Whether File › Caption Language lets a translation be chosen: where it is offered, or where choosing again mends
+ * it (a24-review F3: translation's own stop for slowness, or the engine's fault; choosing again tries once more).
+ */
+export function translationChoosable(status: CaptionTranslationStatus): boolean {
+  return status.offered || status.unavailable === 'too-slow' || status.unavailable === 'engine-fault';
 }
 
 const isTranslated = (language: SpeechLanguage): language is TranslationLanguage =>
@@ -92,8 +102,14 @@ export class LiveTranslation implements CaptionTranslationPort {
       return;
     }
     this.pair = { from, to };
+    this.o.onBegin?.();
     this.load();
     this.o.changed?.();
+  }
+
+  /** Translating a pair now (begun, not yet ended), stopped or not. */
+  running(): boolean {
+    return this.pair !== null;
   }
 
   /**
@@ -174,7 +190,11 @@ export class LiveTranslation implements CaptionTranslationPort {
         if (signal.aborted) return answer('', 'cancelled');
         // Captions stopped meanwhile (the helper was let go): no fault of the engine's.
         if (this.pair === null) return answer('', 'error');
-        if (error instanceof HelperError && !PHRASE_ONLY.has(error.code)) this.faulted = true;
+        if (error instanceof HelperError && !PHRASE_ONLY.has(error.code) && !this.faulted) {
+          // The phrase it failed on is skipped too: counted here, as the coordinator's lease is now closed.
+          this.faulted = true;
+          this.skippedCount += 1;
+        }
         this.setFault(error);
         return answer('', 'error');
       },
@@ -184,9 +204,11 @@ export class LiveTranslation implements CaptionTranslationPort {
 
   /** The coordinator skipped a phrase (2c): counted; late ones in a row stop translated captions here (2f). */
   skipped(why: CaptionSkip): void {
+    // Not translating, or already stopped or faulted: nothing to count, and the fault's words stay (a24-review F2).
+    if (this.pair === null || this.slow || this.faulted) return;
     this.skippedCount += 1;
     if (why === 'late') this.lateInARow += 1;
-    if (!this.slow && this.lateInARow >= TRANSLATION_STOP_AFTER_LATE) {
+    if (this.lateInARow >= TRANSLATION_STOP_AFTER_LATE) {
       this.slow = true;
       this.fault = TOO_SLOW;
       this.o.log.warn(
@@ -234,8 +256,9 @@ export class LiveTranslation implements CaptionTranslationPort {
       if (t === speaker || !isTranslated(t) || engine.available(speaker, t)) continue;
       return engine.unknownModel(speaker, t) ? 'unknown-model' : 'no-pack';
     }
-    if (captionsTooSlow || this.slow) return 'too-slow';
+    // The engine's own fault is said first, never hidden behind "too slow" (a24-review F2).
     if (this.faulted) return 'engine-fault';
+    if (captionsTooSlow || this.slow) return 'too-slow';
     return null;
   }
 

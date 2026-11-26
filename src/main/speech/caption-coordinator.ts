@@ -304,7 +304,7 @@ export class CaptionCoordinator {
     this.held = held;
     this.generation += 1;
     this.abortFlight();
-    this.pending = held ? null : this.eligible();
+    this.pending = held ? null : this.wanted(this.eligible());
     this.dropTranslation();
     if (!held) this.pump();
     this.notify();
@@ -318,9 +318,9 @@ export class CaptionCoordinator {
       this.policyKey = policy;
       this.policyEpoch += 1;
       this.abortFlight();
-      this.translated = null;
-      const eligible = this.eligible();
-      this.pending = eligible && !this.failedMatches(eligible) ? eligible : null;
+      // Through dropTranslation (a24-review F5): a last page past the phrase's own time clears everything.
+      this.dropTranslation();
+      this.pending = this.wanted(this.eligible());
       this.pump();
       this.notify();
     }
@@ -381,9 +381,28 @@ export class CaptionCoordinator {
     this.notify();
   }
   /** A phrase skipped (2c): counted, and told why. */
-  private skip(why: CaptionSkip): void {
+  private skip(why: CaptionSkip, clause?: StoredClause): void {
+    // Given up for good (a24-review F1): never queued or counted again while its words are unchanged.
+    if (clause)
+      this.failed = { sessionId: clause.sessionId, phraseId: clause.phraseId, revision: clause.revision };
     this.omitted += 1;
-    this.options.onSkip?.(why);
+    // Told only while translation may run (a24-review F2): nothing was asked when the lease is closed.
+    if (this.leaseOpen()) this.options.onSkip?.(why);
+  }
+  /** Translation may run now: a port, the lease open, no hold. */
+  private leaseOpen(): boolean {
+    return (
+      this.options.translation !== undefined &&
+      this.translatorIdentity !== null &&
+      !this.held &&
+      this.options.mayTranslate?.() === true
+    );
+  }
+  /** Only a clause into another language is ever queued (a24-review F2): the speaker's own words need nothing. */
+  private wanted(clause: StoredClause | null): StoredClause | null {
+    return clause && clause.sourceLanguage !== clause.targetLanguage && !this.failedMatches(clause)
+      ? clause
+      : null;
   }
   /** The translation is gone (replaced, revised, held, expired): with the stage band, the stage keeps its words. */
   private dropTranslation(): void {
@@ -440,14 +459,15 @@ export class CaptionCoordinator {
     const eligible = this.eligible();
     if (this.flight && (!eligible || !identity(this.flight.clause, eligible))) {
       if (!this.flight.abort.signal.aborted && eligible && this.flight.clause.phraseId !== eligible.phraseId)
-        this.skip('late');
+        this.skip('late', this.flight.clause);
       this.abortFlight();
     }
-    if (this.pending && eligible && this.pending.phraseId !== eligible.phraseId) this.skip('late');
+    if (this.pending && eligible && this.pending.phraseId !== eligible.phraseId)
+      this.skip('late', this.pending);
     this.pending =
+      this.wanted(eligible) &&
       eligible &&
       !this.translatedMatches(eligible) &&
-      !this.failedMatches(eligible) &&
       (!this.flight || !identity(this.flight.clause, eligible))
         ? eligible
         : null;
@@ -519,18 +539,13 @@ export class CaptionCoordinator {
         : ((lines) => (lines ? [lines] : null))(captionTranslationLines(t.reply.text, max));
       if (now >= (t.clause.paintDeadlineAt ?? 0)) {
         this.translated = null;
-        this.skip('late');
+        this.skip('late', t.clause);
         skipped = true;
       } else if (!pages) {
         // Never asked for again while its words are unchanged (was: asked again at the next update, review of
         // a24-caplang2's prototype).
         this.translated = null;
-        this.failed = {
-          sessionId: t.clause.sessionId,
-          phraseId: t.clause.phraseId,
-          revision: t.clause.revision,
-        };
-        this.skip('unfit');
+        this.skip('unfit', t.clause);
         skipped = true;
       } else {
         t.painted = true;
@@ -628,7 +643,7 @@ export class CaptionCoordinator {
     if (clause.sourceLanguage === clause.targetLanguage) return;
     const cutoff = clause.paintDeadlineAt - 350;
     if (this.clock() >= cutoff) {
-      this.skip('late');
+      this.skip('late', clause);
       this.notify();
       return;
     }
@@ -654,7 +669,7 @@ export class CaptionCoordinator {
     flight.deadline = setTimeout(
       () => {
         if (!flight.abort.signal.aborted) {
-          this.skip('late');
+          this.skip('late', flight.clause);
           this.abortFlight();
           this.notify();
         }
@@ -673,7 +688,7 @@ export class CaptionCoordinator {
       )
         return;
       if (this.clock() >= cutoff) {
-        this.skip('late');
+        this.skip('late', clause);
         return;
       }
       const keys = [
@@ -728,7 +743,7 @@ export class CaptionCoordinator {
     };
     void run()
       .catch(() => {
-        if (!flight.abort.signal.aborted && clause.sessionId === this.sessionId) this.skip('failed');
+        if (!flight.abort.signal.aborted && clause.sessionId === this.sessionId) this.skip('failed', clause);
       })
       .finally(() => {
         if (flight.deadline) clearTimeout(flight.deadline);

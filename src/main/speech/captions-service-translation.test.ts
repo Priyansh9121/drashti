@@ -32,7 +32,7 @@ import type { SpeechEngine } from './hub';
  * is 8 s; the dialog reads how it stands. "Same as the speaker": today's captions exactly. Placeholder words only.
  */
 
-function setup(o: { unavailable?: CaptionTranslationStatus['unavailable'] } = {}) {
+function setup(o: { unavailable?: CaptionTranslationStatus['unavailable']; ownModel?: boolean } = {}) {
   const userData = mkdtempSync(join(tmpdir(), 'drashti-captions-translation-'));
   let settings: CaptionSettings = { ...DEFAULT_CAPTION_SETTINGS, audience: true };
   let out: { heard(h: Heard): void; state(s: SpeechState): void } | null = null;
@@ -120,11 +120,27 @@ function setup(o: { unavailable?: CaptionTranslationStatus['unavailable'] } = {}
     show: (c) => shown.push(c),
     changed: () => undefined,
     log: { info: () => undefined, warn: () => undefined },
-    // No language has a model of its own here: today's general model hears.
+    // No language has a model of its own here (today's general model hears), unless ownModel: Gujarati's own.
     aiPath: {
-      on: () => false,
-      route: () => null,
-      recognizer: () => null,
+      on: () => o.ownModel === true && settings.language === 'gu',
+      route: () => (o.ownModel ? 'conformer' : null),
+      recognizer: (language) =>
+        o.ownModel && language === 'gu'
+          ? {
+              route: 'conformer',
+              modelId: 'gu-own-placeholder',
+              engine: {
+                start(l, to) {
+                  started.push(`own ${l}`);
+                  out = to;
+                  to.state({ phase: 'listening', language: l });
+                  return () => {
+                    out = null;
+                  };
+                },
+              },
+            }
+          : null,
       coordinator,
     },
     translation,
@@ -253,14 +269,48 @@ describe('"Captions in" in the captions service (alpha.24, QA24-CAPLANG-2)', () 
     const t = setup();
     t.choose({ language: 'gu', captionLanguage: 'hi' });
     await t.service.setOn(true);
-    expect(t.translation.retry).toHaveBeenCalledTimes(1);
-    t.choose({ captionLanguage: 'hi' });
+    // Chosen, then captions on (which try again too, a24-review F3).
     expect(t.translation.retry).toHaveBeenCalledTimes(2);
+    t.choose({ captionLanguage: 'hi' });
+    expect(t.translation.retry).toHaveBeenCalledTimes(3);
     // The same pair runs on: not begun again.
     expect(t.events).toEqual(['begin gu>hi']);
     // The speaker's own words: nothing to try.
     t.choose({ captionLanguage: 'same' });
-    expect(t.translation.retry).toHaveBeenCalledTimes(2);
+    expect(t.translation.retry).toHaveBeenCalledTimes(3);
     t.service.close();
+  });
+
+  it('tries again when captions are turned on again (a stop for slowness or a fault is not kept for ever, a24-review F3)', async () => {
+    const t = setup();
+    t.choose({ language: 'gu', captionLanguage: 'hi' });
+    const before = t.translation.retry.mock.calls.length;
+    await t.service.setOn(true);
+    expect(t.translation.retry.mock.calls.length).toBe(before + 1);
+    await t.service.setOn(false);
+    await t.service.setOn(true);
+    expect(t.translation.retry.mock.calls.length).toBe(before + 2);
+    t.service.close();
+  });
+
+  it('starts a language’s own model listening again when the 8 s phrases come or go (a24-review F4), today’s engine once', async () => {
+    const own = setup({ ownModel: true });
+    own.choose({ language: 'gu' });
+    await own.service.setOn(true);
+    expect(own.started).toEqual(['own gu']);
+    own.choose({ captionLanguage: 'hi' });
+    expect(own.service.liveTiming().longestMs).toBe(TRANSLATED_LONGEST_MS);
+    // The own model's engine reads the timing at its start: listening starts again, once.
+    expect(own.started).toEqual(['own gu', 'own gu']);
+    own.choose({ captionLanguage: 'same' });
+    expect(own.started).toEqual(['own gu', 'own gu', 'own gu']);
+    own.service.close();
+    // Today's engine: the path itself changes, which starts listening again; never twice.
+    const today = setup();
+    today.choose({ language: 'gu' });
+    await today.service.setOn(true);
+    today.choose({ captionLanguage: 'hi' });
+    expect(today.started).toEqual(['today gu', 'today gu']);
+    today.service.close();
   });
 });
