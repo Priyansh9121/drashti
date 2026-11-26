@@ -45,6 +45,11 @@ export function zoomPosition(
   return Math.max(0, (scroll + anchor - padding) * (after / before) + padding - afterAnchor);
 }
 
+/** Whether the pages are larger than their box (either way), so a drag has somewhere to move them. */
+function canMove(el: HTMLElement): boolean {
+  return el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight;
+}
+
 type PageImage = { url: string } | { url: null };
 
 /**
@@ -93,9 +98,11 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
   const capped = pagesCapped(flow);
   const [zoom, setZoom] = useState(FIT);
   const box = useRef<HTMLDivElement>(null);
+  const sheet = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState('100%');
   const [error, setError] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [movable, setMovable] = useState(false);
   const currentZoom = useRef(FIT);
   const renderedZoom = useRef(FIT);
   const pending = useRef<{
@@ -169,6 +176,26 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
       el.removeEventListener('wheel', onWheel);
     };
   }, [changeZoom]);
+  // The grab cursor only while a drag can move the pages: kept current as the box or the pages change size (a zoom, a
+  // page drawn, a scrollbar, the window resized).
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const check = () => {
+      setMovable(canMove(el));
+    };
+    const sizes = new ResizeObserver(check);
+    sizes.observe(el);
+    if (sheet.current) sizes.observe(sheet.current);
+    return () => {
+      sizes.disconnect();
+    };
+  }, []);
+  const endDrag = (el: HTMLElement, pointerId: number) => {
+    drag.current = null;
+    setDragging(false);
+    if (el.hasPointerCapture(pointerId)) el.releasePointerCapture(pointerId);
+  };
   const percent = `${String(Math.round(zoom * 100))}%`;
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="flow-page-view">
@@ -244,11 +271,11 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
         role="region"
         aria-label={`PDF page of ${flow.fileName}, ${percent}`}
         tabIndex={0}
-        className={`min-h-0 flex-1 select-none overflow-auto [scrollbar-gutter:stable] bg-panel-2 p-2 ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`min-h-0 flex-1 select-none overflow-auto [scrollbar-gutter:stable] bg-panel-2 p-2 ${dragging ? 'cursor-grabbing' : movable ? 'cursor-grab' : ''}`}
         onPointerDown={(e) => {
           if (e.button !== 0 || !e.isPrimary) return;
           const el = e.currentTarget;
-          if (el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight) return;
+          if (!canMove(el)) return;
           // Its default stays: cancelling it would also cancel the mouse press that closes an open menu (ui/Menu),
           // which would then keep the show's keys. select-none and the pictures' draggable={false} and
           // pointer-events-none already keep a drag from selecting or dragging anything out.
@@ -266,14 +293,17 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
         onPointerMove={(e) => {
           const start = drag.current;
           if (start?.id !== e.pointerId) return;
+          // Its button let go where this never heard it (a system box took the mouse): the drag is over.
+          if ((e.buttons & 1) === 0) {
+            endDrag(e.currentTarget, e.pointerId);
+            return;
+          }
           e.currentTarget.scrollLeft = start.left + start.x - e.clientX;
           e.currentTarget.scrollTop = start.top + start.y - e.clientY;
         }}
         onPointerUp={(e) => {
           if (drag.current?.id !== e.pointerId) return;
-          drag.current = null;
-          setDragging(false);
-          e.currentTarget.releasePointerCapture(e.pointerId);
+          endDrag(e.currentTarget, e.pointerId);
         }}
         onPointerCancel={() => {
           drag.current = null;
@@ -285,7 +315,7 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
         }}
         data-testid="flow-pages"
       >
-        <div className="flex flex-col" style={{ width: `${String(zoom * 100)}%`, gap: 8 * zoom }}>
+        <div ref={sheet} className="flex flex-col" style={{ width: `${String(zoom * 100)}%`, gap: 8 * zoom }}>
           {pages.map((page, i) => {
             const name = `Page ${String(i + 1)} of ${String(flow.pageCount)}`;
             if (page === undefined) return <Loading key={i} label={`Drawing page ${String(i + 1)}…`} />;
