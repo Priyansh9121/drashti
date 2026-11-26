@@ -1,4 +1,5 @@
 import type { ScreenStatus } from '../../../shared/screens';
+import { screensSummary } from '../../../shared/screens-summary';
 import { useEngine } from '../engine/engine-store';
 import { useLibrary } from '../library/library-store';
 import { usePlaylists } from '../playlists/playlist-store';
@@ -98,26 +99,26 @@ export function LiveStatus() {
   );
 }
 
-/** "2 screens showing · 1 display not connected · 1 stopped", so a volunteer notices a dead output. */
+/**
+ * "2 screens showing · 1 display not connected · 1 keeps restarting · 1 stopped", so a volunteer notices a dead
+ * output (the words: shared/screens-summary.ts).
+ */
 export function ScreensSummary({ onOpen }: { onOpen: (() => void) | null }) {
   // Select the stored array itself: a new [] per call would re-render forever.
   const status = useScreens((s) => s.snapshot?.status) ?? NO_STATUS;
-  const showing = status.filter((s) => s.state === 'showing').length;
-  const missing = status.filter((s) => s.state === 'missing-display').length;
-  // Given up on after crashing again and again (Session 23): black until Drashti tries it again.
-  const stopped = status.filter((s) => s.state === 'stopped').length;
-  const text =
-    status.length === 0
-      ? 'No screens set up'
-      : `${showing} ${showing === 1 ? 'screen' : 'screens'} showing${missing ? ` · ${missing} display${missing === 1 ? '' : 's'} not connected` : ''}${stopped ? ` · ${stopped} stopped` : ''}`;
-  const IconShape = missing || stopped ? MonitorOff : Monitor;
+  const { text, tone } = screensSummary(status);
+  const IconShape = tone === 'muted' ? Monitor : MonitorOff;
   // Without anything to open: the same words, not a button.
   if (!onOpen)
     return (
       <span
         className={cx(
           'flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5',
-          stopped ? 'bg-danger-bg text-danger-fg' : missing ? 'bg-warning-bg text-warning-fg' : 'text-muted',
+          tone === 'danger'
+            ? 'bg-danger-bg text-danger-fg'
+            : tone === 'warning'
+              ? 'bg-warning-bg text-warning-fg'
+              : 'text-muted',
         )}
         data-testid="screens-summary"
       >
@@ -132,9 +133,9 @@ export function ScreensSummary({ onOpen }: { onOpen: (() => void) | null }) {
       title="Open the screens dashboard"
       className={cx(
         'flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5',
-        stopped
+        tone === 'danger'
           ? 'bg-danger-bg text-danger-fg'
-          : missing
+          : tone === 'warning'
             ? 'bg-warning-bg text-warning-fg'
             : 'text-muted hover:text-fg',
       )}

@@ -1,7 +1,5 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { KEY_GROUPS, KEYMAP } from '../../src/shared/keymap';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -15,6 +13,7 @@ import {
   operatorReady,
   relaunchApp,
 } from './helpers';
+import { logLines } from './log-lines';
 
 /*
  * The keys sheet (Session 25): Help > Keyboard Shortcuts…, or ? when no field has the focus, in Pro
@@ -262,9 +261,9 @@ test('the operator window shows, the single-letter keys on, when their setting c
   await operatorReady(win);
   expect(await singleKeys(win)).toBe(true);
   const said = () =>
-    readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')
-      .split('\n')
-      .filter((line) => line.includes('Keys: the single-letter keys setting could not be read'));
+    logLines(userData).filter((line) =>
+      line.includes('Keys: the single-letter keys setting could not be read'),
+    );
   await expect.poll(said).toHaveLength(1);
   expect(said()[0]).toContain('so they are on, as they are by default');
   expect(said()[0]).toContain('A test made this read of the library fail');

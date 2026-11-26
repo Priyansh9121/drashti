@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from 'react';
 import type { SimpleFeature } from '../../../shared/simple-features';
 import { SIMPLE_FEATURES } from '../../../shared/simple-features';
+import { ChatSection } from '../chat/ChatSection';
 import { StreamLinkDialog } from '../live-link/StreamLinkDialog';
 import { StreamLinkNotice } from '../live-link/StreamLinkNotice';
 import { WindowPicker } from '../live-window/WindowPicker';
@@ -27,12 +28,15 @@ import { OperateOnly, useSimpleFeatures } from './simple-features-store';
 const SECTION: Record<SimpleFeature, (platform: string) => ReactNode> = {
   stage: () => <StageMessageControl />,
   messages: () => <MessagesPanel />,
+  chat: () => <ChatSection />,
   timers: () => <TimersPanel />,
   'lower-thirds': (platform) => <LowerThirdsPanel platform={platform} />,
   'show-a-window': () => <ShowAWindowSection />,
   'show-a-stream-link': () => <StreamLinkSection />,
   'video-inputs': () => <VideoInputsSection />,
   'picture-in-picture': () => <PictureInPictureSection />,
+  // The Sabha flow (alpha.23) is at the top of the left column, as in Pro Mode (SimpleApp.tsx), not under Audio.
+  'sabha-flow': () => null,
 };
 
 /** The chosen tools' sections, after Simple Mode's Audio; none chosen, nothing. */

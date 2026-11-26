@@ -67,6 +67,7 @@ describe('the stand-in recognizer', () => {
         slow: {
           answerMs: 9_100,
           behindMs: 6_200,
+          limitMs: 2_250,
           threads: 2,
           processors: 2,
           rests: 1,

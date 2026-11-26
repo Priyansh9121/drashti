@@ -152,6 +152,7 @@ const slow = (over: Partial<SlowHold> = {}): CaptionsStatus =>
       slow: {
         answerMs: 9_100,
         behindMs: 6_200,
+        limitMs: 2_250,
         threads: 2,
         processors: 2,
         rests: 1,
@@ -163,10 +164,18 @@ const slow = (over: Partial<SlowHold> = {}): CaptionsStatus =>
   });
 
 describe('captions resting because this computer cannot keep up (cap-threads)', () => {
-  it('the dialog says what was measured, plainly: the answer’s time or how far behind, and the threads', () => {
+  it('the dialog says what was measured, plainly: its answers’ times or how far behind, and the threads', () => {
     const first = captionsStateText(slow());
     expect(first).toMatch(/^Resting: this computer could not keep up with live captions/u);
-    expect(first).toContain('an answer took 9.1 seconds, with 2 engine threads');
+    // Rested for 3 slow answers in a row: all three were over the limit, not only the last (cap-review-threads n4).
+    expect(first).toContain(
+      '3 answers in a row took over 2.2 seconds each, the last 9.1 seconds, with 2 engine threads',
+    );
+    // The limit as the words say it is never more than it was: 1.5 times New words every, to the tenth below.
+    expect(captionsStateText(slow({ answerMs: 2_300, limitMs: 1_500 }))).toContain(
+      '3 answers in a row took over 1.5 seconds each, the last 2.3 seconds',
+    );
+    expect(first).not.toMatch(/an answer took/u);
     expect(first).toMatch(/rest for a minute/u);
     expect(first).toMatch(/The show comes first\.$/u);
     // Held for falling behind (an answer more than 8 s behind the speaker).
@@ -180,7 +189,9 @@ describe('captions resting because this computer cannot keep up (cap-threads)', 
     const again = captionsStateText(slow({ rests: 2 }));
     expect(again).toMatch(/^Resting again \(2 times in a row\)/u);
     expect(again).toMatch(/may be too slow for live captions with this model/u);
-    expect(again).toContain('an answer took 9.1 seconds, with 2 engine threads');
+    expect(again).toContain(
+      '3 answers in a row took over 2.2 seconds each, the last 9.1 seconds, with 2 engine threads',
+    );
     expect(again).toMatch(/after 3 rests in a row they stop\.$/u);
     // It has kept up since it started (busy for a while): no stop can come, so none is promised (review MUST-1).
     const busy = captionsStateText(slow({ rests: 3, keptUp: true }));
@@ -200,6 +211,7 @@ describe('captions resting because this computer cannot keep up (cap-threads)', 
           slow: {
             answerMs: 15_500,
             behindMs: 16_000,
+            limitMs: 2_250,
             threads: 2,
             processors: 2,
             rests: 3,
@@ -264,7 +276,10 @@ describe('captions resting because this computer cannot keep up (cap-threads)', 
     const at = (threads: 4 | 2 | 1, processors: number) =>
       threadsNote(view({ timing: { ...DEFAULT_CAPTION_TIMING, threads }, processors }));
     expect(at(4, 2)).toBe('This computer has 2 logical processors, so captions use 2 engine threads.');
-    expect(at(2, 1)).toBe('This computer has 1 logical processor, so captions use 1 engine thread.');
+    // An IndicConformer model always uses two (cap-review-threads n7): never said to use one.
+    expect(at(2, 1)).toBe(
+      'This computer has 1 logical processor, so captions use 1 engine thread; an IndicConformer model always uses two.',
+    );
     expect(at(4, 3)).toBe('This computer has 3 logical processors, so captions use 3 engine threads.');
     expect(at(4, 4)).toBeNull();
     expect(at(4, 16)).toBeNull();
@@ -297,6 +312,7 @@ describe('the words never say two cores (lead 2: a slow 4-core computer stops to
             slow: {
               answerMs: 15_500,
               behindMs: 16_000,
+              limitMs: 2_250,
               threads: 2,
               processors: 2,
               rests: 3,

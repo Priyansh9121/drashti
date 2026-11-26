@@ -172,8 +172,32 @@ jobs:
       - name: Fetch the live captions engine
         if: inputs.captions != ''
         run: node scripts/fetch-whisper.mjs
+      # ONNX Runtime's package for Route C's helper (QA23-ORTCACHE-1), restored by its exact version, the runner's
+      # platform and the SHA-256 scripts/fetch-indic.mjs pins, then checked by size and SHA-256 before use, as a
+      # download is; a miss downloads it as before. Saved by CI's pushes to main and phase1 (ci.yml), never here.
+      - name: ONNX Runtime's package, its cache key (version, platform, pinned SHA-256)
+        if: inputs.captions != ''
+        id: ort
+        shell: bash
+        run: node scripts/fetch-indic.mjs --cache-key >> "$GITHUB_OUTPUT"
+      - name: Restore ONNX Runtime's package (by that key only)
+        if: inputs.captions != ''
+        id: ort-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.ort.outputs.path }}
+          key: ${{ steps.ort.outputs.key }}
+      # A miss downloads exactly as before (cap-review-ortcache S2): whatever a restore that failed part-way left is
+      # removed first. A hit (the exact key, restored whole) stays, and the build checks it.
+      - name: A miss starts clean (anything a restore that failed part-way left is removed)
+        if: steps.ort-cache.outcome == 'success' && steps.ort-cache.outputs.cache-hit != 'true'
+        env:
+          ORT_PATH: ${{ steps.ort.outputs.path }}
+        shell: bash
+        run: rm -f "$ORT_PATH"
       - name: Build the approved native IndicConformer runtime (no model download)
         if: inputs.captions != ''
+        id: indic
         run: node scripts/fetch-indic.mjs
       - name: Captions bench, alone (two cores)
         if: startsWith(inputs.captions, 'alone')

@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { CHAT_PAGE } from '../../shared/chat';
 import { WEB_PAGES } from '../network/web-files';
 
 /*
@@ -32,6 +33,11 @@ function policyOf(html: string): Map<string, string[]> {
 describe('page security policies', () => {
   it('finds the pages', () => {
     expect(pages).toEqual(expect.arrayContaining(['index.html', 'output.html']));
+  });
+
+  it('serves the chat page to phones (alpha.23, QA23-CHAT-1) at the address the pairing gives a chat-only phone', () => {
+    expect(WEB_PAGES[CHAT_PAGE]).toBe('chat.html');
+    expect(pages).toContain('chat.html');
   });
 
   for (const page of pages.filter((p) => NETWORK_PAGES.has(p))) {

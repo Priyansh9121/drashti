@@ -171,7 +171,8 @@ function withSameAlpha(next: string, was: string | null | undefined): string {
   return `${next}${alpha}`;
 }
 
-export function Inspector() {
+/** `className`: more for its box (where the window's size takes it out of the slide's row: a22-ribbonfold). */
+export function Inspector({ className }: { className?: string } = {}) {
   const doc = useEditor((s) => s.doc);
   const slideId = useEditor((s) => s.slideId);
   const selection = useEditor((s) => s.selection);
@@ -180,7 +181,12 @@ export function Inspector() {
   useEditor((s) => s.textTick);
   const slide = doc ? findSlide(doc, slideId) : undefined;
   if (!doc || !slide)
-    return <aside className="w-72 shrink-0 border-l border-line bg-panel" aria-label="Inspector" />;
+    return (
+      <aside
+        className={cx('w-72 shrink-0 border-l border-line bg-panel', className)}
+        aria-label="Inspector"
+      />
+    );
   const selected = slide.elements.filter((e) => selection.includes(e.id));
   const single = selected.length === 1 ? selected[0] : undefined;
   const groupId = selected[0]?.groupId;
@@ -200,7 +206,7 @@ export function Inspector() {
   };
   return (
     <aside
-      className="w-72 shrink-0 overflow-y-auto border-l border-line bg-panel"
+      className={cx('w-72 shrink-0 overflow-y-auto border-l border-line bg-panel', className)}
       aria-label="Inspector"
       data-testid="inspector"
     >

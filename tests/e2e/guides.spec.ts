@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { PHONE_REFUSAL } from '../../src/shared/phone-rule';
 
 /*
  * The guides inside Drashti (Phase B of Sessions 31–36): Help › Guides… shows the operator, presenter,
@@ -216,17 +217,16 @@ test('Simple Mode can read its phone exceptions without gaining the setup guides
   await expect(hit).toHaveCount(1);
   await hit.click();
   const shown = guides.locator('[data-passage][data-current="true"]');
-  // Item 7 (alpha.17): the phone starts with the playlist open on the computer and can open any other; Pause, Play and
-  // the time bar work there; marker jumps stay Pro Mode's.
-  await expect(shown).toContainText('starts with the playlist open there');
-  await expect(shown).toContainText('can open any other');
-  await expect(shown).toContainText('Pause and Play and the time bar');
-  await expect(shown).toContainText('Marker jumps');
+  // alpha.23 (QA23-PHONE-1): a Simple Mode phone shows the Sabha flow, what is on the screens and the chat, with no
+  // controls, and its every control is refused in Main's own words (until alpha.22 it ran the show as Simple Mode's
+  // window did: playlists, Pause, Play, the time bar, files to the open playlist).
+  await expect(shown).toContainText('Sabha flow');
+  await expect(shown).toContainText('what is on the screens');
+  await expect(shown).toContainText('no controls');
+  await expect(shown).toContainText(PHONE_REFUSAL.simple);
   await expect(shown).toContainText('refused');
-  // Question 5 (alpha.15): a phone's files go to the end of the playlist open on the computer, a PDF or deck once the
-  // stream has ended.
-  await expect(shown).toContainText('goes to the end of the playlist open on the Drashti computer');
-  await expect(shown).toContainText('a PDF or deck waits');
+  await expect(shown).not.toContainText('Pause and Play and the time bar');
+  await expect(shown).not.toContainText('Added from Phones');
   await expect(shown).toBeInViewport();
   const permissions = await win.evaluate(async () => {
     const g = (globalThis as PageGlobals).drashti.guides;

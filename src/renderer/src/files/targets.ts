@@ -1,4 +1,5 @@
 import type { PresentationSummary } from '../../../shared/library';
+import { onSlideOf } from '../../../shared/picture-on-slide';
 import type { MediaSummary, PlaylistItemInfo } from '../../../shared/playlists';
 import { isPassageId } from '../../../shared/shastra';
 import { isRepeatId } from '../../../shared/repeat';
@@ -221,6 +222,8 @@ export function slideRowTarget(
 ): FileTarget {
   const slide = row.at.slide;
   const picture = slide.slide.elements.find((e) => e.kind === 'image');
+  // Save picture… saves it as its slide shows it (a page cropped or turned: a22-x95nits).
+  const onSlide = picture?.kind === 'image' ? onSlideOf(picture, slide.slide) : null;
   // A passage's and a Repeat Slides playlist's slides are made elsewhere: no editor.
   const editable = !isPassageId(row.presentationId) && !isRepeatId(row.presentationId);
   const pictureEntry: MenuEntry[] =
@@ -242,6 +245,7 @@ export function slideRowTarget(
     presentationId: row.presentationId,
     slideId: slide.id,
     ...(picture?.kind === 'image' ? { mediaId: picture.mediaId } : {}),
+    ...(onSlide ? { onSlide } : {}),
     ...(playlistId !== null && row.item ? { playlistId, itemId: row.item.id } : {}),
     first: [...pictureEntry, ...extra],
     ...(editable

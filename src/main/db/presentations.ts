@@ -840,6 +840,32 @@ export class PresentationRepo {
    * Whether any of a presentation's slides was made from a deck with its animations (Session 54, C2): a deck
    * imported as pictures has none, and is imported again with them where this computer can now make them.
    */
+  /**
+   * Which of these presentations a phone may put up (alpha.23, QA23-PHONE-1), in one read for a playlist's rows (the
+   * review's S2): shared/phone-decks.ts isPhoneDeck as the library has it: a document's pages (source 'pictures') or
+   * holding a deck's slide (one switched on, as get() reads them), never a kirtan; a removed one never. A test keeps the
+   * two agreeing (main/network/phone-decks.test.ts).
+   */
+  phoneDecks(ids: readonly string[]): Set<string> {
+    const found = new Set<string>();
+    // In parts, well under SQLite's limit on a statement's values.
+    for (let at = 0; at < ids.length; at += 500) {
+      const part = ids.slice(at, at + 500);
+      const rows = this.db
+        .prepare(
+          `SELECT p.id FROM presentations p
+            WHERE p.id IN (${part.map(() => '?').join(', ')}) AND p.deleted_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM kirtans k WHERE k.presentation_id = p.id)
+              AND (p.source_kind = 'pictures' OR EXISTS (
+                SELECT 1 FROM slides s JOIN slide_groups g ON g.id = s.group_id
+                 WHERE g.presentation_id = p.id AND s.enabled = 1 AND s.deck IS NOT NULL))`,
+        )
+        .all(...part) as { id: string }[];
+      for (const row of rows) found.add(row.id);
+    }
+    return found;
+  }
+
   hasDeckSlides(id: string): boolean {
     return (
       this.db

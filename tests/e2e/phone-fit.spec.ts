@@ -1,15 +1,17 @@
-import type { Browser, BrowserContext, Page } from '@playwright/test';
+import type { Browser, BrowserContext, ElectronApplication, Page } from '@playwright/test';
 import { chromium, devices, expect, test, webkit } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { flowTablePage, makeFlowPdf } from '../../src/main/documents/testing/sabha-flow-pdfs';
 import { callBody, placeholderComputer, readAnswer } from '../access-core';
 import { type AccessStandIn, accessStandIn } from '../access-standin';
 import type { Engine } from './devices';
+import { CHAT_API } from '../../src/shared/chat';
 import { apiCall, NETWORK_ENV, networkOn, pairByQr, pairingCode, pairToken, PHONE } from './devices';
 import type { PageGlobals } from './helpers';
 import { importAndGetIds, launchApp, operatorPage, operatorReady } from './helpers';
-import { longPress } from './phone-gestures';
+import { addPhoneDeck, putUpFromComputer } from './phone-deck';
 import { setUpPlaceholderShow } from './placeholder-show';
 import { makeTestImage } from './test-media';
 
@@ -17,15 +19,18 @@ import { makeTestImage } from './test-media';
  * The whole-app fit pass, part 3 (alpha.21, the owner's "dont like the design here. frontend issue." and "all good fit
  * in 21", 22 Nov 2026): what people open on a phone or another browser. Each page at 360 × 740, 390 × 844 and
  * 430 × 932, upright and held sideways, and on a 768 × 1024 tablet, in Safari's engine and Chrome's, with long
- * placeholder names: the phone remote on each of its tabs and in each of its sheets, its viewer, a row's menu and the
- * Picture editor, files from phones (Add from this Phone… and Shared from Drashti), the pairing page (as a QR code opens
- * it, a wrong code, a device removed), the announcements page with what it sent, the stage display, and the access
+ * placeholder names: the phone remote on each of its tabs in Pro Mode and in Simple Mode (alpha.23, QA23-PHONE-1: Show
+ * and Chat, and Pro Mode's Playlist of PowerPoints and PDFs, a PDF up), its viewer (Look closer, and Look through the
+ * PDF's pages), the Sabha flow's sheet (its read list and its PDF page, alpha.23), the Chat (alpha.23: its messages
+ * with long names, Change name and a new message's banner), the pairing page (as a QR code opens it, a wrong code, a
+ * device removed), the announcements page with what it sent, the chat page (/chat), the stage display, and the access
  * list's pages an emailed Approve or Reject link opens (the link page on GitHub Pages, and the one a link sent before
  * x38 opens on the web app). On each, nothing is cut, lies over another, is under another, or is off the screen with no way to it; nothing
  * scrolls sideways; every target is 44 px (docs/design.md §5, §16); no box a phone types in has words under 16 px (a
  * phone zooms in on one); and on Drashti's own phone pages no words are under 16 px (§16, its two small kinds
- * aside). The remote is one screen: Back and Next wholly on it, only its middle scrolling. Placeholder names and
- * generated media only; codes and tokens are made at run time and never printed.
+ * aside). The remote is one screen: its tabs and (Pro Mode, a PowerPoint or a PDF up) Back and Next wholly on it, only
+ * its middle scrolling; Simple Mode has no Back or Next. Placeholder names and generated media only; codes and tokens
+ * are made at run time and never printed.
  */
 
 // An action that cannot be done says so in 20 s, what it waited for, rather than using up the whole test.
@@ -51,6 +56,7 @@ const LONG = {
   playlist: 'Placeholder Sunday Evening Sabha with a Long Name for the Phones',
   header: 'Placeholder Opening Part of the Evening with a Long Header',
   presentation: 'Placeholder Opening Words with a Long Name for the Phones',
+  deck: 'Placeholder PowerPoint of the Sunday Evening Sabha with a Long Name',
   picture: 'Placeholder Wide Picture of the Stage with a Long Name',
   message: 'Placeholder Car Parking Message with a Long Name',
   timer: 'Placeholder Sabha Starts In with a Long Name for Phones',
@@ -62,6 +68,8 @@ const LONG = {
   name: 'Placeholder Volunteer with a Long Name Typed in Drashti',
   computer: 'Placeholder Mac in the Sabha Hall Office with a Long Name',
   photo: 'Placeholder Photo from the Volunteer Phone with a Long Name',
+  chat: 'Placeholder chat message from the car park gate, long enough to wrap over several lines on a phone 🙏',
+  reply: 'Placeholder answer from this phone, long enough to wrap over two or three lines on a small phone',
 } as const;
 
 /** What a page is checked for, by the kind of page it is. */
@@ -72,8 +80,10 @@ interface Rules {
   target: number;
   /** No words under 16 px (Drashti's own phone pages, §16: a tab's small word and a badge aside). */
   textFloor: boolean;
-  /** The remote: Back and Next wholly on the screen and only its middle scrolling. */
+  /** The remote: its tabs (and Back and Next, `backNext`) wholly on the screen and only its middle scrolling. */
   remote: boolean;
+  /** The remote's Back and Next: there (Pro Mode, a PowerPoint or a PDF up) or not there at all (Simple Mode). */
+  backNext: boolean;
   /** Left out: a picture of the screens (the stage display's own screen, a slide's picture), never fitted words. */
   ignore: string;
 }
@@ -340,18 +350,27 @@ const faultsIn = (o: Rules) => {
         );
     }
 
-  // The remote is one screen: Back and Next wholly on it, and only its middle scrolls.
+  // The remote is one screen: its tabs and Back and Next (where the mode has them: QA23-PHONE-1) wholly on it, and only
+  // its middle scrolls.
   if (o.remote && region === document.body) {
-    for (const id of ['remote-back', 'remote-next-button']) {
-      const el = document.querySelector(`[data-testid="${id}"]`);
-      if (!el) {
-        out.add(`there is no ${id}`);
-        continue;
-      }
+    const onScreen = (el: Element) => {
       const r = el.getBoundingClientRect();
       if (r.top < -0.5 || r.bottom > vh + 0.5 || r.left < -0.5 || r.right > vw + 0.5)
         out.add(`${named(el)} is not wholly on the screen (${px(r.top)} to ${px(r.bottom)} of ${px(vh)})`);
+    };
+    for (const id of ['remote-back', 'remote-next-button']) {
+      const el = document.querySelector(`[data-testid="${id}"]`);
+      if (!el) {
+        if (o.backNext) out.add(`there is no ${id}`);
+        continue;
+      }
+      if (!o.backNext) {
+        out.add(`${named(el)} is there, where the remote has no Back or Next`);
+        continue;
+      }
+      onScreen(el);
     }
+    for (const el of document.querySelectorAll('[data-testid^="remote-tab-"]')) onScreen(el);
     if (pageScrolls)
       out.add(
         `the remote's page scrolls (${px(page.scrollHeight)} px on a ${px(vh)} px screen): only its middle should; reached by ${reaching((r) => r.bottom + scrollY, page.scrollHeight)}`,
@@ -482,9 +501,18 @@ class Sweep {
   }
 }
 
-const DRASHTI_PAGE = { target: 44, textFloor: true, remote: false, ignore: '[data-a11y-picture]' } as const;
+const DRASHTI_PAGE = {
+  target: 44,
+  textFloor: true,
+  remote: false,
+  backNext: false,
+  ignore: '[data-a11y-picture]',
+} as const;
 
-/** A show with long placeholder names: a playlist of them, live, a message, a timer and Audio's playlist. */
+/**
+ * A show with long placeholder names: a playlist of them with a PDF (a PowerPoint's long name), the PDF up from its
+ * row, a message, a timer and Audio's playlist.
+ */
 async function longShow(win: Page): Promise<{ playlistId: string; presentationId: string }> {
   const show = await setUpPlaceholderShow(win);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-phone-fit-'));
@@ -503,7 +531,7 @@ async function longShow(win: Page): Promise<{ playlistId: string; presentationId
   );
   const picture = await makeTestImage(win, join(dir, `${LONG.picture}.png`), { width: 320, height: 180 });
   await importAndGetIds(win, [words, picture]);
-  return win.evaluate(
+  const made = await win.evaluate(
     async ({ names, show }) => {
       const d = (globalThis as PageGlobals).drashti;
       const presentationId = (await d.library.listPresentations()).find(
@@ -538,13 +566,54 @@ async function longShow(win: Page): Promise<{ playlistId: string; presentationId
       if (!timer.ok) throw new Error(timer.message);
       const music = await d.music.create(names.music);
       if (!music.ok) throw new Error('Could not make an audio playlist');
-      const shared = await d.playlists.share(playlistId, true);
-      if (!shared.ok) throw new Error(shared.message);
-      await d.engine.dispatch({ type: 'goLive', presentationId, slideIndex: 0 } as never);
       return { playlistId, presentationId };
     },
     { names: LONG, show },
   );
+  // The PDF up from its row: a Pro Mode phone's Back, Next and Clear slide are there while it is (QA23-PHONE-1).
+  const deck = await addPhoneDeck(win, made.playlistId, LONG.deck);
+  await putUpFromComputer(win, made.playlistId, deck.itemId);
+  return made;
+}
+
+/**
+ * A Sabha flow with long placeholder words (alpha.23): a long file name, long cells, a Gujarati row, a merged cell and a
+ * total, two pages; chosen in the operator window (its dialog answered by the test) and Now marked on its first item.
+ */
+async function longFlow(app: ElectronApplication, win: Page): Promise<void> {
+  const file = join(
+    mkdtempSync(join(tmpdir(), 'drashti-phone-fit-flow-')),
+    'Placeholder Running Order of the Sunday Evening Sabha with a Long Name.pdf',
+  );
+  const table = flowTablePage({
+    title: 'Placeholder Sunday Evening Sabha with a Long Title for the Phones',
+    subtitle: 'Placeholder hall with a long name, placeholder date',
+    headers: ['No.', 'Program', 'Details', 'Duration', 'Presenter'],
+    rows: [
+      ['1', 'Placeholder opening', 'Placeholder words of welcome, long enough to wrap', '5 min', LONG.from],
+      [
+        '2',
+        'Video',
+        'Placeholder clip of the week with a long name',
+        { text: '20 min', rows: 2 },
+        { text: 'Placeholder B', rows: 2 },
+      ],
+      ['3', 'નમૂના કાર્યક્રમ', 'નમૂના શબ્દો', null, null],
+    ],
+    widths: [40, 140, 180, 80, 115],
+    total: 'Placeholder total: 30 min',
+  });
+  writeFileSync(file, await makeFlowPdf([table, table]));
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [path] });
+  }, file);
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const chosen = await d.flow.choose();
+    if (!chosen?.ok) throw new Error(chosen ? chosen.message : 'The Sabha flow was not chosen');
+    const now = await d.flow.setNow(chosen.flow.id, 0);
+    if (!now.ok) throw new Error(now.message);
+  });
 }
 
 /** One way the remote can look, and how to get there from any other (and back out of it). */
@@ -559,7 +628,7 @@ const chosen = async (p: Page, testId: string) => {
   await expect(p.getByTestId(testId)).toHaveAttribute('aria-selected', 'true');
 };
 
-/** A sheet over the remote, opened from its button (on More's tab on a phone), closed by its Close. */
+/** A sheet over the remote, opened from its button, closed by its Close. */
 const sheet = (name: string, button: string, testId: string, from: (p: Page) => Promise<void>): View => ({
   name,
   open: async (p) => {
@@ -573,82 +642,73 @@ const sheet = (name: string, button: string, testId: string, from: (p: Page) => 
   },
 });
 
-/** The remote's views on a phone (tabs) or a tablet (the playlist or the library beside the show). */
-function remoteViews(layout: 'phone' | 'wide', playlistId: string): View[] {
+/**
+ * The remote's views on a phone (tabs) or a tablet (the playlist or the chat beside the show), in Pro Mode or Simple
+ * Mode (QA23-PHONE-1). `say`: someone else writes in the chat (a new message's banner shows while the chat is not in
+ * view).
+ */
+function remoteViews(
+  layout: 'phone' | 'wide',
+  mode: 'pro' | 'simple',
+  playlistId: string,
+  say: () => Promise<void>,
+): View[] {
   const phone = layout === 'phone';
+  const pro = mode === 'pro';
   const show = phone ? (p: Page) => chosen(p, 'remote-tab-show') : () => Promise.resolve();
-  const more = phone ? (p: Page) => chosen(p, 'remote-tab-more') : () => Promise.resolve();
   const playlist = (p: Page) => chosen(p, phone ? 'remote-tab-playlist' : 'remote-side-playlist');
-  const library = (p: Page) => chosen(p, phone ? 'remote-tab-library' : 'remote-side-library');
+  const chat = (p: Page) => chosen(p, phone ? 'remote-tab-chat' : 'remote-side-chat');
   const openPlaylist = async (p: Page) => {
     await playlist(p);
     await p.getByTestId('remote-playlist').selectOption(playlistId);
-    await expect(p.getByTestId('remote-items')).toContainText(LONG.presentation);
+    await expect(p.getByTestId('remote-items')).toContainText(LONG.deck);
   };
-  /** The long-named picture's row in the playlist. */
-  const pictureRow = (p: Page) =>
-    p.getByTestId('remote-items').locator('[data-testid="remote-item"][data-kind="media"]').filter({
-      hasText: LONG.picture,
-    });
   return [
-    { name: phone ? 'the Show tab' : 'the show beside the playlist', open: show },
-    { name: 'the playlist', open: openPlaylist },
     {
-      name: "a picture's menu in the playlist (a long press)",
+      name: phone
+        ? `the Show tab${pro ? ', a PDF up' : ' in Simple Mode'}`
+        : `the show beside the ${pro ? 'playlist' : 'chat'}${pro ? ', a PDF up' : ' in Simple Mode'}`,
+      open: show,
+    },
+    ...(pro ? [{ name: 'the playlist’s PowerPoints and PDFs', open: openPlaylist }] : []),
+    {
+      name: 'the Chat, with long names and messages',
       open: async (p) => {
-        await openPlaylist(p);
-        await longPress(pictureRow(p));
+        await chat(p);
+        await expect(p.getByTestId('chat-message').filter({ hasText: LONG.reply })).toBeVisible();
+      },
+    },
+    {
+      name: 'Change name on the Chat',
+      open: async (p) => {
+        await chat(p);
+        await p.getByTestId('chat-rename').click();
+        await expect(p.getByTestId('chat-name')).toHaveValue(LONG.name);
       },
       close: async (p) => {
-        await p.getByTestId('remote-row-menu-close').click();
-        await expect(p.getByTestId('remote-row-menu')).toHaveCount(0);
+        await p.getByTestId('chat-name-cancel').click();
+        await expect(p.getByTestId('chat-text-box')).toBeVisible();
       },
     },
-    {
-      name: 'the Picture editor, from the menu',
-      open: async (p) => {
-        await openPlaylist(p);
-        await longPress(pictureRow(p));
-        await p.getByTestId('remote-row-menu').getByTestId('remote-menu-edit').click();
-        await expect(p.getByTestId('remote-picture-editor').getByTestId('remote-pe-frame')).toBeVisible();
-      },
-      close: async (p) => {
-        await p.getByTestId('remote-pe-cancel').click();
-        await expect(p.getByTestId('remote-picture-editor')).toHaveCount(0);
-      },
-    },
-    {
-      name: "the library's presentations",
-      open: async (p) => {
-        await library(p);
-        await chosen(p, 'remote-library-presentations');
-        await expect(p.getByTestId('remote-library')).toContainText(LONG.presentation);
-      },
-    },
-    {
-      name: "the library's media, with Add from this Phone… and a file it sent",
-      open: async (p) => {
-        await library(p);
-        await chosen(p, 'remote-library-media');
-        await expect(p.getByTestId('remote-add-button')).toBeVisible();
-        await expect(p.getByTestId('remote-sending-list')).toContainText(LONG.photo);
-        await expect(p.getByTestId('remote-media')).toContainText(LONG.picture);
-      },
-    },
-    {
-      name: 'Shared from Drashti, the playlist open',
-      open: async (p) => {
-        await library(p);
-        await chosen(p, 'remote-library-shared');
-        const shared = p.getByTestId('remote-shared');
-        // The list of what is shared, or (from an earlier look) the playlist already open.
-        const list = shared.getByTestId('remote-shared-playlist');
-        await expect(list.or(shared.getByTestId('remote-shared-item')).first()).toBeVisible();
-        if (await list.isVisible()) await list.click();
-        await expect(shared.getByTestId('remote-shared-item').first()).toBeVisible();
-      },
-    },
-    ...(phone ? [{ name: 'the More tab', open: more }] : []),
+    // A new message's banner, in the header's place: on a phone off the Show tab (never over the show).
+    ...(phone && pro
+      ? [
+          {
+            name: 'a new chat message’s banner, on the playlist',
+            open: async (p: Page) => {
+              await playlist(p);
+              await say();
+              await expect(p.getByTestId('chat-banner')).toContainText(LONG.from);
+            },
+            close: async (p: Page) => {
+              // It goes by itself after a few seconds: closed here if it is still up.
+              const banner = p.getByTestId('chat-banner');
+              if (await banner.isVisible()) await p.getByTestId('chat-banner-close').click();
+              await expect(banner).toHaveCount(0);
+            },
+          },
+        ]
+      : []),
     {
       name: 'the viewer (Look closer)',
       open: async (p) => {
@@ -661,13 +721,44 @@ function remoteViews(layout: 'phone' | 'wide', playlistId: string): View[] {
         await expect(p.getByTestId('viewer')).toHaveCount(0);
       },
     },
-    sheet('Manage playlists…', 'remote-open-playlists', 'remote-library-sheet', playlist),
-    sheet('Set Up Screens…', 'remote-open-screens', 'remote-screens', more),
-    sheet('Video inputs and windows…', 'remote-open-inputs', 'remote-inputs-sheet', more),
-    sheet('Picture in picture…', 'remote-open-pip', 'remote-pip-sheet', more),
-    sheet('Change the library…', 'remote-open-library', 'remote-library-sheet', more),
-    sheet('MIDI…', 'remote-open-midi', 'remote-midi-sheet', more),
-    sheet('Announcements…', 'remote-open-queue', 'remote-queue-sheet', more),
+    ...(pro
+      ? [
+          {
+            name: 'the viewer (Look through the PDF’s pages)',
+            open: async (p: Page) => {
+              await show(p);
+              await p.getByTestId('remote-look-through').click();
+              await expect(p.getByTestId('viewer')).toBeVisible();
+            },
+            close: async (p: Page) => {
+              await p.getByTestId('viewer-close').click();
+              await expect(p.getByTestId('viewer')).toHaveCount(0);
+            },
+          },
+        ]
+      : []),
+    // The Sabha flow (alpha.23), on the Show tab in both modes: its read list, then its PDF page.
+    sheet('Open Sabha flow…, its read list', 'remote-open-flow', 'remote-flow-sheet', show),
+    {
+      name: 'Open Sabha flow…, its PDF page',
+      open: async (p) => {
+        await show(p);
+        await p.getByTestId('remote-open-flow').click();
+        await chosen(p, 'remote-flow-view-page');
+        await expect
+          .poll(() =>
+            p
+              .getByTestId('remote-flow-picture')
+              .evaluate((img) => img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0),
+          )
+          .toBe(true);
+      },
+      close: async (p) => {
+        await chosen(p, 'remote-flow-view-list');
+        await p.getByTestId('remote-flow-sheet-close').click();
+        await expect(p.getByTestId('remote-flow-sheet')).toHaveCount(0);
+      },
+    },
   ];
 }
 
@@ -675,7 +766,7 @@ const ENGINES = ['webkit', 'chromium'] as const satisfies readonly Engine[];
 const engineName = (engine: Engine) => (engine === 'webkit' ? 'Safari’s' : 'Chrome’s');
 
 for (const engine of ENGINES)
-  test(`the remote fits on phones upright and sideways and on a tablet, in ${engineName(engine)} engine: each tab, sheet and the viewer, with long names; Back and Next always on the screen`, async () => {
+  test(`the remote fits on phones upright and sideways and on a tablet, in ${engineName(engine)} engine: each tab, sheet and the viewer in Pro Mode and Simple Mode, with long names; Back and Next on the screen while a PDF is up in Pro Mode, none in Simple Mode`, async () => {
     test.setTimeout(480_000);
     const { app } = await launchApp(NETWORK_ENV);
     const phone = await phoneOf(engine);
@@ -683,67 +774,73 @@ for (const engine of ENGINES)
       const win = await operatorPage(app);
       await operatorReady(win);
       const { playlistId } = await longShow(win);
+      await longFlow(app, win);
       const { port, base } = await networkOn(win);
-      // Files from phones on: Add from this Phone… at the top of the library's media.
-      await win.evaluate(async () => {
-        const on = await (globalThis as PageGlobals).drashti.network.setAddFiles(true);
-        if (!on.ok) throw new Error(on.message);
-      });
-      // One announcement waiting, from a long-named sender, for the queue's sheet.
-      const poster = await pairToken(win, port, 'announcements', 'Placeholder poster');
-      const sent = await apiCall(port, '/api/v1/announcements', {
+      // Someone else in the chat with a long name (a script's Remote), who wrote a long message.
+      const chatter = await pairToken(win, port, 'remote', 'Placeholder chat script');
+      const named = await apiCall(port, CHAT_API.name, {
         method: 'POST',
-        token: poster,
-        body: { text: LONG.announcement, from: LONG.from, minutes: 10 },
+        token: chatter,
+        body: { name: LONG.from },
       });
-      expect(sent.status).toBe(202);
+      expect(named.status).toBe(200);
+      const say = async () => {
+        const said = await apiCall(port, CHAT_API.send, {
+          method: 'POST',
+          token: chatter,
+          body: { text: LONG.chat },
+        });
+        expect(said.status).toBe(200);
+      };
+      await say();
       const p = phone.page;
       await pairByQr(p, base, await pairingCode(win, 'remote', LONG.device), '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
       await expect(p.getByTestId('remote-live')).toBeVisible();
-      // A file added from this phone, its row in the list of what it sent (files from phones).
-      const photo = await makeTestImage(
-        win,
-        join(mkdtempSync(join(tmpdir(), 'drashti-phone-fit-')), `${LONG.photo}.png`),
-        {
-          width: 64,
-          height: 48,
-        },
+      // The PDF up: Back and Next on the phone.
+      await expect(p.getByTestId('remote-next-button')).toBeVisible();
+      // In the chat with a long name, and a long message of its own.
+      await chosen(p, 'remote-tab-chat');
+      await p.getByTestId('chat-name').fill(LONG.name);
+      await p.getByTestId('chat-name-save').click();
+      await p.getByTestId('chat-text-box').fill(LONG.reply);
+      await p.getByTestId('chat-send').click();
+      await expect(p.getByTestId('chat-message').filter({ hasText: LONG.reply })).toHaveAttribute(
+        'data-own',
+        'true',
       );
-      await chosen(p, 'remote-tab-library');
-      await chosen(p, 'remote-library-media');
-      const [chooser] = await Promise.all([
-        p.waitForEvent('filechooser'),
-        p.getByTestId('remote-add-button').click(),
-      ]);
-      await chooser.setFiles(photo);
-      await expect(p.getByTestId('remote-sending').filter({ hasText: LONG.photo })).toHaveAttribute(
-        'data-state',
-        'added',
-        { timeout: 60_000 },
-      );
-      const sweep = new Sweep(p, { ...DRASHTI_PAGE, remote: true });
-      for (const size of SIZES) {
-        await p.setViewportSize(size);
-        // Laid out again for the new size (its media queries answer as the size changes).
-        await p.evaluate(
-          () =>
-            new Promise<void>((resolve) => {
-              requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-            }),
-        );
-        // A tablet upright has the playlist or the library beside the show; a phone, upright or sideways, tabs.
-        const layout = size.width >= 768 && size.height > 500 ? 'wide' : 'phone';
-        await expect(p.getByTestId('remote')).toHaveAttribute(
-          'data-layout',
-          layout === 'wide' ? 'wide' : /^(phone|sideways)$/u,
-        );
-        for (const view of remoteViews(layout, playlistId)) {
-          await view.open(p);
-          await sweep.look(size, view.name);
-          await view.close?.(p);
+      const sweep = new Sweep(p, { ...DRASHTI_PAGE, remote: true, backNext: true });
+      /** The views of a mode at every size. */
+      const sweepAll = async (mode: 'pro' | 'simple') => {
+        for (const size of SIZES) {
+          await p.setViewportSize(size);
+          // Laid out again for the new size (its media queries answer as the size changes).
+          await p.evaluate(
+            () =>
+              new Promise<void>((resolve) => {
+                requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+              }),
+          );
+          // A tablet upright has the playlist or the library beside the show; a phone, upright or sideways, tabs.
+          const layout = size.width >= 768 && size.height > 500 ? 'wide' : 'phone';
+          await expect(p.getByTestId('remote')).toHaveAttribute(
+            'data-layout',
+            layout === 'wide' ? 'wide' : /^(phone|sideways)$/u,
+          );
+          for (const view of remoteViews(layout, mode, playlistId, say)) {
+            await view.open(p);
+            await sweep.look(size, view.name, { backNext: mode === 'pro' });
+            await view.close?.(p);
+          }
         }
-      }
+      };
+      await sweepAll('pro');
+      // Simple Mode on the computer (QA23-PHONE-1): Show and Chat, no Back or Next, with Simple Mode's note.
+      await p.setViewportSize(SIZES[0]);
+      await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+      await expect(p.getByTestId('remote-simple')).toBeVisible();
+      await expect(p.getByTestId('remote-next-button')).toHaveCount(0);
+      await sweepAll('simple');
       sweep.finish(`the remote in ${engine}`);
     } finally {
       await phone.context.close();
@@ -753,7 +850,7 @@ for (const engine of ENGINES)
   });
 
 for (const engine of ENGINES)
-  test(`the pairing page, the announcements page and the stage display fit on phones upright and sideways and on a tablet, in ${engineName(engine)} engine, with long names`, async () => {
+  test(`the pairing page, the announcements page, the chat page and the stage display fit on phones upright and sideways and on a tablet, in ${engineName(engine)} engine, with long names`, async () => {
     test.setTimeout(300_000);
     const { app } = await launchApp(NETWORK_ENV);
     const phone = await phoneOf(engine);
@@ -794,6 +891,21 @@ for (const engine of ENGINES)
       await expect(p.getByTestId('announce-sent').first()).toContainText('Waiting for the operator');
       await everySize('the announcements page with what it sent');
 
+      // The chat page (alpha.23), as this Announcements phone (in the chat) opens it from its page's Open the chat:
+      // its name asked, then messages.
+      await p.getByTestId('announce-chat').click();
+      await p.waitForURL(`${base}/chat`);
+      await expect(p.getByTestId('chat-name')).toBeVisible();
+      await everySize('the chat page, asking the name');
+      await p.getByTestId('chat-name').fill(LONG.name);
+      await p.getByTestId('chat-name-save').click();
+      for (const text of [LONG.chat, LONG.reply]) {
+        await p.getByTestId('chat-text-box').fill(text);
+        await p.getByTestId('chat-send').click();
+        await expect(p.getByTestId('chat-message').filter({ hasText: text })).toBeVisible();
+      }
+      await everySize('the chat page with its messages');
+
       // The stage display: a screen, its own picture left out; its Full screen button and the page fit.
       await p.goto('about:blank');
       await pairByQr(p, base, await pairingCode(win, 'stage', LONG.device), '/stage');
@@ -802,7 +914,7 @@ for (const engine of ENGINES)
         textFloor: false,
         ignore: '[data-a11y-picture], [data-testid="stage-view"]',
       });
-      sweep.finish(`the pairing, announcements and stage pages in ${engine}`);
+      sweep.finish(`the pairing, announcements, chat and stage pages in ${engine}`);
     } finally {
       await phone.context.close();
       await phone.browser.close();
@@ -831,7 +943,13 @@ for (const engine of ENGINES)
     try {
       const p = phone.page;
       // Not Drashti's own phone pages: their words are the browser's own size, their targets 44 px.
-      const sweep = new Sweep(p, { target: 44, textFloor: false, remote: false, ignore: '' });
+      const sweep = new Sweep(p, {
+        target: 44,
+        textFloor: false,
+        remote: false,
+        backNext: false,
+        ignore: '',
+      });
       const everySize = async (what: string) => {
         for (const size of SIZES) {
           await p.setViewportSize(size);

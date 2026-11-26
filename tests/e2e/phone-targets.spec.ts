@@ -3,14 +3,17 @@ import { devices, expect, test, webkit } from '@playwright/test';
 import { settled } from './a11y';
 import type { Device } from './devices';
 import { NETWORK_ENV, networkOn, pairByQr, pairingCode, PHONE } from './devices';
-import { launchApp, operatorPage, operatorReady } from './helpers';
+import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { addPhoneDeck, putUpFromComputer } from './phone-deck';
 import { setUpPlaceholderShow } from './placeholder-show';
 
 /*
  * The phone pages, hardened for touch (Session 25): on an iPhone-sized screen (390 × 844, WebKit),
  * every control is at least 44 × 44 CSS pixels (docs/design.md), a quick double tap never zooms
  * (touch-action: manipulation) and a pull at the top never reloads (overscroll-behavior: none).
- * A real iPhone and iPad are still owed (PLAN.md §5.2). Placeholder content only.
+ * A real iPhone and iPad are still owed (PLAN.md §5.2). The remote's tabs are each mode's since alpha.23
+ * (QA23-PHONE-1): Show, Playlist and Chat in Pro Mode, a PDF up so Back, Next and Clear slide are there; Show and Chat
+ * in Simple Mode. Placeholder content only (a generated PDF).
  */
 
 /** Every visible control under 44 × 44 (a tick box or radio counts with its label, which takes the tap too). */
@@ -100,7 +103,10 @@ test('the phone pages at 390 × 844: every target 44 px or more, no double-tap z
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
   await operatorReady(win);
-  await setUpPlaceholderShow(win);
+  const show = await setUpPlaceholderShow(win);
+  // A PDF up from the computer: Back, Next and Clear slide are on a Pro Mode phone while it is (QA23-PHONE-1).
+  const deck = await addPhoneDeck(win, show.playlistId);
+  await putUpFromComputer(win, show.playlistId, deck.itemId);
   const { base } = await networkOn(win);
   const phone = await iphone();
   try {
@@ -113,17 +119,20 @@ test('the phone pages at 390 × 844: every target 44 px or more, no double-tap z
     expect.soft(await smallText(page), 'text under 16 px on the pairing page').toEqual([]);
     expect.soft(await touch(page)).toMatchObject({ page: 'manipulation', overscroll: 'none' });
 
-    // The remote, on each of its tabs (from another page first: the pairing address differs only by its #).
+    // The remote, on each of Pro Mode's tabs (from another page first: the pairing address differs only by its #).
     await page.goto('about:blank');
     await pairByQr(page, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
-    for (const tab of ['show', 'playlist', 'library', 'more']) {
+    for (const tab of ['show', 'playlist', 'chat']) {
       await page.getByTestId(`remote-tab-${tab}`).click();
       await expect(page.getByTestId(`remote-tab-${tab}`)).toHaveAttribute('aria-selected', 'true');
       expect.soft(await tooSmall(page), `the remote's ${tab} tab`).toEqual([]);
       expect.soft(await smallText(page), `text under 16 px on the remote's ${tab} tab`).toEqual([]);
     }
+    // Neither the library nor More (QA23-PHONE-1).
+    await expect(page.getByTestId('remote-tab-library')).toHaveCount(0);
+    await expect(page.getByTestId('remote-tab-more')).toHaveCount(0);
     expect.soft(await touch(page)).toEqual(HARDENED);
-    // The 44 px floor never shrinks what is bigger by design: Back and Next stay 64 px, the actions 48.
+    // The 44 px floor never shrinks what is bigger by design: Back and Next stay 64 px, Clear slide 48.
     const tall = async (testId: string) => (await page.getByTestId(testId).boundingBox())?.height ?? 0;
     await page.getByTestId('remote-tab-show').click();
     expect.soft(await tall('remote-back'), 'Back').toBeGreaterThanOrEqual(64);
@@ -132,15 +141,48 @@ test('the phone pages at 390 × 844: every target 44 px or more, no double-tap z
       .getByTestId('remote-actions')
       .getByRole('button')
       .evaluateAll((buttons) => buttons.map((b) => Math.round(b.getBoundingClientRect().height)));
-    expect.soft(Math.min(...actions), 'the quick actions').toBeGreaterThanOrEqual(48);
-    // A tap that cannot be done (Back with nothing on the screens) shows a notice: its Dismiss too.
-    await page.getByTestId('remote-tab-show').click();
+    expect(actions, 'Clear slide, the one clear').toHaveLength(1);
+    expect.soft(Math.min(...actions), 'Clear slide').toBeGreaterThanOrEqual(48);
+    // A tap Drashti refuses shows a notice: its Dismiss too. The computer goes into Simple Mode while this phone has
+    // not heard yet (its read of the hall held, as a slow network holds it): its Back is refused in Simple Mode's words.
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(
+      (url) => url.pathname === '/api/v1/hall',
+      async (route) => {
+        await held;
+        await route.continue();
+      },
+    );
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
     await page.getByTestId('remote-back').click();
     const notice = page.getByRole('alert');
     await expect(notice).toBeVisible();
+    await expect(notice).toContainText('Simple Mode is on at Drashti’s computer');
     // Measured where it settles, once it has risen in (Session 26g).
     await settled(page);
     expect.soft(await tooSmall(page), 'the remote with a notice').toEqual([]);
+    release();
+    // Heard: Simple Mode's tabs, its note (with its own Dismiss), and nothing to press on the show.
+    await expect(page.getByTestId('remote-back')).toHaveCount(0);
+    await expect(page.getByTestId('remote-tab-playlist')).toHaveCount(0);
+    await expect(page.getByTestId('remote-simple')).toBeVisible();
+    for (const tab of ['show', 'chat']) {
+      await page.getByTestId(`remote-tab-${tab}`).click();
+      await expect(page.getByTestId(`remote-tab-${tab}`)).toHaveAttribute('aria-selected', 'true');
+      // Measured where it settles, as above: Simple Mode's note rises in as it comes (CI Mac run 45670893526 read both
+      // tabs 70-170 ms after it came, in its 200 ms rise, and its moving Dismiss came out a hair under 44 high).
+      await settled(page);
+      expect.soft(await tooSmall(page), `the remote's ${tab} tab in Simple Mode`).toEqual([]);
+      expect
+        .soft(await smallText(page), `text under 16 px on the remote's ${tab} tab in Simple Mode`)
+        .toEqual([]);
+    }
+    // Back to Pro Mode: Simple Mode pairs nothing, and the next phones are paired.
+    const pro = await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
+    expect(pro.ok, 'back to Pro Mode').toBe(true);
   } finally {
     await phone.close();
   }

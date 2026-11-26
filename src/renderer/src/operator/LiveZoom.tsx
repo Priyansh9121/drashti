@@ -1,6 +1,8 @@
 import { useRef } from 'react';
 import type { PointerEvent, ReactNode, WheelEvent } from 'react';
 import type { EngineState } from '../../../shared/engine/state';
+import type { Size } from '../../../shared/scaling';
+import type { ScalingMode } from '../../../shared/screens';
 import {
   backgroundShowing,
   framed,
@@ -14,6 +16,7 @@ import { engineNow } from '../render/clock';
 import { Button, IconButton } from '../ui/Button';
 import { RotateCcw, ZoomIn, ZoomOut } from '../ui/icons';
 import { useNotice } from './actions';
+import { draggedTo } from './live-drag';
 import { useMode } from './mode-store';
 
 /*
@@ -68,10 +71,19 @@ const send = (to: { zoom: number; x: number; y: number }) => {
 };
 
 /**
- * The LIVE preview with the live zoom's mouse, trackpad and touch (`children`: the preview picture), in Pro Mode
- * and Simple Mode (Session 55, Part 5).
+ * The LIVE preview with the live zoom's mouse, trackpad and touch (`children`: the preview picture, the first
+ * screen's `canvas` fitted in it, its slide placed by that screen's `scaling`), in Pro Mode and Simple Mode
+ * (Session 55, Part 5).
  */
-export function ZoomablePreview({ children }: { children: ReactNode }) {
+export function ZoomablePreview({
+  children,
+  canvas,
+  scaling,
+}: {
+  children: ReactNode;
+  canvas: Size;
+  scaling: ScalingMode;
+}) {
   const state = useEngine((s) => s.state);
   const box = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; from: { zoom: number; x: number; y: number } } | null>(null);
@@ -135,21 +147,23 @@ export function ZoomablePreview({ children }: { children: ReactNode }) {
         ZOOM.max,
         Math.max(ZOOM.min, p.from.zoom * (span.distance / Math.max(1, p.start.distance))),
       );
-      queue({
-        zoom,
-        x: p.from.x + (span.x - p.start.x) / b.width,
-        y: p.from.y + (span.y - p.start.y) / b.height,
-      });
+      // Their middle's move moves the picture as the drag does.
+      queue(
+        draggedTo(
+          state,
+          { ...p.from, zoom },
+          { x: span.x - p.start.x, y: span.y - p.start.y },
+          b,
+          canvas,
+          scaling,
+        ),
+      );
       return;
     }
     const d = drag.current;
     if (!d) return;
     if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) > 4) moved.current = true;
-    queue({
-      ...d.from,
-      x: d.from.x + (e.clientX - d.x) / b.width,
-      y: d.from.y + (e.clientY - d.y) / b.height,
-    });
+    queue(draggedTo(state, d.from, { x: e.clientX - d.x, y: e.clientY - d.y }, b, canvas, scaling));
   };
   const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
     fingers.current.delete(e.pointerId);

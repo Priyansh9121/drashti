@@ -453,7 +453,13 @@ function PlaylistTree({ platform, simple }: { platform: string; simple: boolean 
                       <ListMusic size={15} />
                     )}
                   </span>
-                  <Truncate text={node.name} className={cx('flex-1', node.isFolder && 'font-medium')} />
+                  {/* Its name ends in "…" where it does not fit, whole in its title and its row's name (the owner's
+                      QA23-STAGE8-5: Simple Mode's day playlist at 1024 × 645); its test id is the fit check's. */}
+                  <Truncate
+                    text={node.name}
+                    className={cx('flex-1', node.isFolder && 'font-medium')}
+                    data-testid="playlist-node-name"
+                  />
                   {node.kind === 'smart' && <span className="sr-only">, a smart playlist</span>}
                   {node.kind === 'repeat' && <span className="sr-only">, Repeat Slides</span>}
                   {node.shared && <SharedMark />}

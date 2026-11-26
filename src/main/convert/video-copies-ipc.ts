@@ -12,7 +12,7 @@ import { AFTER_START_MS, type ConvertService } from './convert-service';
 import { ClipExports, type ExportSourceResult } from './clip-export-service';
 import { CombineVideos } from './combine-service';
 import { ProxyService } from './proxy-service';
-import { copyRequests, registerProxyFile } from './video-copy-files';
+import { copyRequests, discardUnlisted, registerProxyFile, unlistedMadeFrom } from './video-copy-files';
 
 export interface VideoCopyIpcDeps {
   db: Db;
@@ -37,6 +37,11 @@ export interface VideoCopyIpcDeps {
    * file chosen, or null when closed (a22-review-combine S2: one dialog for both).
    */
   exportDialog?(name: string): Promise<string | null>;
+  /**
+   * An import run or a deck's source preparation is going (a22-review-combine2 R-S1): it can take up a file or a row
+   * in Media by its bytes in two steps without the lock, so nothing unlisted is removed meanwhile.
+   */
+  importing(): boolean;
 }
 
 export function registerVideoCopies(deps: VideoCopyIpcDeps) {
@@ -58,6 +63,7 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
       freeBytes: (dir) => deps.freeBytes(dir),
       signal,
       name,
+      mayRemove: () => !deps.importing(),
     });
   const proxies = new ProxyService({
     mediaDir: deps.mediaDir,
@@ -145,6 +151,13 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
     pickDest: (name, container) => deps.pickDest(name, container),
     prepareImport: (file, info, name, signal) => register(file, info, signal, name),
     publishImport,
+    // Also add the clip to Media failing, stopped or let go of late leaves no unlisted row or file (a22-exportclip),
+    // removed only at a quiet moment (a22-review-combine2 R-S1, R-S2); what is left is kept for a later start.
+    discardUnlisted: (files, keep, allowed) =>
+      discardUnlisted({ db: deps.db, mediaDir: deps.mediaDir, files, keep, allowed }),
+    quiet: () => (deps.saveIdle ?? deps.idle)() && !deps.importing(),
+    left: copyRequests(join(deps.mediaDir, 'video-clip-left.json')),
+    leftFrom: (file) => unlistedMadeFrom(deps.db, file),
   });
   // Combine videos… (alpha.22): the chosen videos joined end to end into one new video in Media, by the same worker.
   const combines = new CombineVideos({
@@ -157,6 +170,10 @@ export function registerVideoCopies(deps: VideoCopyIpcDeps) {
     idle: () => (deps.saveIdle ?? deps.idle)(),
     prepareImport: (file, info, name, signal) => register(file, info, signal, name),
     publishImport,
+    // A combine failing late leaves no unlisted row or file in Media (a22-review-combine S4), at a quiet moment.
+    discardUnlisted: (made, keep, allowed) =>
+      discardUnlisted({ db: deps.db, mediaDir: deps.mediaDir, ...made, keep, allowed }),
+    importing: () => deps.importing(),
   });
   const allowed = (e: IpcMainInvokeEvent) => deps.fromOperator(e);
   handle(IPC.media.proxyStatus, (e, id, retry) =>

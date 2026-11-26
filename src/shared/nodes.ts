@@ -113,6 +113,10 @@ export interface NodeOutputStatus {
   paintedRev: number;
   /** Fonts its words name that its computer does not have (Sessions 31–36, I18N-1); left out for none. */
   missingFonts?: string[];
+  /** Showing, but restarted this many times in a row by the node's heartbeat (a23-heartbeat); left out otherwise. */
+  restarts?: number;
+  /** Held for the owner (QA23-HEARTBEAT-1, A): stopped, its page kept as it is, not answering; left out otherwise. */
+  notAnswering?: true;
 }
 
 export interface NodeClock {

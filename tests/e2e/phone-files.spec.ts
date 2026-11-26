@@ -1,31 +1,28 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { apiCall, device, networkOn, NETWORK_ENV, pairByQr, pairingCode, pairToken, TABLET } from './devices';
-import {
-  importAndGetIds,
-  launchApp,
-  openLibrary,
-  operatorPage,
-  operatorReady,
-  type PageGlobals,
-} from './helpers';
-import { KIRTAN, PICTURE, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
+import { importAndGetIds, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { expectPhoneRefuses } from './phone-refuses';
+import { PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 import { makeTestImage, makeTestTone } from './test-media';
 
 /*
- * Files between Drashti and its phones (Session 54, D3 and D4), each step seen in the operator window and on a
- * phone or tablet against the app's real server on this computer (Safari's engine as an iPhone or iPad, Chrome's
- * as an Android phone): a playlist shared with phones from its right-click menu, listed on a remote under Shared
- * from Drashti (the library's third choice while something is shared), its files opened in D1's viewer on the
- * device (a sound played there from its own file, only while shared), read-only, and never for a Stage or
- * Announcements device; and a file added from a phone (at the top of the library's Media) while the switch is on,
- * sent with a progress bar, picking up again after the connection drops, Cancel, the size limit and a renamed file
- * refused in words, then in Added from Phones and Media with the phone's name, never live by itself. At 375 × 812 and 768 × 1024, passing axe. Placeholder content and generated sound only; codes and
- * tokens are made at run time and never printed.
+ * Files between Drashti and its phones (Session 54, D3 and D4), under the phone rule (alpha.23, QA23-PHONE-1, the
+ * owner: "no video access in either of simple or pro mode in phone, they cant change videos, only ppts an pdfs"; the
+ * rule's words: "Phones cannot add or share files with Drashti."). The operator window keeps what it had (the owner's
+ * Q11: "Words now, hide later"): a playlist's right-click menu shares it with phones and stops sharing it, its row says
+ * so, a folder playlist shares whole, and Phones and tablets turns files from phones on and off. A phone or tablet
+ * (Safari's engine as an iPhone or iPad, Chrome's as an Android phone, against the app's real server on this computer)
+ * is refused all of it in words, the show and the library as they were: Shared from Drashti and its items, a file's
+ * own bytes and a link to them (a sound played there), a click's picture, and adding a file (its start, its pieces,
+ * how it stands, Cancel), whatever its size or name and whether the switch is on or off; a Stage or Announcements
+ * device never sees any of it. The phone's own pages for it went with the rule (its page, the UI builder's).
+ * Placeholder content and generated sound only; codes and tokens are made at run time and never printed.
  */
 
 const snapshot = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
@@ -40,28 +37,13 @@ const setShared = (win: Page, playlistId: string, on: boolean) =>
     { id: playlistId, value: on },
   );
 
-/** How many slides a presentation plays in its own order (its chosen arrangement, else every slide). */
-const slidesPlayed = (win: Page, presentationId: string) =>
-  win.evaluate(async (id) => {
-    const doc = await (globalThis as PageGlobals).drashti.library.getPresentation(id);
-    if (!doc) return 0;
-    const sizes = new Map(doc.groups.map((g) => [g.id, g.slides.length]));
-    const chosen = doc.arrangements.find((a) => a.id === doc.selectedArrangementId);
-    const played = chosen?.groupIds.reduce((n, g) => n + (sizes.get(g) ?? 0), 0) ?? 0;
-    return played > 0 ? played : doc.groups.reduce((n, g) => n + g.slides.length, 0);
-  }, presentationId);
-
-/** A file's pieces, and what the phone asks of one file (how it stands), as their addresses are. */
-const PIECE = /\/api\/v1\/uploads\/[0-9a-f-]{36}\/piece\?offset=\d+$/u;
-const ONE_FILE = /\/api\/v1\/uploads\/[0-9a-f-]{36}$/u;
-
 const setAddFiles = (win: Page, on: boolean) =>
   win.evaluate(async (value) => {
     const result = await (globalThis as PageGlobals).drashti.network.setAddFiles(value);
     if (!result.ok) throw new Error(result.message);
   }, on);
 
-/** What phones are sending, in Drashti's media folder: empty once each is imported, cancelled or refused. */
+/** What phones are sending, in Drashti's media folder: empty, as nothing is ever taken from one. */
 const uploadsLeft = (userData: string) => {
   try {
     return readdirSync(join(userData, 'Media', '.phone-uploads'));
@@ -70,32 +52,31 @@ const uploadsLeft = (userData: string) => {
   }
 };
 
-/** Every visible control in `within` under 44 × 44 CSS pixels, by its name (phone-pages.spec.ts checks the rest). */
-const tooSmall = (page: Page, within: string) =>
-  page.evaluate(
-    (selector) =>
-      [
-        ...document.querySelectorAll<HTMLElement>(
-          `${selector} :is(button, a[href], input:not([type="hidden"]), select, [role="button"])`,
-        ),
-      ]
-        .filter((el) => el.offsetParent !== null || getComputedStyle(el).position === 'fixed')
-        .map((el) => ({ el, box: el.getBoundingClientRect() }))
-        .filter(({ box }) => box.width < 44 || box.height < 44)
-        .map(({ el }) => (el.getAttribute('aria-label') ?? el.textContent).trim().slice(0, 30)),
-    within,
-  );
+/** The start of a file a phone would send (POST /api/v1/uploads), as the phone's page asks for it. */
+const sending = (file: string) => ({ name: basename(file), size: statSync(file).size });
 
-/** Choose files with the phone's own picker, from Add from this Phone…. */
-async function addFromPhone(p: Page, files: string[]): Promise<void> {
-  const [chooser] = await Promise.all([
-    p.waitForEvent('filechooser'),
-    p.getByTestId('remote-add-button').click(),
-  ]);
-  await chooser.setFiles(files);
+/** What a file from a phone would change in the operator window: Media, Added from Phones, the uploads folder. */
+const filesOf = (win: Page, userData: string) => async () => ({
+  media: (await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia())).map(
+    (m) => m.name,
+  ),
+  addedFromPhones: (await win.evaluate(() => (globalThis as PageGlobals).drashti.playlists.tree())).filter(
+    (n) => n.name === 'Added from Phones',
+  ).length,
+  uploads: uploadsLeft(userData),
+});
+
+/** Every request a phone made to send one file (Add from this Phone…), each refused in the files' words. */
+async function refusedSending(phone: { win: Page; page: Page }, file: string, desk: () => Promise<unknown>) {
+  const id = randomUUID();
+  await expectPhoneRefuses(phone, 'POST', '/api/v1/uploads', sending(file), 'files', desk);
+  await expectPhoneRefuses(phone, 'POST', `/api/v1/uploads/${id}/piece?offset=0`, undefined, 'files', desk);
+  await expectPhoneRefuses(phone, 'GET', `/api/v1/uploads/${id}`, undefined, 'files', desk);
+  await expectPhoneRefuses(phone, 'POST', `/api/v1/uploads/${id}/cancel`, undefined, 'files', desk);
+  await expectPhoneRefuses(phone, 'GET', '/api/v1/uploads', undefined, 'files', desk);
 }
 
-test('a playlist shared with phones: Share and Stop Sharing in its menu, Shared from Drashti on a remote at 375 × 812, on the device only and read-only, never for a Stage or Announcements device', async () => {
+test('a playlist shared with phones: Share and Stop Sharing in its menu, while a phone at 375 × 812 is refused Shared from Drashti, its items, their files and pictures in words; never for a Stage or Announcements device', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -117,12 +98,10 @@ test('a playlist shared with phones: Share and Stop Sharing in its menu, Shared 
     await p.setViewportSize({ width: 375, height: 812 });
     await pairByQr(p, base, code, '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
-    await p.getByTestId('remote-tab-library').click();
-    await expect(p.getByTestId('remote-library')).toBeVisible();
-    // Nothing shared: the library's switch is Presentations and Media alone.
-    await expect(p.getByTestId('remote-library-media')).toBeVisible();
-    await expect(p.getByTestId('remote-library-shared')).toHaveCount(0);
-    await expect(p.getByTestId('remote-shared')).toHaveCount(0);
+    const fromPhone = { win, page: p };
+    const items = `/api/v1/shared/${show.playlistId}/items`;
+    // Nothing shared yet: the phone's list of shared playlists is refused all the same.
+    await expectPhoneRefuses(fromPhone, 'GET', '/api/v1/shared', undefined, 'files');
 
     // A remote is paired: Share with Phones and Tablets, and the playlist's row says so.
     await expect(win.getByTestId('network-badge')).toHaveText(/\b1 device\b/u);
@@ -131,61 +110,35 @@ test('a playlist shared with phones: Share and Stop Sharing in its menu, Shared 
     await expect(node.getByTestId('playlist-shared')).toBeVisible();
     await expectNoSeriousA11yIssues(win, 'a playlist shared with phones, in the operator window');
 
-    // On the phone, Shared from Drashti is the library's third choice now: its items with its headers, each file
-    // to look at.
-    const choice = p.getByTestId('remote-library-shared');
-    await choice.click();
-    await expect(choice).toHaveAttribute('aria-selected', 'true');
-    const shared = p.getByTestId('remote-shared');
-    await expect(shared.getByTestId('remote-shared-playlist')).toContainText(PLAYLIST);
-    await expectNoSeriousA11yIssues(p, 'Shared from Drashti on a phone at 375 × 812');
-    expect(await tooSmall(p, '[data-testid="remote-shared"]')).toEqual([]);
-    expect(await tooSmall(p, '[role="tablist"][aria-label="In the library"]')).toEqual([]);
-    await shared.getByTestId('remote-shared-playlist').click();
-    await expect(shared.getByTestId('remote-shared-header')).toHaveText(['Welcome', 'Kirtan']);
-    await expect(shared.getByTestId('remote-shared-item')).toHaveCount(3);
-    const before = (await snapshot(win)).state;
-    // A file opens in D1's viewer with the playlist's files before it: the welcome's slides and the kirtan's, one
-    // by one in the order they play, then the picture.
-    const pages = (await slidesPlayed(win, show.welcomeId)) + show.kirtanOrder.length + 1;
-    await shared.getByTestId('remote-shared-item').filter({ hasText: PICTURE }).click();
-    const viewer = p.getByTestId('viewer');
-    await expect(viewer).toHaveAttribute('data-page', `picture:${show.pictureMediaId}`);
-    await expect(viewer.getByTestId('viewer-title')).toContainText(PICTURE);
-    await expect(p.locator('#viewer-place')).toHaveText(`${String(pages)} of ${String(pages)} · ${PLAYLIST}`);
-    await expect(viewer.getByTestId('viewer-close')).toBeFocused();
-    await expectNoSeriousA11yIssues(p, 'a shared picture looked at on a phone');
-    expect(await tooSmall(p, '[data-testid="viewer"]')).toEqual([]);
-    // The kirtan before it, its last slide, named with it.
-    await viewer.getByTestId('viewer-previous').click();
-    const last = show.kirtanOrder.length;
-    await expect(viewer.getByTestId('viewer-title')).toHaveText(
-      new RegExp(`^${KIRTAN} · ${String(last)} · `, 'u'),
+    // On the phone (was Shared from Drashti, the library's third choice, and D1's viewer): the shared playlists, its
+    // items, the picture's own file and a click's picture are each refused, and nothing changes on the screens.
+    await expectPhoneRefuses(fromPhone, 'GET', '/api/v1/shared', undefined, 'files');
+    await expectPhoneRefuses(fromPhone, 'GET', items, undefined, 'files');
+    await expectPhoneRefuses(
+      fromPhone,
+      'GET',
+      `/api/v1/media/${show.pictureMediaId}/original`,
+      undefined,
+      'media',
     );
-    await expect(viewer).toHaveAttribute(
-      'data-page',
-      new RegExp(`^slide:${show.kirtanId}:${String(last - 1)}:`, 'u'),
+    const slideId =
+      (await win.evaluate(
+        async (id) =>
+          (await (globalThis as PageGlobals).drashti.library.getPresentation(id))?.groups[0]?.slides[0]?.id,
+        show.kirtanId,
+      )) ?? '';
+    expect(slideId).not.toBe('');
+    await expectPhoneRefuses(
+      fromPhone,
+      'GET',
+      `/api/v1/presentations/${show.kirtanId}?format=png&slide=${slideId}&click=0`,
+      undefined,
+      'media',
     );
-    await expectNoSeriousA11yIssues(p, 'a shared presentation looked at on a phone');
-    for (let page = pages - 1; page > 1; page--) await viewer.getByTestId('viewer-previous').click();
-    await expect(p.locator('#viewer-place')).toHaveText(`1 of ${String(pages)} · ${PLAYLIST}`);
-    await expect(viewer.getByTestId('viewer-previous')).toBeDisabled();
-    // Looking changes nothing on the screens.
-    const after = (await snapshot(win)).state;
-    expect(after.live).toEqual(before.live);
-    expect(after.layers.slide).toEqual(before.layers.slide);
-    expect(after.layers.background).toEqual(before.layers.background);
-    await p.keyboard.press('Escape');
-    await expect(viewer).toHaveCount(0);
 
-    // Read-only: no request changes it. A Stage or Announcements device never sees it.
+    // Read-only, and now refused to every Remote: a script's token too. A Stage or Announcements device never sees it.
     const script = await pairToken(win, port, 'remote', 'Placeholder script');
-    const listed = await apiCall(port, '/api/v1/shared', { token: script });
-    expect(listed.status).toBe(200);
-    expect(listed.json['playlists']).toEqual([
-      { id: show.playlistId, name: PLAYLIST, itemCount: 5, fromFolder: false },
-    ]);
-    const items = `/api/v1/shared/${show.playlistId}/items`;
+    await expectPhoneRefuses({ win, port, token: script }, 'GET', '/api/v1/shared', undefined, 'files');
     expect((await apiCall(port, items, { method: 'POST', token: script, body: { items: [] } })).status).toBe(
       405,
     );
@@ -195,22 +148,19 @@ test('a playlist shared with phones: Share and Stop Sharing in its menu, Shared 
       expect((await apiCall(port, items, { token })).status, kind).toBe(403);
     }
 
-    // Stop Sharing: gone from its row, from the phone (the library back on Presentations), and from the API.
+    // Stop Sharing: gone from its row; the phone and the script refused as before (no longer "no such playlist").
     await node.click({ button: 'right' });
     await win.getByRole('menuitem', { name: 'Stop Sharing' }).click();
     await expect(node.getByTestId('playlist-shared')).toHaveCount(0);
-    await expect(p.getByTestId('remote-library-shared')).toHaveCount(0);
-    await expect(p.getByTestId('remote-shared')).toHaveCount(0);
-    await expect(p.getByTestId('remote-library-presentations')).toHaveAttribute('aria-selected', 'true');
-    await expect(p.getByTestId('remote-library')).toBeVisible();
-    expect((await apiCall(port, items, { token: script })).status).toBe(404);
+    await expectPhoneRefuses({ win, port, token: script }, 'GET', items, undefined, 'files');
+    await expectPhoneRefuses(fromPhone, 'GET', '/api/v1/shared', undefined, 'files');
   } finally {
     await phone.close();
   }
   await app.close();
 });
 
-test('a shared playlist’s sound plays on a phone from its own file, only while shared, and Stop Sharing closes it; at 375 × 812 and 768 × 1024', async () => {
+test('a shared playlist’s sound is refused to a phone in words, its own file and a link to it, shared or not; Drashti plays nothing, and Stop Sharing is the window’s as before', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -231,71 +181,31 @@ test('a shared playlist’s sound plays on a phone from its own file, only while
     { playlistId: show.playlistId, mediaId: toneId },
   );
   const { port, base } = await networkOn(win);
-  // In no shared playlist: a Remote gets no sound of the library.
+  // In no shared playlist: a Remote gets no sound of the library (refused in words, no longer "no such media item").
   const script = await pairToken(win, port, 'remote', 'Placeholder script');
   const original = `/api/v1/media/${toneId}/original`;
-  expect((await apiCall(port, original, { token: script })).status).toBe(404);
+  await expectPhoneRefuses({ win, port, token: script }, 'GET', original, undefined, 'media');
   const code = await pairingCode(win, 'remote', 'Placeholder phone');
   const phone = await device('chromium');
   const p = phone.page;
-  const pieces: number[] = [];
-  p.on('response', (r) => {
-    if (new URL(r.url()).pathname === original) pieces.push(r.status());
-  });
   try {
     await p.setViewportSize({ width: 375, height: 812 });
     await pairByQr(p, base, code, '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
     await setShared(win, show.playlistId, true);
-    expect((await apiCall(port, original, { token: script })).status).toBe(200);
-    await p.getByTestId('remote-tab-library').click();
-    await p.getByTestId('remote-library-shared').click();
-    const shared = p.getByTestId('remote-shared');
-    await shared.getByTestId('remote-shared-playlist').click();
-    await shared.getByTestId('remote-shared-item').filter({ hasText: 'Placeholder tone' }).click();
-
-    // Its page in D1's viewer: played here, by the link made for this phone, in pieces, with B's time bar.
-    const viewer = p.getByTestId('viewer');
-    await expect(viewer).toHaveAttribute('data-page', `sound:${toneId}`);
-    const audio = viewer.getByTestId('viewer-audio');
-    await expect.poll(() => audio.evaluate((a: HTMLAudioElement) => a.readyState)).toBeGreaterThanOrEqual(1);
-    await viewer.getByTestId('viewer-play').click();
-    await expect
-      .poll(() => audio.evaluate((a: HTMLAudioElement) => a.currentTime), { timeout: 15_000 })
-      .toBeGreaterThan(0.3);
-    expect(pieces.length).toBeGreaterThan(0);
-    expect(pieces.every((status) => status === 206 || status === 200)).toBe(true);
-    await expect(viewer.getByTestId('viewer-track')).toHaveAttribute(
-      'aria-label',
-      'The sound, on this device only',
-    );
-    // On this phone only: Drashti plays nothing.
+    // Shared: still refused, to the script and to the phone (was played on the phone by a link made for it, in
+    // pieces, with B's time bar), its link too.
+    const fromPhone = { win, page: p };
+    await expectPhoneRefuses({ win, port, token: script }, 'GET', original, undefined, 'media');
+    await expectPhoneRefuses(fromPhone, 'GET', `/api/v1/shared/${show.playlistId}/items`, undefined, 'files');
+    await expectPhoneRefuses(fromPhone, 'GET', `/api/v1/media/${toneId}/link`, undefined, 'media');
+    await expectPhoneRefuses(fromPhone, 'GET', original, undefined, 'media');
+    // Drashti plays nothing.
     expect((await snapshot(win)).state.layers.audio).toBeNull();
-    await expectNoSeriousA11yIssues(p, 'a shared sound played on a phone at 375 × 812');
-    expect(await tooSmall(p, '[data-testid="viewer"]')).toEqual([]);
 
-    // On a tablet's width, beside the show.
-    await p.keyboard.press('Escape');
-    await expect(viewer).toHaveCount(0);
-    await p.setViewportSize({ width: 768, height: 1024 });
-    await expect(p.getByTestId('remote')).toHaveAttribute('data-layout', 'wide');
-    await p.getByTestId('remote-side-library').click();
-    // Still the library's choice, as it was on the phone.
-    await expect(p.getByTestId('remote-library-shared')).toHaveAttribute('aria-selected', 'true');
-    await expect(
-      shared.getByTestId('remote-shared-item').filter({ hasText: 'Placeholder tone' }),
-    ).toBeVisible();
-    await expectNoSeriousA11yIssues(p, 'a shared playlist on a tablet at 768 × 1024');
-    expect(await tooSmall(p, '[data-testid="remote-shared"]')).toEqual([]);
-    await shared.getByTestId('remote-shared-item').filter({ hasText: 'Placeholder tone' }).click();
-    await expect(viewer).toHaveAttribute('data-page', `sound:${toneId}`);
-    await expectNoSeriousA11yIssues(p, 'a shared sound on a tablet at 768 × 1024');
-    expect(await tooSmall(p, '[data-testid="viewer"]')).toEqual([]);
-
-    // Stop Sharing: the viewer closes on the tablet, and the sound's file is sent no more.
+    // Stop Sharing, in the window: refused as before.
     await setShared(win, show.playlistId, false);
-    await expect(viewer).toHaveCount(0);
-    expect((await apiCall(port, original, { token: script })).status).toBe(404);
+    await expectPhoneRefuses({ win, port, token: script }, 'GET', original, undefined, 'media');
   } finally {
     await phone.close();
     rmSync(dir, { recursive: true, force: true });
@@ -303,7 +213,7 @@ test('a shared playlist’s sound plays on a phone from its own file, only while
   await app.close();
 });
 
-test('a folder playlist shared whole: a smart playlist following a folder, its folders as headers on a remote', async () => {
+test('a folder playlist shared whole: a smart playlist following a folder, shared from its menu; a remote is refused it and its items in words', async () => {
   test.setTimeout(180_000);
   const work = mkdtempSync(join(tmpdir(), 'drashti-phone-files-folder-'));
   const folder = join(work, 'Placeholder Sabha');
@@ -343,21 +253,20 @@ test('a folder playlist shared whole: a smart playlist following a folder, its f
     await p.setViewportSize({ width: 375, height: 812 });
     await pairByQr(p, base, code, '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
-    await p.getByTestId('remote-tab-library').click();
     await expect(win.getByTestId('network-badge')).toHaveText(/\b1 device\b/u);
     await node.click({ button: 'right' });
     await win.getByRole('menuitem', { name: 'Share with Phones and Tablets' }).click();
     await expect(node.getByTestId('playlist-shared')).toBeVisible();
-    // Shared whole: its own files, then its folder's, under the folder's name.
-    await p.getByTestId('remote-library-shared').click();
-    const shared = p.getByTestId('remote-shared');
-    await shared.getByTestId('remote-shared-playlist').filter({ hasText: 'Placeholder Sabha' }).click();
-    await expect(shared.getByTestId('remote-shared-header')).toHaveText(['Week 1']);
-    await expect(shared.getByTestId('remote-shared-item')).toHaveText([/Opening\.png/u, /Darshan\.png/u]);
-    await expectNoSeriousA11yIssues(p, 'a shared folder playlist on a phone');
-    await shared.getByTestId('remote-shared-item').filter({ hasText: 'Darshan.png' }).click();
-    await expect(p.locator('#viewer-place')).toHaveText('2 of 2 · Placeholder Sabha');
-    await expect(p.getByTestId('viewer-title')).toHaveText('Darshan.png');
+    // Shared whole, its folder's files as they were; the phone is refused the list and the items (was: its own files,
+    // then its folder's under the folder's name, opened in D1's viewer).
+    const fromPhone = { win, page: p };
+    await expectPhoneRefuses(fromPhone, 'GET', '/api/v1/shared', undefined, 'files');
+    await expectPhoneRefuses(fromPhone, 'GET', `/api/v1/shared/${playlistId}/items`, undefined, 'files');
+    expect(
+      (await win.evaluate((id) => (globalThis as PageGlobals).drashti.playlists.items(id), playlistId)).map(
+        (i) => i.label,
+      ),
+    ).toEqual(['Opening.png', 'Week 1', 'Darshan.png']);
   } finally {
     await phone.close();
   }
@@ -365,7 +274,7 @@ test('a folder playlist shared whole: a smart playlist following a folder, its f
   rmSync(work, { recursive: true, force: true });
 });
 
-test('a file added from a phone at 375 × 812: off until the switch is on, sent with a progress bar, picking up again after the connection drops, then in Added from Phones and Media with the phone’s name, never live', async () => {
+test('a file added from a phone at 375 × 812: refused in words with the switch off and on, its start, its pieces and how it stands; the switch is the window’s as before; nothing in Added from Phones or Media, never live', async () => {
   test.setTimeout(240_000);
   const { app, userData } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -373,7 +282,7 @@ test('a file added from a phone at 375 × 812: off until the switch is on, sent 
   const { base } = await networkOn(win);
   const code = await pairingCode(win, 'remote', 'Placeholder phone');
   const dir = mkdtempSync(join(tmpdir(), 'drashti-phone-files-'));
-  // About 5.8 MB: several pieces.
+  // About 5.8 MB: several pieces, had it been taken.
   const tone = makeTestTone(join(dir, 'Placeholder tone.wav'), { seconds: 60, rate: 48_000 });
   const phone = await device('chromium');
   const p = phone.page;
@@ -381,11 +290,11 @@ test('a file added from a phone at 375 × 812: off until the switch is on, sent 
     await p.setViewportSize({ width: 375, height: 812 });
     await pairByQr(p, base, code, '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
-    // Add to Drashti sits at the top of the library's Media, and is not there until someone turns it on.
-    await p.getByTestId('remote-tab-library').click();
-    await p.getByTestId('remote-library-media').click();
-    await expect(p.getByTestId('remote-media')).toBeVisible();
-    await expect(p.getByTestId('remote-add')).toHaveCount(0);
+    const fromPhone = { win, page: p };
+    const desk = filesOf(win, userData);
+    // Off, as it starts: refused in the rule's words (no longer "Drashti does not take files from phones now").
+    await refusedSending(fromPhone, tone, desk);
+    // The switch, in the operator window's Phones and tablets, as before.
     await win.getByTestId('open-network').click();
     const panel = win.getByTestId('network-panel');
     const toggle = panel.getByTestId('network-add-files');
@@ -394,54 +303,15 @@ test('a file added from a phone at 375 × 812: off until the switch is on, sent 
     await expect(toggle).toHaveAttribute('aria-checked', 'true');
     await expectNoSeriousA11yIssues(win, 'the Phones and tablets panel with files from phones on');
     await panel.getByRole('button', { name: 'Close phones and tablets' }).click();
-    await expect(p.getByTestId('remote-add-button')).toBeVisible();
-    await expectNoSeriousA11yIssues(p, 'Add to Drashti on a phone at 375 × 812');
-    expect(await tooSmall(p, '[data-testid="remote-add"]')).toEqual([]);
 
-    // The second piece's connection drops; asking where to carry on waits until the test has seen it said.
-    let pieces = 0;
-    await p.route(PIECE, async (route) => {
-      pieces++;
-      if (pieces === 2) await route.abort('connectionreset');
-      else await route.continue();
-    });
-    let release: () => void = () => undefined;
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await p.route(ONE_FILE, async (route) => {
-      await held;
-      await route.continue();
-    });
-    await addFromPhone(p, [tone]);
-    const row = p.getByTestId('remote-sending').filter({ hasText: 'Placeholder tone.wav' });
-    await expect(row).toBeVisible();
-    const words = row.getByTestId('remote-sending-words');
-    await expect(words).toHaveText('The connection dropped: picking up again…');
-    // How far it got before, on its bar.
-    const done = Number(await row.getByTestId('remote-sending-progress').getAttribute('aria-valuenow'));
-    expect(done).toBeGreaterThan(0);
-    expect(done).toBeLessThan(100);
-    await expectNoSeriousA11yIssues(p, 'a file being sent from a phone, its connection dropped');
-    release();
-    await expect(row).toHaveAttribute('data-state', 'added', { timeout: 60_000 });
-    await expect(words).toHaveText('Added to Drashti, in Media and the playlist “Added from Phones”.');
-    expect(pieces).toBeGreaterThan(2);
-    await expect.poll(() => uploadsLeft(userData)).toEqual([]);
-
-    // In the operator window: the playlist Added from Phones, and Media, each with the phone's name.
-    const added = win.getByTestId('playlist-node').filter({ hasText: 'Added from Phones' });
-    await expect(added).toBeVisible();
-    await added.click();
-    // Its length, once Drashti has read it, between.
-    await expect(win.getByTestId('item-what')).toHaveText([/^Sound( · [\d:]+)? · from Placeholder phone$/u]);
-    // Media is in the library's sheet, opened from the Library button (Session 44), shut until then.
-    const sheet = await openLibrary(win);
-    await sheet.getByTestId('library-tab-media').click();
-    await expect(
-      sheet.getByTestId('media-row').filter({ hasText: 'Placeholder tone.wav' }).getByTestId('media-note'),
-    ).toHaveText('Audio · from Placeholder phone');
-    // Never live by itself.
+    // On: refused the same, before a byte is read.
+    await refusedSending(fromPhone, tone, desk);
+    expect(uploadsLeft(userData)).toEqual([]);
+    // In the operator window: no Added from Phones, nothing in Media from the phone.
+    await expect(win.getByTestId('playlist-node').filter({ hasText: 'Added from Phones' })).toHaveCount(0);
+    const { media } = await desk();
+    expect(media).not.toContain('Placeholder tone.wav');
+    // Never live.
     const { state } = await snapshot(win);
     expect(state.live.presentationId).toBeNull();
     expect(state.live.playlist).toBeNull();
@@ -454,7 +324,7 @@ test('a file added from a phone at 375 × 812: off until the switch is on, sent 
   await app.close();
 });
 
-test('at 768 × 1024: Cancel leaves nothing behind, a file over the size limit and a renamed one are refused in words, and the switch turned off is said', async () => {
+test('at 768 × 1024: a tablet’s file is refused in words whatever its size or name, Cancel too, the switch on or off, and Drashti keeps nothing', async () => {
   test.setTimeout(240_000);
   const { app, userData } = await launchApp({
     ...NETWORK_ENV,
@@ -477,63 +347,24 @@ test('at 768 × 1024: Cancel leaves nothing behind, a file over the size limit a
     await pairByQr(p, base, code, '/remote');
     await expect(p.getByTestId('connection')).toHaveText('Connected');
     await expect(p.getByTestId('remote')).toHaveAttribute('data-layout', 'wide');
-    await p.getByTestId('remote-side-library').click();
-    await p.getByTestId('remote-library-media').click();
-    await expect(p.getByTestId('remote-add-button')).toBeVisible();
+    const fromTablet = { win, page: p };
+    const desk = filesOf(win, userData);
 
-    // Cancel while a piece is on its way: it stops at once, and Drashti keeps nothing of it.
-    let pieces = 0;
-    let cancelled: () => void = () => undefined;
-    const pressed = new Promise<void>((resolve) => {
-      cancelled = resolve;
-    });
-    await p.route(PIECE, async (route) => {
-      pieces++;
-      if (pieces === 2) {
-        await pressed;
-        await route.abort('aborted').catch(() => undefined);
-        return;
-      }
-      await route.continue();
-    });
-    await addFromPhone(p, [tone]);
-    const row = p.getByTestId('remote-sending').filter({ hasText: 'Placeholder tone.wav' });
-    await expect.poll(() => pieces).toBe(2);
-    await expect(row).toHaveAttribute('data-state', 'receiving');
-    await expectNoSeriousA11yIssues(p, 'a file being sent from a tablet at 768 × 1024');
-    expect(await tooSmall(p, '[data-testid="remote-add"]')).toEqual([]);
-    await row.getByRole('button', { name: 'Cancel Placeholder tone.wav' }).click();
-    cancelled();
-    await expect(row).toHaveAttribute('data-state', 'cancelled');
-    await expect(row.getByTestId('remote-sending-words')).toHaveText('Cancelled.');
-    await expect.poll(() => uploadsLeft(userData)).toEqual([]);
-    await p.unroute(PIECE);
-
-    // Over the size limit (8 MB here), and a page of words named as a picture: each refused in words.
-    await addFromPhone(p, [long]);
-    const tooLarge = p.getByTestId('remote-sending').filter({ hasText: 'Placeholder long tone.wav' });
-    await expect(tooLarge).toHaveAttribute('data-state', 'failed');
-    await expect(tooLarge.getByTestId('remote-sending-words')).toHaveText(
-      'This file is larger than 8.0 MB: Drashti takes files up to 8.0 MB from a phone.',
-    );
-    await addFromPhone(p, [renamed]);
-    const notTaken = p.getByTestId('remote-sending').filter({ hasText: 'Placeholder photo.jpg' });
-    await expect(notTaken).toHaveAttribute('data-state', 'failed', { timeout: 30_000 });
-    await expect(notTaken.getByTestId('remote-sending-words')).toHaveText(
-      'Drashti takes pictures, videos, sounds, PDF, PowerPoint and Keynote files, and this is none of them: each file is checked by what is inside it, not by its name.',
-    );
-    await expectNoSeriousA11yIssues(p, 'files refused, on a tablet at 768 × 1024');
-    const names = (await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia())).map(
-      (m) => m.name,
-    );
+    // A file within the limit, with its Cancel; one over the size limit (8 MB here, no longer "larger than 8.0 MB")
+    // and a page of words named as a picture (no longer checked by what is inside it): each refused in the rule's
+    // words, before a byte is read.
+    await refusedSending(fromTablet, tone, desk);
+    expect(statSync(long).size).toBeGreaterThan(8 * 1024 * 1024);
+    await expectPhoneRefuses(fromTablet, 'POST', '/api/v1/uploads', sending(long), 'files', desk);
+    await expectPhoneRefuses(fromTablet, 'POST', '/api/v1/uploads', sending(renamed), 'files', desk);
+    const names = (await desk()).media;
     for (const name of ['Placeholder tone.wav', 'Placeholder long tone.wav', 'Placeholder photo.jpg'])
       expect(names, name).not.toContain(name);
     expect(uploadsLeft(userData)).toEqual([]);
 
-    // Turned off in Drashti: the tablet says so (what it sent stays listed).
+    // Turned off in Drashti: refused the same (no longer "Drashti does not take files from phones now").
     await setAddFiles(win, false);
-    await expect(p.getByTestId('remote-add-off')).toHaveText('Drashti does not take files from phones now.');
-    await expect(p.getByTestId('remote-add-button')).toHaveCount(0);
+    await expectPhoneRefuses(fromTablet, 'POST', '/api/v1/uploads', sending(tone), 'files', desk);
   } finally {
     await tablet.close();
     rmSync(dir, { recursive: true, force: true });

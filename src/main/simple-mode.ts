@@ -222,6 +222,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.network.makePoster,
   // Session 54: whether phones may add files, and which playlists they see, are Pro Mode's.
   IPC.network.setAddFiles,
+  // The chat (alpha.23): Clear chat and showing the Chat QR are Pro Mode's. Stopping the Chat QR is never refused, and
+  // removing a chat phone is bounded below (review S5: neither touches the screens).
+  IPC.chat.clear,
+  IPC.chat.invite,
   IPC.playlists.share,
   // Output nodes (Session 13): Simple Mode sees the dashboard and Identify, and changes nothing:
   // no pairing, removing, renaming, assigning, copying everything or reloading an output.
@@ -305,6 +309,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.updates.setInstallOnQuit,
   IPC.updates.setAutoCheck,
   IPC.updates.showFile,
+  // The chat (alpha.23): a message as the operator, Simple Mode's while Chat is chosen (SIMPLE_FEATURE_CHANNELS).
+  IPC.chat.send,
   // The announcements queue: Simple Mode never approves, edits, rejects or takes one off.
   IPC.announcements.edit,
   IPC.announcements.approve,
@@ -337,6 +343,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.opening.loadPack,
   IPC.opening.saveCopy,
   IPC.opening.removeSound,
+  // Sabha flow (alpha.23): Pro Mode's, unless chosen in Simple Mode Features. Reading it changes nothing.
+  IPC.flow.choose,
+  IPC.flow.remove,
+  IPC.flow.setNow,
 ];
 
 /** What an id names among the playlists (Session 56), as the lock reads it: a template is Pro Mode's. */
@@ -378,6 +388,8 @@ export interface SimpleScope extends SimpleOpenPlaylist {
   inMusic?(mediaId: string): boolean;
   /** The presentations an edit kept for Undo covers (main/library/revisions.ts), or null when it is not kept. */
   revisionCovers?(revisionId: string): readonly string[] | null;
+  /** The chat (alpha.23): whether an id is one of today's chat phones (Simple Mode may remove one; review S5). */
+  isChatPhone?(id: string): boolean;
 }
 
 /** Whether a request on a bounded channel, with its arguments as sent, stays within Simple Mode's bounds. */
@@ -554,6 +566,9 @@ export const SIMPLE_MODE_BOUNDED: ReadonlyMap<InvokeChannel, SimpleBound> = new 
   [IPC.wallpapers.restore, anything],
   [IPC.wallpapers.choose, anything],
   ...SESSION_56_BOUNDED,
+  // The chat (alpha.23, review S5): Remove of a chat phone, which touches nothing on the screens; a Remote or an
+  // Announcements device is removed in Pro Mode, under Phones and tablets or the Chat section.
+  [IPC.chat.remove, ([id], scope) => typeof id === 'string' && (scope.isChatPhone?.(id) ?? false)],
 ]);
 
 /**
@@ -577,6 +592,9 @@ export function simpleModeRefusesWhole(channel: InvokeChannel): boolean {
 export const SIMPLE_FEATURE_CHANNELS: Readonly<Record<SimpleFeature, readonly InvokeChannel[]>> = {
   stage: [],
   messages: [],
+  // The chat (alpha.23, QA23-CHAT-1): reading it is no request Simple Mode locks; a message as the operator is Simple
+  // Mode's while Chat is chosen. Clear chat, removing a person and the Chat QR stay Pro Mode's (locked above).
+  chat: [IPC.chat.send],
   // Countdown to the start: the sabha's time over the wallpaper, its one timer made or changed to that time, shown (the
   // lead's one-minute answer for the owner, 24 Nov 2026: allowed while Timers is chosen, Pro Mode's otherwise).
   timers: [IPC.timers.startCountdown],
@@ -589,6 +607,9 @@ export const SIMPLE_FEATURE_CHANNELS: Readonly<Record<SimpleFeature, readonly In
   'video-inputs': [IPC.videoInputs.choose],
   // Where the box goes and how it looks, kept for the next box; and its window choice, from Show a Window…'s list.
   'picture-in-picture': [IPC.pip.savePlace, IPC.liveWindow.list, IPC.liveWindow.access],
+  // The Sabha flow (alpha.23): Now marked from its list, Back and Next; its PDF is chosen, replaced and removed in Pro
+  // Mode only (flow:choose and flow:remove stay locked).
+  'sabha-flow': [IPC.flow.setNow],
 };
 
 /**
@@ -663,6 +684,7 @@ export function simpleModeRefusals(
   answers.set(IPC.slideEditor.translationCancel, () => false);
   answers.set(IPC.drop.view, () => ({ ...DROP_REFUSED_VIEW }));
   answers.set(IPC.drop.pickFolder, () => null);
+  answers.set(IPC.flow.remove, () => null);
   // The Access List's: what happened, with no list (its window keeps the one it shows).
   for (const c of ACCESS_LIST_EDITS) answers.set(c, () => ({ ...refused(), view: NO_VIEW }));
   answers.set(IPC.liveWindow.list, () => ({ ok: false, reason: 'unlisted', message: words() }));

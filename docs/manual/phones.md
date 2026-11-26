@@ -1,12 +1,12 @@
 # Phones and network
 
-**Phones**, in the top bar, lets phones and tablets on the mandir's Wi-Fi work with Drashti: as a remote, as a stage display, or to send announcements. It needs no internet and costs nothing. Pair them in Pro Mode.
+**Phones**, in the top bar, lets phones and tablets on the mandir's Wi-Fi work with Drashti: as a remote, as a stage display, to send announcements, or to chat. It needs no internet and costs nothing. Pair them in Pro Mode.
 
 ## Phones and tablets
 
-**What it is.** The Phones panel: **Let paired phones and tablets connect**, the paired devices (each **Connected** or when it was last seen), **Pair a device**, and **Files from phones**.
+**What it is.** The Phones panel: **Let paired phones and tablets connect**, the paired devices (each **Connected** or when it was last seen), **Pair a device**, **Show the Chat QR code** and **Files from phones**.
 
-**When you would use it.** Before a sabha where a phone remote, a stage tablet or announcements are used.
+**When you would use it.** Before a sabha where a phone remote, a stage tablet, announcements or the chat are used.
 
 **How:**
 
@@ -34,16 +34,17 @@
 
 ## The phone remote
 
-**What it is.** A paired phone or tablet with much of this window: LIVE's picture, **Next** and **Back**, the clears, the playlist's rows, the library, the music, the stage message and timers.
+**What it is.** A paired phone or tablet that shows the sabha: LIVE's picture, the **Sabha flow** and the **Chat**, in both modes. In Simple Mode that is all, with no controls. In Pro Mode it also puts up a PowerPoint or a PDF from a playlist and moves through it. A PowerPoint goes as it was made: its own videos, sounds and slide timings play just as they do from this computer, and at its end the playlist goes on, or not, as you set it here. Since alpha.23 a phone never plays or changes any other video, picture or sound, or the timers or messages.
 
-**When you would use it.** For a presenter who moves their own slides, or an operator away from the desk.
+**When you would use it.** For a presenter who moves their own PowerPoint or PDF, or follows the sabha from the front.
 
 **How:**
 
 1. Pair the phone as a **Remote**.
-2. Tap a row of the **Playlist** to put it up; tap **Next** or **Back**, or swipe left and right on the picture.
-3. Tap **Look closer** to see the screens' picture full screen.
-4. Its **More** has the clears, the wallpapers and this computer's screens.
+2. In Pro Mode, tap a PowerPoint's or a PDF's slide in the phone's **Playlist** to put it up. Other items stay on this computer.
+3. Tap **Next** or **Back** to move inside it. **Next** stops at its last slide.
+4. Tap **Look closer** to see the screens' picture full screen, on the phone alone.
+5. Companion and a Stream Deck use **OSC** instead (see **Tools**).
 
 ![The phone remote with a placeholder slide live](../screenshots/phone-remote.png)
 
@@ -76,34 +77,45 @@
 
 ![Announcements from phones, waiting for approval](../screenshots/announcements-queue.png)
 
-## Files from phones
+## The chat
 
-**What it is.** **Phones and tablets may add files**: a paired remote can send a picture, video, sound, PDF or deck into Drashti. Off until someone turns it on. Nothing a phone sends goes on the screens by itself.
+**What it is.** One group chat for this computer and the phones paired with it, as a WhatsApp group: each message with its sender's name and time. Phone remotes and Announcements devices are in it, and the phones that scan the **Chat QR code**. It goes over the mandir's Wi-Fi only, is kept for today only, and never shows on the screens or the stream.
 
-**When you would use it.** When a volunteer has tonight's photos on their phone.
+**When you would use it.** When volunteers with phones need to tell each other, or the operator, something during the sabha.
 
 **How:**
 
-1. In **Phones**, under **Files from phones**, turn on **Phones and tablets may add files**.
-2. On the phone, open **Library**, then **Media**, then **Add from this Phone…** (or **Add photos**).
-3. **Add from this Phone…** puts files into **Media** and **Added from Phones**, marked with the phone's name. **Add photos** instead fills the ordinary playlist open in Pro Mode.
+1. Open **Chat** under LIVE, below **Messages**.
+2. Type in the box and press **Send** (or Enter). You write as **Operator**.
+3. For more people, press **Show the Chat QR code** in **Phones**, and let each phone scan it within 10 minutes.
+4. Folded, its heading shows how many new messages came in.
+5. **Clear chat** empties it for everyone. **Remove…** under **People in the chat** cuts a phone off at once.
 
-In Simple Mode, files go to the end of the playlist open on the computer; a video or sound goes into **Added from Phones** when it is a Repeat Slides playlist. With no playlist open, files go into **Added from Phones**. See **Simple Mode › A phone in Simple Mode** and the presenter's guide for the phone's limits.
+![The Phones panel](../screenshots/phones-panel.png)
 
-![Files from phones in the Phones panel, turned on](../screenshots/phones-panel-files.png)
+## Files from phones
+
+**What it is.** **Phones and tablets may add files**, under **Files from phones** in **Phones**. Phones no longer send or receive files (since alpha.23): Drashti refuses every file a phone sends, whether the switch is on or off. The switch stays for now.
+
+**When you would use it.** Not any more. Bring a volunteer's files in on this computer.
+
+**How:**
+
+1. Leave **Phones and tablets may add files** as it is: it changes nothing for phones.
+2. Copy the files to this computer, then press **Add files…** above the playlist, or drop them on it.
+
+![Files from phones in the Phones panel](../screenshots/phones-panel-files.png)
 
 ## Sharing a playlist with phones
 
-**What it is.** A playlist's files shown on a paired remote, to look at and play on the phone only.
+**What it is.** **Share with Phones and Tablets**, in a playlist's right-click menu, and its mark on the playlist's row. Since alpha.23 phones no longer see shared playlists. The menu and the mark stay for now.
 
-**When you would use it.** So a presenter can look through the night's files on their own phone.
+**When you would use it.** Not any more. A presenter reads the night's PowerPoint and PDF items in the phone's **Playlist**, in Pro Mode.
 
 **How:**
 
-1. Right-click the playlist on the left.
-2. Choose **Share with Phones and Tablets**. A mark shows on its row.
-3. On the phone, **Library** then lists it under **Shared from Drashti**.
-4. **Stop Sharing**, in the same menu, ends it.
+1. To take the mark off, right-click the playlist on the left.
+2. Choose **Stop Sharing**.
 
 ![A playlist's menu, with Share with Phones and Tablets](../screenshots/share-with-phones.png)
 

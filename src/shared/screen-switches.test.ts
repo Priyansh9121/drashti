@@ -10,7 +10,10 @@ import {
   NO_STAGE_SCREEN,
   SET_UP_STAGE,
   showsSomething,
+  stageDevicesPaired,
+  stageOffHint,
   stageScreensSet,
+  stageTabletsShowing,
   STARTS,
   SWITCH_NAMES,
   SWITCH_OFF_WORDS,
@@ -184,17 +187,89 @@ describe('Audience and Stage (Session 50)', () => {
     ];
     // The hall's projector alone: none.
     expect(stageScreensSet(snapshot(groups, { 'hall-1': 'showing' }))).toBe(0);
-    // A stage group with no display, or turned off in Screens, or its display unplugged: none either.
+    // A stage group with no display, or turned off in Screens: none either.
     expect(
       stageScreensSet(
         snapshot(groups, { 'hall-1': 'showing', 'stage-1': 'unassigned', 'node-stage': 'disabled' }),
       ),
     ).toBe(0);
-    expect(stageScreensSet(snapshot(groups, { 'stage-1': 'missing-display' }))).toBe(0);
     // Showing (with Stage off too: its window stays) or stopped and tried again: set; a node's counts too.
     expect(stageScreensSet(snapshot(groups, { 'stage-1': 'showing' }))).toBe(1);
     expect(stageScreensSet(snapshot(groups, { 'stage-1': 'stopped', 'node-stage': 'showing' }))).toBe(2);
     expect(NO_STAGE_SCREEN).toBe('No screen is set to Stage.');
     expect(SET_UP_STAGE).toBe('Set up Stage screen…');
+  });
+
+  // alpha.23 (a22-review-stage S8; lead 2's QA23-STAGE8-1): set to Stage, though its display or node is away now, or
+  // a tablet paired as Stage: Stage On never says "No screen is set to Stage." then.
+  it('counts a stage screen whose display is unplugged or whose node is offline, and a tablet paired as Stage', () => {
+    const groups = [
+      group('hall', 'audience', [screen('hall-1', 'hall')]),
+      group('stage', 'stage', [screen('stage-1', 'stage'), screen('node-stage', 'stage', 'node-1')]),
+    ];
+    // Its display unplugged: still set to Stage (its window opens as the display comes back).
+    expect(stageScreensSet(snapshot(groups, { 'hall-1': 'showing', 'stage-1': 'missing-display' }))).toBe(1);
+    // A node's, the node offline now: still set.
+    expect(stageScreensSet(snapshot(groups, { 'hall-1': 'showing', 'node-stage': 'node-offline' }))).toBe(1);
+    // An audience screen away counts for nothing.
+    expect(stageScreensSet(snapshot(groups, { 'hall-1': 'missing-display' }))).toBe(0);
+    // The hall's projector alone and one tablet paired as Stage: one.
+    expect(stageScreensSet(snapshot(groups, { 'hall-1': 'showing' }), 1)).toBe(1);
+    expect(stageScreensSet(snapshot(groups, { 'stage-1': 'showing' }), 2)).toBe(3);
+    // Only a Stage device counts: never a Remote, an Announcements phone or the announcements poster link.
+    expect(
+      stageDevicesPaired({
+        on: true,
+        devices: [
+          { kind: 'remote', poster: false },
+          { kind: 'announcements', poster: false },
+          { kind: 'announcements', poster: true },
+        ],
+      }),
+    ).toBe(0);
+    expect(
+      stageDevicesPaired({
+        on: true,
+        devices: [
+          { kind: 'stage', poster: false },
+          { kind: 'remote', poster: false },
+          { kind: 'stage', poster: false },
+        ],
+      }),
+    ).toBe(2);
+  });
+
+  // The owner's QA23-STAGE8-2, "Keep Off, say so (Rec.)": Stage still starts off, and while it is off with a tablet
+  // paired as Stage the status bar says beside "Stage off" that the tablet shows the audience picture; with none,
+  // "Stage off" alone, as in alpha.22.
+  it('says beside Stage off that a paired stage tablet shows the audience picture, only with one paired', () => {
+    expect(stageOffHint(0)).toBeNull();
+    expect(stageOffHint(1)).toBe('the stage tablet shows the audience picture');
+    expect(stageOffHint(2)).toBe('the stage tablets show the audience picture');
+  });
+
+  // a22-review-stage8, third look, SHOULD: a tablet that is not connected now shows nothing, so the status bar's hint
+  // counts only the stage tablets connected now (the Network on); the no-stage line still counts every paired one.
+  it('counts the stage tablets that show the audience picture now: connected, the Network on', () => {
+    const tablets = [
+      { kind: 'stage', poster: false, connected: true },
+      { kind: 'stage', poster: false, connected: false },
+      { kind: 'remote', poster: false, connected: true },
+      { kind: 'announcements', poster: true, connected: true },
+    ] as const;
+    expect(stageTabletsShowing({ on: true, devices: tablets })).toBe(1);
+    expect(stageTabletsShowing({ on: false, devices: tablets })).toBe(0);
+    expect(stageTabletsShowing({ on: true, devices: [tablets[1]] })).toBe(0);
+  });
+
+  // a22-review-stage8 S5 (lead 2's call): with the Network (phones and tablets) off, a tablet paired as Stage shows
+  // nothing, so it never counts: Stage On says no screen is set to Stage, as before.
+  it('counts a tablet paired as Stage only while the Network is on', () => {
+    const tablets = [
+      { kind: 'stage', poster: false },
+      { kind: 'stage', poster: false },
+    ] as const;
+    expect(stageDevicesPaired({ on: false, devices: tablets })).toBe(0);
+    expect(stageDevicesPaired({ on: true, devices: tablets })).toBe(2);
   });
 });

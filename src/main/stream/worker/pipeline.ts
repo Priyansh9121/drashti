@@ -2,7 +2,12 @@ import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { createWriteStream, fdatasync, openSync, statfsSync, type WriteStream } from 'node:fs';
 import { setPriority } from 'node:os';
 import { dirname } from 'node:path';
-import { placeName, RECORD_PART_BYTES, type StreamPreset } from '../../../shared/stream';
+import {
+  placeName,
+  RECORD_PART_BYTES,
+  STREAM_SOUND_QUIET_MS,
+  type StreamPreset,
+} from '../../../shared/stream';
 import { redact } from '../redact';
 import { audioArgs, type EncoderChoice, encoderCandidates, pickEncoder, videoArgs } from './encoders';
 import type { MkvCluster } from './mkv';
@@ -69,6 +74,8 @@ const RECORD_BACKLOG = 256 * 1024 * 1024;
 export const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 15_000, 30_000];
 /** A connection that lasted this long counts as working: the next drop starts the waits again. */
 const STEADY_MS = 30_000;
+/** How long a connection's FFmpeg's last words are waited for once it has exited (its reason is read from them). */
+const WORDS_AFTER_EXIT_MS = 2000;
 
 export function reconnectDelay(attempt: number): number {
   return RECONNECT_DELAYS_MS[Math.min(attempt, RECONNECT_DELAYS_MS.length - 1)] ?? 30_000;
@@ -583,7 +590,7 @@ export class StreamPipeline {
   private fillSilence(): void {
     if (!this.encodeProcess) return;
     const quiet = Date.now() - this.lastAudioAt;
-    if (quiet < 300) return;
+    if (quiet < STREAM_SOUND_QUIET_MS) return;
     const frames = Math.round((quiet * SAMPLE_RATE) / 1000);
     this.lastAudioAt = Date.now();
     for (let left = frames; left > 0; left -= 4800) {
@@ -917,8 +924,23 @@ export class StreamPipeline {
       if (c.pusher !== child) return;
       c.pusher = null;
       c.consumer = null;
-      if (!this.connections.includes(c) || this.stopping) return;
-      this.scheduleReconnect(c);
+      // Why it stopped is read from what FFmpeg said last, so the reconnect waits until all it said has been read
+      // ('close'): at its exit alone, a busy computer may not have read its last words yet, and the reason would be
+      // lost (a22-exitreaders, after x58). Nothing should hold its output open once it has exited, but the stream
+      // never waits on one that does: at most WORDS_AFTER_EXIT_MS, with what has been read by then.
+      let settled = false;
+      const reconnect = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(afterExit);
+        if (!this.connections.includes(c) || this.stopping) return;
+        this.scheduleReconnect(c);
+      };
+      const afterExit = setTimeout(() => {
+        // After whatever the computer has read meanwhile (I/O comes before setImmediate's turn).
+        setImmediate(reconnect);
+      }, WORDS_AFTER_EXIT_MS);
+      child.once('close', reconnect);
     });
   }
 

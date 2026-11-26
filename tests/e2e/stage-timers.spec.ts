@@ -5,6 +5,7 @@ import { FLASH_DIM, flashDimmed } from '../../src/shared/stage-timer';
 import { formatTimer, type TimerFields } from '../../src/shared/timers';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode, TABLET } from './devices';
+import { expectPhoneRefuses } from './phone-refuses';
 import {
   holdStill,
   launchApp,
@@ -30,9 +31,9 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * own settings (a see-through fill, bold, a line round the letters, a shadow, up and down; a timer's format,
  * warning colour, colour when over and flash; a clock's 24 hours and seconds) draw alike on this computer's stage
  * screen, a node's, a tablet's stage page, the Stage panel's preview and the editor; the flash and the colours
- * follow the engine's time; a layout saved before opens and draws as it was. The Stage screen panel and the phone
- * remote (Chrome's engine and Safari's) start, pause and reset the timers the layout shows, saying what each
- * counts to. The Text size field shows what is typed (G4). Placeholder timers and words only; quiet; outputs as
+ * follow the engine's time; a layout saved before opens and draws as it was. The Stage screen panel starts, pauses
+ * and resets the timers the layout shows, saying what each counts to; the phone remote (Chrome's engine and
+ * Safari's) is refused them since alpha.23 (QA23-PHONE-1). The Text size field shows what is typed (G4). Placeholder timers and words only; quiet; outputs as
  * windows; nothing wider than 1024 assumed.
  */
 
@@ -807,7 +808,7 @@ test('a layout saved before opens as it was, and draws as it did: nothing to sav
   await app.close();
 });
 
-test('the Stage panel and the phone start, pause and reset the stage layout’s timers, and say what each counts to', async () => {
+test('the Stage panel starts, pauses and resets the stage layout’s timers, and says what each counts to; a phone is refused them, in words', async () => {
   test.setTimeout(240_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -876,7 +877,8 @@ test('the Stage panel and the phone start, pause and reset the stage layout’s 
   await expect.poll(elapsed).toBe(0);
   await expect(first.getByTestId('stage-timer-value')).toHaveText('5:00');
 
-  // The phone remote, Chrome's engine and Safari's: the same timers, under "On the stage screens".
+  // The phone remote, Chrome's engine and Safari's: its stage timers' Start, Pause and Reset (its More before
+  // alpha.23) and reading the timers refused in words, the countdown as it was; the Stage panel's own still work.
   const { base } = await networkOn(win);
   for (const engine of ['chromium', 'webkit'] as const) {
     await resetAll();
@@ -886,33 +888,20 @@ test('the Stage panel and the phone start, pause and reset the stage layout’s 
     try {
       await pairByQr(p, base, code, '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
-      await p.getByTestId('remote-tab-more').click();
-      // The stage screens' timers: in the More tab, with the stage screen's other controls.
-      const section = p.getByTestId('remote-stage-timers');
-      await expect(section).toBeVisible();
-      await expect(p.getByRole('list', { name: 'The stage screens’ timers' })).toBeVisible();
-      const timers = section.getByTestId('remote-stage-timer');
-      await expect(timers).toHaveCount(2);
-      const one = timers.first();
-      await expect(one).toHaveAttribute('data-timer-id', countdown);
-      await expect(one).toContainText('Counts down from 5:00');
-      await expect(one.getByTestId('remote-stage-timer-value')).toHaveText('5:00');
-      await expect(timers.nth(1)).toContainText(/Counts down to (19:30|7:30\s?[ap]\.?m\.?)/iu);
-      await one.getByRole('button', { name: 'Start' }).click();
+      const asks = { win, page: p };
+      await expectPhoneRefuses(asks, 'GET', '/api/v1/timers', undefined, 'computer');
+      await expectPhoneRefuses(asks, 'POST', `/api/v1/timers/${countdown}/start`, {}, 'computer');
+      expect(await startedAt()).toBeNull();
+      await first.getByRole('button', { name: 'Start' }).click();
       await expect.poll(startedAt).not.toBeNull();
-      await one.getByRole('button', { name: 'Pause' }).click();
+      await expectPhoneRefuses(asks, 'POST', `/api/v1/timers/${countdown}/pause`, {}, 'computer');
+      expect(await startedAt()).not.toBeNull();
+      await first.getByRole('button', { name: 'Pause' }).click();
       await expect.poll(startedAt).toBeNull();
-      await one.getByRole('button', { name: 'Reset' }).click();
+      await expectPhoneRefuses(asks, 'POST', `/api/v1/timers/${countdown}/reset`, {}, 'computer');
+      expect(await elapsed()).toBeGreaterThan(0);
+      await first.getByRole('button', { name: 'Reset' }).click();
       await expect.poll(elapsed).toBe(0);
-      // Every target 44 px or more; the accessibility checks on a phone and on a tablet.
-      for (const button of await section.getByRole('button').all())
-        expect((await button.boundingBox())?.height ?? 0, engine).toBeGreaterThanOrEqual(44);
-      await p.setViewportSize({ width: 375, height: 812 });
-      await expect(section).toBeVisible();
-      await expectNoSeriousA11yIssues(p, `the remote’s stage timers at 375 x 812 (${engine})`);
-      await p.setViewportSize({ width: 768, height: 1024 });
-      await expect(p.getByTestId('remote-stage-timers')).toBeVisible();
-      await expectNoSeriousA11yIssues(p, `the remote’s stage timers at 768 x 1024 (${engine})`);
     } finally {
       await phone.close();
     }

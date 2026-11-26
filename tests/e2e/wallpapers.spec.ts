@@ -9,6 +9,7 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 import type { PageGlobals } from './helpers';
 import {
+  chooseMenuItem,
   dropFiles,
   holdStill,
   importAndGetIds,
@@ -152,7 +153,7 @@ const addWallpapers = (win: Page, mediaIds: string[]) =>
 
 test('wallpapers in the Playlists panel: pictures dropped or imported, anything else refused with the reason; one chosen, on a screen just plugged in and kept over a restart; Rename and Delete with Undo through the one menu', async () => {
   test.setTimeout(240_000);
-  const { app, userData } = await launchApp(AUTO);
+  const { app, userData } = await launchApp({ ...AUTO, DRASHTI_TEST_UNDO_LINE: '1' });
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
@@ -271,6 +272,78 @@ test('wallpapers in the Playlists panel: pictures dropped or imported, anything 
   await win.getByTestId('undo-removal').getByRole('button', { name: /Undo/u }).click();
   await expect(section.getByTestId('wallpaper-tile')).toHaveCount(3);
   await expectNoSeriousA11yIssues(win, 'the wallpapers', '[data-testid="wallpapers"]');
+
+  // The Undo line goes by itself a minute after the last change (QA23-UNDOLINE-1, the owner: "it should not keep
+  // saying deleted "" under wallpapers for more than a minute"), on a clock this test moves on (DRASHTI_TEST_UNDO_LINE).
+  // Its Undo works until then; Edit > Undo still brings the wallpaper back after it has gone.
+  const line = win.getByTestId('undo-removal');
+  const undoOnLine = line.getByRole('button', { name: /Undo/u });
+  const later = (ms: number) =>
+    win.evaluate((by) => {
+      const move = (globalThis as { drashtiTestUndoLineLater?: (ms: number) => void })
+        .drashtiTestUndoLineLater;
+      if (!move) throw new Error('the Undo line’s test clock is not there (DRASHTI_TEST_UNDO_LINE)');
+      move(by);
+    }, ms);
+  /** Two frames on: the window has drawn what the clock moving on changed. */
+  const drawn = () =>
+    win.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              resolve();
+            });
+          });
+        }),
+    );
+  const deleteBlue = async () => {
+    await tile(win, 'Placeholder darshan blue').click({ button: 'right' });
+    await win.getByRole('menu').getByRole('menuitem', { name: 'Delete…' }).click();
+    await expect(tile(win, 'Placeholder darshan blue')).toHaveCount(0);
+    await expect(line).toContainText('Deleted the wallpaper “Placeholder darshan blue”');
+  };
+  await deleteBlue();
+  await later(59_000);
+  await drawn();
+  await expect(line).toContainText('Deleted the wallpaper “Placeholder darshan blue”');
+  // Its Undo, clicked with the mouse, works until then; the focus that click gives it does not keep the line past the
+  // minute (the review's F1): the line says the change before, then goes.
+  await undoOnLine.click();
+  await expect(tile(win, 'Placeholder darshan blue')).toBeVisible();
+  await expect(line).toBeVisible();
+  await later(1_000);
+  await expect(line).toHaveCount(0);
+  // A new change has a minute of its own. With the keyboard (Tab) on its Undo when the minute is up, the line stays
+  // (nothing takes the keyboard from it) until the keyboard leaves it.
+  await deleteBlue();
+  await undoOnLine.focus();
+  await win.keyboard.press('Shift+Tab');
+  await expect(undoOnLine).not.toBeFocused();
+  await win.keyboard.press('Tab');
+  await expect(undoOnLine).toBeFocused();
+  await later(60_000);
+  await drawn();
+  await expect(line).toBeVisible();
+  await expect(undoOnLine).toBeFocused();
+  await tile(win, 'Placeholder sunrise').focus();
+  await expect(line).toHaveCount(0);
+  // The line gone, Edit > Undo still brings the wallpaper back.
+  await chooseMenuItem(app, 'undo');
+  await expect(tile(win, 'Placeholder darshan blue')).toBeVisible();
+  await expect(line).toHaveCount(0);
+  // Once more, nothing on the line: there at 59.999 s, gone at 60 s, then Edit > Undo.
+  await deleteBlue();
+  await expect(undoOnLine).not.toBeFocused();
+  await later(59_999);
+  await drawn();
+  await expect(line).toContainText('Deleted the wallpaper “Placeholder darshan blue”');
+  await later(1);
+  await expect(line).toHaveCount(0);
+  await chooseMenuItem(app, 'undo');
+  await expect(tile(win, 'Placeholder darshan blue')).toBeVisible();
+  await expect(section.getByTestId('wallpaper-tile')).toHaveCount(3);
+  await expect(line).toHaveCount(0);
 
   // At 1280 × 720 too.
   await sizeOperatorWindow(app, win, { width: 1280, height: 720 });

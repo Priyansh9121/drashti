@@ -293,6 +293,90 @@ describe('OutputManager', () => {
     expect(manager.status()[0]?.state).toBe('showing');
   });
 
+  it('a screen restarted again and again by the heartbeat says so (a23-heartbeat): showing, with its count, until it no longer is', () => {
+    screens = [screen('audience', hall), screen('stage', stage)];
+    manager.reconcile();
+    const before = changes;
+    manager.setRestarting('audience', 4);
+    expect(manager.status()[0]).toEqual({
+      screenId: 'audience',
+      state: 'showing',
+      displayId: 2,
+      restarts: 4,
+    });
+    expect(manager.status()[1]).toEqual({ screenId: 'stage', state: 'showing', displayId: 3 });
+    expect(changes).toBe(before + 1);
+    manager.setRestarting('audience', 4);
+    expect(changes).toBe(before + 1);
+    manager.setRestarting('audience', 5);
+    expect(manager.status()[0]?.restarts).toBe(5);
+    expect(changes).toBe(before + 2);
+    // Its window is left as it is, on its display.
+    expect(live()).toEqual(['audience@2', 'stage@3']);
+    // Stopped by the watchdog meanwhile: Stopped says it, and the count is back once it shows again.
+    manager.setStopped('audience', true);
+    expect(manager.status()[0]).toEqual({ screenId: 'audience', state: 'stopped', displayId: 2 });
+    manager.setStopped('audience', false);
+    expect(manager.status()[0]?.restarts).toBe(5);
+    manager.setRestarting('audience', null);
+    expect(manager.status()[0]).toEqual({ screenId: 'audience', state: 'showing', displayId: 2 });
+    // A window closed (turned off) forgets it: turned on again, it starts afresh.
+    manager.setRestarting('audience', 4);
+    screens = [screen('audience', hall, false), screen('stage', stage)];
+    manager.reconcile();
+    screens = [screen('audience', hall), screen('stage', stage)];
+    manager.reconcile();
+    expect(manager.status()[0]).toEqual({ screenId: 'audience', state: 'showing', displayId: 2 });
+    // Moved to another display: its window is made again there, and nothing of the old one carries over (review S2).
+    manager.setRestarting('audience', 4);
+    screens = [screen('audience', laptop), screen('stage', stage)];
+    manager.reconcile();
+    expect(live()).toEqual(['stage@3', 'audience@1']);
+    expect(manager.status()[0]).toEqual({ screenId: 'audience', state: 'showing', displayId: 1 });
+  });
+
+  it('held for the owner (QA23-HEARTBEAT-1, A): a screen kept as it is says so while Stopped, and no more once it is not', () => {
+    screens = [screen('audience', hall), screen('stage', stage)];
+    manager.reconcile();
+    manager.setRestarting('audience', 4);
+    const before = changes;
+    manager.setNotAnswering('audience', true);
+    manager.setStopped('audience', true);
+    expect(manager.status()[0]).toEqual({
+      screenId: 'audience',
+      state: 'stopped',
+      displayId: 2,
+      notAnswering: true,
+    });
+    expect(changes).toBe(before + 2);
+    manager.setNotAnswering('audience', true);
+    expect(changes).toBe(before + 2);
+    // Its window is left as it is, on its display.
+    expect(live()).toEqual(['audience@2', 'stage@3']);
+    // Back (by itself, or tried again and drawing): Stopped no more, and nor is it said.
+    manager.setStopped('audience', false);
+    expect(manager.status()[0]).toEqual({
+      screenId: 'audience',
+      state: 'showing',
+      displayId: 2,
+      restarts: 4,
+    });
+    manager.setStopped('audience', true);
+    expect(manager.status()[0]).toEqual({ screenId: 'audience', state: 'stopped', displayId: 2 });
+    // Said only of a stopped screen.
+    manager.setStopped('audience', false);
+    manager.setRestarting('audience', null);
+    manager.setNotAnswering('audience', true);
+    expect(manager.status()[0]).toEqual({ screenId: 'audience', state: 'showing', displayId: 2 });
+    // Kept, then moved to another display: its window made again there is not said to be kept (review round 2 nit).
+    manager.setStopped('audience', true);
+    expect(manager.status()[0]?.notAnswering).toBe(true);
+    screens = [screen('audience', laptop), screen('stage', stage)];
+    manager.reconcile();
+    expect(live()).toEqual(['stage@3', 'audience@1']);
+    expect(manager.status()[0]?.notAnswering).toBeUndefined();
+  });
+
   // ---- Audience and Stage (Session 50) ----------------------------------------------------------------------
 
   const fill = display(4, 'Switcher fill', 5280);

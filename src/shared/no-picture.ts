@@ -39,6 +39,15 @@ export function cannotPlayNotice(
 }
 
 /**
+ * What the operator window says when one of this computer's screens could not play a video that is up but not playing
+ * (alpha.23, a22-halldrop: paused, waiting for its click, or at its end, on the slide or in the box), so nothing came
+ * off: until then nobody was told. `where`: the screens, "the screen “…”" or "the screens “…” and “…”".
+ */
+export function cannotPlayWaitingNotice(name: string, where: string): string {
+  return `“${name}” could not play on ${where}. It is still up but not playing: if it is played, Drashti stops it again, as it cannot be shown there. Put something else up, and after the sabha tell whoever looks after Drashti which file it was.`;
+}
+
+/**
  * How long a page that draws the show waits for a video's first frame (Q60-44, the owner's answer A of 20 Nov 2026,
  * through the lead): with none by then, it says the video cannot play, as an element that failed does, and the show
  * takes it off with its sound, the Wallpaper or the cover over the picture staying up until then (render/Scene.tsx),
@@ -58,6 +67,12 @@ export const NO_FIRST_FRAME = -1;
  * loads or decodes gets up to SLOW_START_MS from going up, and is then said not to have started in time (NO_START_IN_TIME:
  * the operator is told so, never "damaged"). The Wallpaper or cover stays meanwhile, never black (render/Scene.tsx).
  */
+
+/**
+ * With no first frame on a screen this long after it went up, LIVE says it is starting there (the owner's
+ * QA23-HALLDROP-1 (a), "Words during the wait (Rec.)", render/no-picture.ts tellStarting).
+ */
+export const STARTING_WORDS_MS = 2000;
 
 /** Still loading or decoding, with no first frame this long after it went up: it could not start in time. */
 export const SLOW_START_MS = 30_000;
@@ -130,6 +145,15 @@ export function cannotStartInTimeNotice(
       ? 'so it stopped where it was on the slide, with its sound'
       : 'so the picture-in-picture box came off';
   return `“${name}” could not start in time on ${where}, ${what}: this computer was too busy to start it in ${String(SLOW_START_MS / 1000)} seconds. Put it up again when less is playing.`;
+}
+
+/**
+ * What the operator window says when a video up but not playing (a22-halldrop) did not start in time on this computer's
+ * screens (Q60-51, the owner's "Yes, A": slow, never "damaged"), so nothing came off: it is still loading there, and LIVE
+ * says so under its picture until it is drawn. `where`: the screens.
+ */
+export function cannotStartInTimeWaitingNotice(name: string, where: string): string {
+  return `“${name}” could not start in time on ${where}: this computer was too busy to start it in ${String(SLOW_START_MS / 1000)} seconds, and it is still loading there. The file is not damaged: wait until the line under LIVE goes before you play it.`;
 }
 
 /**

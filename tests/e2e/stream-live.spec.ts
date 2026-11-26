@@ -19,6 +19,7 @@ import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import type { StreamStatus } from '../../src/shared/stream';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
+import { logText } from './log-lines';
 import { filesUnder, findSecrets } from './secrets';
 import {
   chooseMenuItem,
@@ -682,7 +683,7 @@ test('a quit on purpose while on air and recording: the next start is off air, n
   await expect.poll(saved).toMatchObject({ live: true, recording: true });
   await app.close();
   expect(saved()).toMatchObject({ live: false, recording: false });
-  const log = () => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  const log = () => logText(userData);
   expect(log()).not.toContain('Uncaught exception');
 
   // Started again at once: nothing goes on air or records by itself, and nothing says it stopped.

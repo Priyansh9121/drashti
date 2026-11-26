@@ -1,7 +1,23 @@
 import { expect, test } from '@playwright/test';
-import { type PageGlobals, outputPage, outputReady, setUpScreen, slideEditorClosed } from './helpers';
+import {
+  holdStill,
+  type PageGlobals,
+  outputPage,
+  outputReady,
+  setUpScreen,
+  slideEditorClosed,
+} from './helpers';
 import { openGeneratedPdf, usePdfTools } from './pdf-tools-fixtures';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode, type Device } from './devices';
+import { expectPhoneRefuses } from './phone-refuses';
+import { phoneAsks, phoneShowsLive, playlistOf } from './pro-phone';
+
+/*
+ * A PDF's marks with a click order (alpha.21), and a Pro Mode phone (alpha.23, QA23-PHONE-1, the owner's "Only PPT and
+ * PDF"): the PDF put up from its playlist row on the phone, its marks stepped with the phone's Next and Back, Next
+ * stopping at its last page (never the words after it in the playlist), the slide cleared from the phone; the words'
+ * row and Clear all refused.
+ */
 
 test('PDF marks have an undoable click order that survives saving and drives Next', async () => {
   const s = await openGeneratedPdf(undefined, undefined, NETWORK_ENV);
@@ -45,15 +61,37 @@ test('PDF marks have an undoable click order that survives saving and drives Nex
     const remote = phone.page;
     await pairByQr(remote, base, await pairingCode(s.win, 'remote', 'Placeholder marks phone'), '/remote');
     await expect(remote.getByTestId('connection')).toHaveText('Connected');
-    await s.win.evaluate(
-      (id) =>
-        (globalThis as PageGlobals).drashti.engine.dispatch({
-          type: 'goLive',
-          presentationId: id,
-          slideIndex: 0,
-        }),
-      s.id,
+    // The PDF in a playlist, with words after it (alpha.23: a phone puts up a PowerPoint or a PDF only).
+    const words = await s.win.evaluate(async () => {
+      const made = await (globalThis as PageGlobals).drashti.library.newFromWords(
+        'Placeholder words after the marks',
+        'Placeholder words one\n\nPlaceholder words two',
+      );
+      if (!made.ok) throw new Error(made.message);
+      return made.id;
+    });
+    const list = await playlistOf(s.win, 'Placeholder marks list', [
+      { kind: 'presentation', presentationId: s.id },
+      { kind: 'presentation', presentationId: words },
+    ]);
+    const [pdfRow = '', wordsRow = ''] = list.rows;
+    // The words' row from the phone: refused, nothing up.
+    await expectPhoneRefuses(
+      { win: s.win, page: remote },
+      'POST',
+      '/api/v1/trigger/item',
+      { playlistId: list.playlistId, itemId: wordsRow },
+      'notDeck',
     );
+    // The PDF's row, put up from the phone (before alpha.23 the operator put it up).
+    expect(
+      (
+        await phoneAsks(remote, 'POST', '/api/v1/trigger/item', {
+          playlistId: list.playlistId,
+          itemId: pdfRow,
+        })
+      ).status,
+    ).toBe(200);
     const step = () =>
       s.win.evaluate(async () => {
         const live = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide;
@@ -95,6 +133,45 @@ test('PDF marks have an undoable click order that survives saving and drives Nex
     await expect(targets.nth(1)).toHaveCSS('opacity', '0');
     for (const [index, mark] of phoneMarks.entries())
       await expect(mark).toHaveCSS('opacity', index === 0 ? '1' : '0');
+
+    // On to its last page with the phone's Next: there it stops, never the words after it in the playlist.
+    await remote.getByTestId('remote-next-button').click();
+    await expect.poll(step).toEqual({ index: 0, step: 2 });
+    for (const page of [1, 2]) {
+      await remote.getByTestId('remote-next-button').click();
+      await expect.poll(step).toMatchObject({ index: page });
+    }
+    await phoneShowsLive(remote, s.win);
+    const atEnd = await step();
+    await remote.getByTestId('remote-next-button').click();
+    // A Next with no revision of its own (the review's MUST-2): a tap's carries the revision its page saw, and the
+    // engine lets an older one do nothing (TST-11), so only Next's `within` (the main process's) keeps the deck still.
+    expect(await phoneAsks(remote, 'POST', '/api/v1/trigger/next', {})).toMatchObject({
+      status: 200,
+      json: { ok: true, changed: false },
+    });
+    await holdStill(
+      async () => {
+        const now = await step();
+        const live = await s.win.evaluate(
+          async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.live.presentationId,
+        );
+        return now.index === atEnd.index && now.step === atEnd.step && live === s.id;
+      },
+      1500,
+      'Next on the phone at the PDF’s last page changes nothing',
+    );
+    // Clear all from the phone: refused; Clear slide (the owner's Q7): the slide goes, nothing else.
+    await expectPhoneRefuses({ win: s.win, page: remote }, 'POST', '/api/v1/clear/all', {}, 'computer');
+    expect((await phoneAsks(remote, 'POST', '/api/v1/clear/slide', {})).status).toBe(200);
+    await expect
+      .poll(() =>
+        s.win.evaluate(
+          async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide,
+        ),
+      )
+      .toBeNull();
+    await expect(out.locator('[data-layer="slide"]')).toHaveCount(0);
     s.unchanged();
   } finally {
     await phone?.close();

@@ -463,6 +463,26 @@ it('cancels the rehearsal at an access stop without restarting Whisper or downlo
   }
 });
 
+it('after an access stop, a timing change starts nothing again: no listening, no download (cap-review-next n1)', async () => {
+  vi.useFakeTimers();
+  try {
+    const { service, started, downloads, shown } = setup();
+    await service.setOn(true);
+    service.setPrototypeOn(true);
+    service.cancelPrototype();
+    // Only an engine's problem keeps captions that are on from starting; after the stop nothing is waiting to start.
+    service.setTiming({ ...DEFAULT_CAPTION_TIMING, stepMs: 1_000 });
+    await vi.advanceTimersByTimeAsync(300);
+    expect(started).toEqual(['auto']);
+    expect(downloads).toEqual(['small']);
+    expect(service.view().speech).toEqual({ phase: 'off' });
+    expect(shown.at(-1)).toBeNull();
+    service.close();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 it('starts a fresh prototype session when the selected normal model changes, without loading it', async () => {
   vi.useFakeTimers();
   try {
@@ -487,7 +507,16 @@ describe('a computer too slow for live captions (cap-threads, the owner: “Say 
   const rest = (rests: number, stops = false): SpeechState => ({
     phase: 'held',
     reason: 'busy',
-    slow: { answerMs: 15_500, behindMs: 16_000, threads: 2, processors: 2, rests, keptUp: false, stops },
+    slow: {
+      answerMs: 15_500,
+      behindMs: 16_000,
+      limitMs: 2_250,
+      threads: 2,
+      processors: 2,
+      rests,
+      keptUp: false,
+      stops,
+    },
   });
 
   it('after 3 rests in a row captions stop: off on this computer with the reason, the engine stopped; on again tries again', async () => {

@@ -171,6 +171,14 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  flow: {
+    get: () => invoke(IPC.flow.get),
+    choose: () => invoke(IPC.flow.choose),
+    remove: () => invoke(IPC.flow.remove),
+    setNow: (flowId, now) => invoke(IPC.flow.setNow, flowId, now),
+    page: (flowId, page) => invoke(IPC.flow.page, flowId, page),
+    onChanged: (listener) => on(IPC.flow.changed, listener),
+  },
   drop: {
     view: () => invoke(IPC.drop.view),
     pickFolder: () => invoke(IPC.drop.pickFolder),
@@ -522,7 +530,10 @@ const bridge: DrashtiBridge = {
     setLook: (mediaId, look) => invoke(IPC.media.setLook, mediaId, look),
     keepLiveZoom: () => invoke(IPC.media.keepLiveZoom),
     photo: (mediaId) => invoke(IPC.media.photo, mediaId),
-    savePicture: (mediaId, name) => invoke(IPC.media.savePicture, mediaId, name),
+    savePicture: (mediaId, name, onSlide) =>
+      onSlide === undefined
+        ? invoke(IPC.media.savePicture, mediaId, name)
+        : invoke(IPC.media.savePicture, mediaId, name, onSlide),
     onLooks: (listener) => on(IPC.media.looksChanged, listener),
     usage: (mediaIds) => invoke(IPC.media.usage, mediaIds),
     remove: (mediaIds) => invoke(IPC.media.remove, mediaIds),
@@ -534,6 +545,10 @@ const bridge: DrashtiBridge = {
     cannotPlay: (mediaId, startedAt, code, words) =>
       invoke(IPC.media.cannotPlay, mediaId, startedAt, code, words),
     served: (mediaId) => invoke(IPC.media.served, mediaId),
+    notOnScreens: () => invoke(IPC.media.notOnScreens),
+    playsHere: (mediaId, startedAt) => invoke(IPC.media.playsHere, mediaId, startedAt),
+    starting: (mediaId, startedAt) => invoke(IPC.media.noFrameYet, mediaId, startedAt),
+    onNotOnScreens: (listener) => on(IPC.media.notOnScreensChanged, listener),
     markers: (mediaId) => invoke(IPC.media.markers, mediaId),
     details: (mediaId) => invoke(IPC.media.details, mediaId),
     copyDetails: (text) => invoke(IPC.media.copyDetails, text),
@@ -619,6 +634,15 @@ const bridge: DrashtiBridge = {
     approve: (approval) => invoke(IPC.announcements.approve, approval),
     reject: (which) => invoke(IPC.announcements.reject, which),
     takeOff: (which) => invoke(IPC.announcements.takeOff, which),
+  },
+  chat: {
+    view: () => invoke(IPC.chat.view),
+    onChanged: (listener) => on(IPC.chat.changed, listener),
+    send: (text) => invoke(IPC.chat.send, text),
+    clear: () => invoke(IPC.chat.clear),
+    remove: (personId) => invoke(IPC.chat.remove, personId),
+    invite: () => invoke(IPC.chat.invite),
+    endInvite: () => invoke(IPC.chat.endInvite),
   },
   stream: {
     status: () => invoke(IPC.stream.status),

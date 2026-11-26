@@ -1,5 +1,10 @@
 import type { ScreenRole } from '../../shared/screens';
-import type { StudioLivePicture, StudioLiveSource } from '../../shared/studio-live';
+import type {
+  LiveUnseen,
+  StudioLiveMessage,
+  StudioLivePicture,
+  StudioLiveSource,
+} from '../../shared/studio-live';
 
 /*
  * Live behind the Lower Thirds studio's preview (alpha.22, the owner: "the background while selecting the animation
@@ -13,9 +18,10 @@ import type { StudioLivePicture, StudioLiveSource } from '../../shared/studio-li
  * (index.ts, captureLocal): the window of the first audience screen showing on this computer, exactly as the hall
  * sees it. So no video is played a second time for it (the studio's page cannot play one at all: media-src 'none'),
  * and nothing on the screens changes. With no such screen here (none set up, a single display, or only nodes'
- * screens) there is no still, and the studio says "No live picture to show". (LIVE in the operator window was tried
- * as a second source and left out: it is only in the window while its column is scrolled to the top, and opening the
- * studio from the Lower Thirds section scrolls it away: CI Windows, 4 of 4.)
+ * screens), alpha.23, the still comes from Live's copy (live-copy.ts): the screens' page drawn off screen, small and
+ * once a second, opened only then and closed the moment Live stops (`stopped`) or a hall screen shows. (LIVE in the
+ * operator window was tried as a source and left out: it is only in the window while its column is scrolled to the
+ * top, and opening the studio from the Lower Thirds section scrolls it away: CI Windows, 4 of 4.)
  */
 
 /** How long after one still is sent the next is taken. */
@@ -28,11 +34,13 @@ export const LIVE_WIDTH = 960;
 const LIVE_QUALITY = 75;
 
 export interface StudioLiveDeps {
-  /** Take a still now: null when this computer has nothing to take it from. */
-  take(): Promise<StudioLivePicture | null>;
+  /** Take a still now: null when this computer has nothing to take it from; undefined when not ready yet. */
+  take(): Promise<StudioLiveMessage | undefined>;
   /** To the studio's page. */
-  send(picture: StudioLivePicture | null): void;
+  send(picture: StudioLiveMessage): void;
   log(line: string): void;
+  /** Stills stopped (another backdrop, minimized, closed): what was kept for them can go (Live's copy). */
+  stopped?(): void;
   everyMs?: number;
 }
 
@@ -90,12 +98,13 @@ export class StudioLive {
           : 'The Lower Thirds studio no longer shows Live: no stills taken',
     );
     if (on) void this.next(this.round);
+    else this.deps.stopped?.();
   }
 
   private async next(round: number): Promise<void> {
     this.taken++;
     let limit: ReturnType<typeof setTimeout> | undefined;
-    let picture: StudioLivePicture | null;
+    let picture: StudioLiveMessage | undefined;
     try {
       picture = await Promise.race([
         this.deps.take(),
@@ -111,7 +120,8 @@ export class StudioLive {
       clearTimeout(limit);
     }
     if (round !== this.round) return;
-    this.deps.send(picture);
+    // Not ready yet (Live's copy still opening): nothing sent, the next taken as usual.
+    if (picture !== undefined) this.deps.send(picture);
     this.timer = setTimeout(() => {
       this.timer = null;
       void this.next(round);
@@ -121,7 +131,7 @@ export class StudioLive {
 
 /**
  * The screen on this computer Live takes its still from: the first audience screen showing here, in Screens' order
- * (as LIVE draws the first screen's canvas); null with none ("No live picture to show").
+ * (as LIVE draws the first screen's canvas); null with none (then Live's copy, live-copy.ts).
  */
 export function hallScreenOf(
   screens: readonly { id: string; groupId: string }[],
@@ -139,14 +149,19 @@ export interface CapturedImage {
   toJPEG(quality: number): Buffer;
 }
 
-/** A still from a picture taken: a JPEG at most LIVE_WIDTH wide; an empty picture is none. */
+/**
+ * A still from a picture taken: a JPEG at most LIVE_WIDTH wide; an empty picture is none. From Live's copy, with what
+ * is live that the copy cannot draw (`unseen`, live-copy.ts), so the studio can say so.
+ */
 export function livePictureOf(
   image: CapturedImage,
   source: StudioLiveSource,
   at: number,
+  unseen: readonly LiveUnseen[] = [],
 ): StudioLivePicture | null {
   if (image.isEmpty()) return null;
   const width = Math.min(LIVE_WIDTH, image.getSize().width);
   const jpeg = image.resize({ width, quality: 'good' }).toJPEG(LIVE_QUALITY);
-  return { url: `data:image/jpeg;base64,${jpeg.toString('base64')}`, source, at };
+  const url = `data:image/jpeg;base64,${jpeg.toString('base64')}`;
+  return unseen.length > 0 ? { url, source, at, unseen: [...unseen] } : { url, source, at };
 }

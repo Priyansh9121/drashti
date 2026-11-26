@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { openDatabase } from './db/database';
 import { PresentationRepo } from './db/presentations';
-import { presentationToShow } from './selftest';
+import { answerWithin, presentationToShow, waitFor } from './selftest';
 
 describe('what the watchdog self-test shows (Session 50: a new library has no placeholder presentations)', () => {
   it("shows the library's first presentation when it has one, and adds nothing", () => {
@@ -58,5 +58,44 @@ describe('the watchdog self-test behind the lock (Session 54, access by Gmail)',
     );
     expect(watchdog).not.toContain('sendInputEvent');
     expect(watchdog).toContain("ctx.dispatch({ type: 'next' })");
+  });
+});
+
+describe('a page that never answers never stops the watchdog self-test (alpha.22 Release run 45524056204)', () => {
+  // Electron 44: a page's renderer crashed or reloaded while executeJavaScript waits for its answer leaves that call
+  // pending for good, neither resolved nor rejected. On CI's Rosetta Mac the output's heartbeat restarted a slow page
+  // during such a call, and the self-test gave no result in 480 s.
+  const never = () => new Promise<never>(() => undefined);
+
+  it('answerWithin rejects a call that never answers, at its limit', async () => {
+    const started = Date.now();
+    await expect(answerWithin(never(), 120, 'the output page')).rejects.toThrow(/the output page/);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(100);
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it('answerWithin gives an answer that comes in time, and leaves no timer behind', async () => {
+    vi.useFakeTimers();
+    try {
+      const answer = answerWithin(Promise.resolve(7), 5000, 'the output page');
+      await expect(answer).resolves.toBe(7);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('waitFor keeps its own deadline when a check never answers', async () => {
+    const started = Date.now();
+    await expect(waitFor(never, 200)).resolves.toBe(false);
+    expect(Date.now() - started).toBeLessThan(1500);
+  });
+
+  it('waitFor still says yes when a later try answers', async () => {
+    let tries = 0;
+    // As a page call does: each try has its own limit (js(): answerWithin), so a try that never answers ends.
+    const check = () => (++tries < 3 ? answerWithin(never(), 50, 'the output page') : Promise.resolve(true));
+    await expect(waitFor(check, 3000)).resolves.toBe(true);
+    expect(tries).toBe(3);
   });
 });

@@ -7,6 +7,7 @@ import {
   playbackPosition,
   SOUND_LIMITS,
 } from '../../../shared/media';
+import { RESEEK_STEP_S } from './cue-presentation';
 import { catchUpLeftMs, type PlaybackCatchUp, startPlayback } from './playback';
 
 /*
@@ -214,6 +215,43 @@ describe('a file played once to an end point', () => {
       expect(v.playbackRate).toBe(1);
       expect(v.currentTime, 'the first motion has no cold play delay').toBeCloseTo(1.001, 3);
       expect(v.sourceAssignments).toBe(1);
+    } finally {
+      stop();
+    }
+  });
+
+  it("arms a cued decoder that its cue's one more seek left 2 µs past its trim without seeking it back at Go", () => {
+    // a22-review-cueprime M2: render/cue-presentation.ts's one more seek holds the trimmed frame at its trim plus
+    // RESEEK_STEP_S; at Go only the rate changes, as for any held cue (a seek in the lead could land after Go).
+    const v = new FakeMedia(8);
+    const timing: { loop: boolean; seek: PlaybackSeek } = {
+      loop: false,
+      seek: { at: Date.now(), toMs: 1000, paused: true },
+    };
+    const stop = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'cued',
+      startedAt: Date.now(),
+      prepareScheduledStart: true,
+      timing: () => timing,
+    });
+    try {
+      vi.advanceTimersByTime(20);
+      v.currentTime = 1 + RESEEK_STEP_S;
+      vi.advanceTimersByTime(300);
+      const seeks = v.seeks;
+      expect(v.currentTime, 'held where the one more seek put it').toBe(1 + RESEEK_STEP_S);
+      const at = Date.now() + 120;
+      timing.seek = { at, toMs: 1000 };
+      stop.resync();
+      expect(v.seeks, 'no seek back at Go').toBe(seeks);
+      expect(v.paused, 'the decoder starts during the already silent lead').toBe(false);
+      expect(v.playbackRate).toBe(0);
+      vi.advanceTimersByTime(119);
+      expect(v.seeks).toBe(seeks);
+      expect(v.playbackRate).toBe(0);
+      vi.advanceTimersByTime(2);
+      expect(v.playbackRate).toBe(1);
+      expect(v.seeks).toBe(seeks);
     } finally {
       stop();
     }

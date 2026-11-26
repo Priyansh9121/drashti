@@ -7,6 +7,7 @@ import { availableParallelism, constants, setPriority, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
   DrawnPicturePage,
+  FlowReadProblem,
   PageShare,
   PictureAssetKind,
   PictureJob,
@@ -22,6 +23,7 @@ import {
   tidyNotes,
 } from '../../shared/pictures';
 import type { PagePart } from '../../shared/page-part';
+import { sabhaFlowReadingSchema, type SabhaFlowReading } from '../../shared/sabha-flow';
 import type { ScreenConfig } from '../../shared/screens';
 import { fileProblem } from '../plain-errors';
 import { cutText } from '../../shared/text';
@@ -61,6 +63,11 @@ export function pictureSize(
 export const MAX_PDF_BYTES = 500 * 1024 * 1024;
 /** A document taking longer than this is given up. */
 const TIMEOUT_MS = 15 * 60 * 1000;
+/**
+ * A Sabha flow's drawing (at most 20 pages) taking longer than this is given up (review S7): a PDF that stalls pdf.js
+ * holds the pictures queue, and every presentation import behind it, for no longer.
+ */
+export const FLOW_TIMEOUT_MS = 2 * 60 * 1000;
 /** Several windows draw a document at once only if it is no bigger than this (each holds its own copy). */
 const WIDE_MAX_BYTES = 200 * 1024 * 1024;
 
@@ -90,6 +97,8 @@ export interface PdfPicturesDeps {
   wide?: () => boolean;
   /** How many windows draw at once when they may (tests; else by the computer's processors). */
   atOnce?: number;
+  /** How long a Sabha flow's drawing may take (tests; else FLOW_TIMEOUT_MS). */
+  flowTimeoutMs?: number;
 }
 
 interface Drawing {
@@ -103,6 +112,9 @@ interface Drawing {
   stopped: boolean;
   /** Book OCR (alpha.21): only the pages asked for; past the document's end, no pages and its total (not a failure). */
   chosen?: boolean;
+  /** Sabha flow (alpha.23): what the window's reader made of the pages, as checked; or why there is none. */
+  flowReading?: SabhaFlowReading;
+  flowReadProblem?: FlowReadProblem;
   finish(result: PicturesResult): void;
   /** The pages windows left, to be drawn by one window of their own (set as it starts). */
   catchUp?: (pages: number[]) => void;
@@ -226,12 +238,32 @@ export class PdfPictures {
     return run;
   }
 
+  /**
+   * Sabha flow (alpha.23): each page (up to `maxPages`) drawn at its own shape on its own white, as large as fits in
+   * `size`, with its text layer and borders read for the flow's reader. In the same queue as every other drawing, one
+   * window, at the lowest priority.
+   */
+  drawForFlow(
+    pdfPath: string,
+    outDir: string,
+    maxPages: number,
+    size: { width: number; height: number },
+    signal?: AbortSignal,
+  ): Promise<PicturesResult> {
+    const run = this.turn.then(() =>
+      this.drawNow(pdfPath, outDir, signal, false, undefined, { maxPages, size }),
+    );
+    this.turn = run.catch(() => undefined);
+    return run;
+  }
+
   private async drawNow(
     pdfPath: string,
     outDir: string,
     signal?: AbortSignal,
     readPageText?: boolean,
     reading?: { pages: number[]; size: { width: number; height: number } },
+    flow?: { maxPages: number; size: { width: number; height: number } },
   ): Promise<PicturesResult> {
     if (signal?.aborted) return { ok: false, message: 'Cancelled.' };
     let data: Buffer;
@@ -249,6 +281,7 @@ export class PdfPictures {
     return this.drawData(data, outDir, signal, {
       ...(readPageText ? { readPageText } : {}),
       ...(reading ? { reading } : {}),
+      ...(flow ? { flow } : {}),
     });
   }
 
@@ -258,23 +291,28 @@ export class PdfPictures {
     signal: AbortSignal | undefined,
     {
       readPageText,
-      part,
+      part: onePart,
       reading,
+      flow,
     }: {
       readPageText?: boolean;
       part?: PagePart;
       /** Book OCR: these pages only, fitted into this size, on white (drawForReading). */
       reading?: { pages: number[]; size: { width: number; height: number } };
+      /** Sabha flow: every page (up to its limit) at its own shape, its text layer read (drawForFlow). */
+      flow?: { maxPages: number; size: { width: number; height: number } };
     },
   ): Promise<PicturesResult> {
     if (signal?.aborted) return { ok: false, message: 'Cancelled.' };
     await mkdir(outDir, { recursive: true });
-    const { width, height } = reading?.size ?? this.deps.size();
+    const { width, height } = flow?.size ?? reading?.size ?? this.deps.size();
+    // A flow's page is the whole of each page, drawn as a part is (its own shape, on its own white).
+    const part: PagePart | undefined = flow ? { x: 0, y: 0, w: 1, h: 1 } : onePart;
     const started = Date.now();
     // Several at once only while nothing is on the screens or the stream (Session 56), and a document not too big.
     // A part of a page (Make a slide…) and a reading's few pages: one window.
     const atOnce =
-      !part && !reading && data.length <= WIDE_MAX_BYTES && this.deps.wide?.() === true
+      !part && !reading && !flow && data.length <= WIDE_MAX_BYTES && this.deps.wide?.() === true
         ? (this.deps.atOnce ?? windowsAtOnce(availableParallelism()))
         : 1;
     return new Promise<PicturesResult>((resolve) => {
@@ -290,13 +328,17 @@ export class PdfPictures {
         });
         return;
       }
-      const timer = setTimeout(() => {
-        finish({
-          ok: false,
-          message:
-            'Drawing the pages took too long (over 15 minutes): save the PDF again in smaller parts and import those one at a time.',
-        });
-      }, TIMEOUT_MS);
+      const timer = setTimeout(
+        () => {
+          finish({
+            ok: false,
+            message: flow
+              ? 'Reading the PDF took too long: save it again from the program that made it, then choose it again.'
+              : 'Drawing the pages took too long (over 15 minutes): save the PDF again in smaller parts and import those one at a time.',
+          });
+        },
+        flow ? (this.deps.flowTimeoutMs ?? FLOW_TIMEOUT_MS) : TIMEOUT_MS,
+      );
       const onAbort = () => {
         drawing.stopped = true;
         finish({ ok: false, message: 'Cancelled.' });
@@ -305,8 +347,9 @@ export class PdfPictures {
         data: new Uint8Array(data),
         width,
         height,
-        maxPages: part ? 1 : MAX_PICTURE_PAGES,
+        maxPages: flow ? flow.maxPages : part ? 1 : MAX_PICTURE_PAGES,
         ...(readPageText ? { readPageText } : {}),
+        ...(flow ? { flowText: true } : {}),
         ...(share ? { share } : {}),
         ...(part ? { part } : {}),
         ...(reading ? { onWhite: true } : {}),
@@ -356,8 +399,9 @@ export class PdfPictures {
           if (drawing.windows.find((w) => w.win === win)?.done) return;
           finish({
             ok: false,
-            message:
-              'The window drawing the pages stopped unexpectedly: import the PDF again; if it stops again, save it again from the program that made it.',
+            message: flow
+              ? 'The window reading the PDF stopped unexpectedly: choose it again; if it stops again, save it again from the program that made it.'
+              : 'The window drawing the pages stopped unexpectedly: import the PDF again; if it stops again, save it again from the program that made it.',
           });
         });
         // The lowest priority: whenever the computer is busy, the show's processes come first.
@@ -454,6 +498,18 @@ export class PdfPictures {
       return;
     }
     mine.done = true;
+    // A Sabha flow's reading (its job's only): checked here, never read here; left out if it does not pass.
+    if (mine.job.flowText) {
+      const reading = sabhaFlowReadingSchema.safeParse(done?.flowReading);
+      if (reading.success) d.flowReading = reading.data;
+      else
+        d.flowReadProblem =
+          done?.flowReadCrashed === true
+            ? 'crashed'
+            : done?.flowReading === undefined
+              ? 'missing'
+              : 'failed-check';
+    }
     const total = typeof done?.total === 'number' && Number.isInteger(done.total) ? done.total : 0;
     d.total = Math.max(d.total, total);
     const max = mine.job.maxPages;
@@ -476,7 +532,16 @@ export class PdfPictures {
     if (pages.length === 0 && !(d.chosen === true && d.total > 0))
       d.finish({ ok: false, message: d.total === 0 ? 'The PDF has no pages.' : 'No page could be drawn.' });
     else
-      d.finish({ ok: true, width: mine.job.width, height: mine.job.height, pages, total: d.total, failed });
+      d.finish({
+        ok: true,
+        width: mine.job.width,
+        height: mine.job.height,
+        pages,
+        total: d.total,
+        failed,
+        ...(d.flowReading ? { flowReading: d.flowReading } : {}),
+        ...(d.flowReadProblem ? { flowReadProblem: d.flowReadProblem } : {}),
+      });
   }
 
   /** pdf.js's own data: a plain name from one of its own folders, for the drawing window only. */

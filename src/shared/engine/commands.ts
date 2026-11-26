@@ -145,13 +145,20 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
     type: z.literal('next'),
     rev: z.number().int().nonnegative().optional(),
     session: z.string().min(1).max(128).optional(),
+    /**
+     * A phone's (alpha.23, QA23-PHONE-1: "Only PPT and PDF"), which the main process adds, the PowerPoint or PDF live:
+     * Next, Previous and Back stay inside this presentation, its clicks and slides only (never what was cued, a video
+     * cue or the playlist's next item), nothing changing at either end or once another is live. Left out: as ever.
+     */
+    within: id.optional(),
   }),
-  z.object({ type: z.literal('previous') }),
+  z.object({ type: z.literal('previous'), within: id.optional() }),
   /**
    * Back: undoes the last Next exactly (the slide, background and sound as
    * they were) while nothing else has changed since; otherwise Previous.
+   * With `within` (a phone's, QA23-PHONE-1), always Previous inside it.
    */
-  z.object({ type: z.literal('back') }),
+  z.object({ type: z.literal('back'), within: id.optional() }),
   /** The first slide of the next (or previous) playlist item that can play. */
   z.object({ type: z.literal('nextItem') }),
   z.object({ type: z.literal('previousItem') }),

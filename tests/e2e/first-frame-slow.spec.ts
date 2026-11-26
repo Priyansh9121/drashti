@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { importAndGetIds, launchApp, letTimePass, operatorPage, operatorReady } from './helpers';
@@ -16,6 +16,7 @@ import {
   shown,
   wallpaperAndPicture,
 } from './hall-looks';
+import { logLines } from './log-lines';
 import { testFfmpeg } from './stream-helpers';
 
 /*
@@ -87,11 +88,9 @@ async function start(env: Record<string, string>) {
   const hall = await audienceScreen(app, win);
   await installLooks(hall.page, OUT);
   // Main's lines about videos (which page's word took one off, with what its watch saw), said by a failure.
-  const log = join(userData, 'logs', 'drashti.log');
   const mainSaid = (): string =>
-    existsSync(log)
-      ? readFileSync(log, 'utf8')
-          .split('\n')
+    existsSync(join(userData, 'logs'))
+      ? logLines(userData)
           .filter((l) => l.includes('A video'))
           .slice(-6)
           .join(' | ')
@@ -157,6 +156,43 @@ test('a video that still loads is not taken off at 10 s: the Wallpaper meanwhile
       'its first frame came after 10 s (the old bound would have taken it off)',
     ).toBeGreaterThan(10_000);
     expect(await backgroundUp(win)).toBe(id);
+    expect((await notices(win)).filter((n) => n.includes('could not'))).toEqual([]);
+  } finally {
+    await app.close();
+  }
+});
+
+test('while the hall waits for a video’s first frame (the owner’s QA23-HALLDROP-1 (a), “Words during the wait”), LIVE says “Starting on the screen …” from about 2 s after it went up, and the line goes once the hall draws it', async () => {
+  test.setTimeout(180_000);
+  const video = slowVideo(12);
+  const { app, win, hall, mainSaid } = await start({ DRASHTI_TEST_MEDIA_PACE_BPS: video.pace });
+  try {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-first-frame-words-'));
+    await wallpaperAndPicture(win, dir);
+    await expect.poll(() => shown(hall.page, OUT), { timeout: 30_000 }).toBe('WALL');
+    const [id = ''] = await importAndGetIds(win, [video.file]);
+    expect(id).not.toBe('');
+    await upAsBackground(win, id);
+    const line = win.getByTestId('live-starting');
+    await expect(line, `LIVE says it is starting there; Main: ${mainSaid()}`).toContainText(
+      `Starting on the screen “${hall.name}”…`,
+      { timeout: 10_000 },
+    );
+    await expect.poll(() => shown(hall.page, OUT), { timeout: 60_000, message: 'it plays' }).toBe('VIDEO');
+    await expect(line, 'the line goes once the hall draws it')
+      .toHaveCount(0, { timeout: 10_000 })
+      .catch(async (e: unknown) => {
+        // What Main and the hall's videos said by then, for the failure's words.
+        const videos = await hall.page.evaluate(() =>
+          [...document.querySelectorAll('video')]
+            .map(
+              (v) =>
+                `${v.dataset['mediaId'] ?? '?'} ready ${String(v.readyState)} ${v.dataset['state'] ?? ''}`,
+            )
+            .join(' | '),
+        );
+        throw new Error(`${String(e)}\nMain: ${mainSaid()}\nThe hall's videos: ${videos}`);
+      });
     expect((await notices(win)).filter((n) => n.includes('could not'))).toEqual([]);
   } finally {
     await app.close();
