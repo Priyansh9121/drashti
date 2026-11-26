@@ -34,7 +34,10 @@ const PX = {
   /** What is live ("Live: … · slide 2 of 5"): at least this much of it is always in sight. */
   line: 48,
   /** Each ghost button with its words; any of them with its icon alone (square). */
-  words: { simple: 134, ready: 95, phones: 98, announcements: 148, stream: 96 } as Record<IconAloneButton, number>,
+  words: { simple: 134, ready: 95, phones: 98, announcements: 148, stream: 96 } as Record<
+    IconAloneButton,
+    number
+  >,
   icon: 32,
   /** A ? beside Stream, Phones and Announcements, and the gap before it. */
   help: 20 + 2,
@@ -136,7 +139,9 @@ describe('the top bar’s words', () => {
         expect(from % 16, `${words}: ${b}`).toBe(0);
         const before = from - 16;
         if (before < 1024) continue;
-        expect(need(before, crowded, b), `${words}: ${b}'s words at ${String(before)} px`).toBeGreaterThan(before);
+        expect(need(before, crowded, b), `${words}: ${b}'s words at ${String(before)} px`).toBeGreaterThan(
+          before,
+        );
       }
   });
 });

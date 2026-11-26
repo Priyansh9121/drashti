@@ -11,10 +11,11 @@ import {
   switchOffQuestion,
   TURN_OFF,
 } from '../../../shared/screen-switches';
-import { Button } from '../ui/Button';
+import { Button, type ButtonVariant } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { MonitorOff, TabletSmartphone } from '../ui/icons';
 import { Tooltip } from '../ui/Tooltip';
+import { cx } from '../ui/cx';
 import { useNetwork } from '../network/network-store';
 import { useNotice } from './actions';
 import {
@@ -28,9 +29,9 @@ import {
 
 /*
  * Audience and Stage (Session 50) in the operator window: the top bar's two switches beside Screens (Pro Mode),
- * each saying On or Off in words; the question before one goes off while its screens show something; and, while
- * one is off, the status bar's "Audience off" with Turn on, in both modes (Simple Mode's only way to change
- * them, and only on). When an output covers these controls, it asks the same, large (Session 51, S2-2).
+ * each saying On or Off in words (since alpha.24 after a small dot, and quiet while on); the question before one goes
+ * off while its screens show something; and, while one is off, the status bar's "Audience off" with Turn on, in both
+ * modes (Simple Mode's only way to change them, and only on). When an output covers these controls, it asks the same, large (Session 51, S2-2).
  */
 
 const KEY: Record<ScreenSwitch, OperatorAction> = { audience: 'toggleAudience', stage: 'toggleStage' };
@@ -58,10 +59,21 @@ export function switchButton(
   return { on: switches[which], disabled: !known };
 }
 
+/**
+ * How a switch looks in the top bar's group (alpha.24, uitop): on, a quiet ghost button, a small dot in the success
+ * colour before its name and On; off, the warning's box and its dot, with Off. The words say it, never the colour alone.
+ */
+export function switchLook(on: boolean): { variant: ButtonVariant; dot: string; word: 'On' | 'Off' } {
+  return on
+    ? { variant: 'ghost', dot: 'bg-success', word: 'On' }
+    : { variant: 'warning', dot: 'bg-warning', word: 'Off' };
+}
+
 function SwitchButton({ which, platform }: { which: ScreenSwitch; platform: string }) {
   const switches = useScreenSwitches((s) => s.switches);
   const known = useScreenSwitches((s) => s.known);
   const { on, disabled } = switchButton(which, switches, known);
+  const look = switchLook(on);
   const name = SWITCH_NAMES[which];
   return (
     <Tooltip
@@ -79,7 +91,7 @@ function SwitchButton({ which, platform }: { which: ScreenSwitch; platform: stri
           Not a show control (no `instant`): the header is decoration, and no show control sits on it. */}
       <Button
         size="sm"
-        variant={on ? 'secondary' : 'warning'}
+        variant={look.variant}
         role="switch"
         aria-checked={on}
         disabled={disabled}
@@ -87,23 +99,24 @@ function SwitchButton({ which, platform }: { which: ScreenSwitch; platform: stri
         data-on={on ? 'true' : 'false'}
         onClick={() => void toggleSwitch(which).then(say)}
       >
+        <span aria-hidden="true" className={cx('h-1.5 w-1.5 shrink-0 rounded-full', look.dot)} />
         {name}
         <span aria-hidden="true" className="font-bold">
-          {on ? 'On' : 'Off'}
+          {look.word}
         </span>
       </Button>
     </Tooltip>
   );
 }
 
-/** The top bar's switches, beside Screens (Pro Mode). */
+/** The top bar's switches, beside Screens in its group (Pro Mode). */
 export function ScreenSwitchButtons({ platform }: { platform: string }) {
   return (
     <span
       role="group"
       aria-label="This computer’s screens"
       data-testid="screen-switches"
-      className="flex items-center gap-1"
+      className="flex items-center gap-0.5"
     >
       {SCREEN_SWITCHES.map((which) => (
         <SwitchButton key={which} which={which} platform={platform} />
