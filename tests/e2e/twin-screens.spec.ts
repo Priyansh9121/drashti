@@ -167,6 +167,17 @@ test('two screens of one name: one failing soon after the other is reloaded as i
     await expect(notice).toHaveAttribute('data-screen', right);
     await expect(notice).toContainText(`“${name} (2)” has stopped`);
     await showsTheSlide(leftPage);
+    // Screens says them apart as the notice does: the second Stopped, the first Showing.
+    await win.getByRole('button', { name: 'Screens', exact: true }).click();
+    await expect(win.getByTestId('screen-name').filter({ hasText: name })).toHaveText([name, `${name} (2)`]);
+    const rowOf = (words: string) =>
+      win.getByTestId('screen-row').filter({
+        has: win
+          .getByTestId('screen-name')
+          .filter({ hasText: new RegExp(`^${words.replace(/[()]/gu, '\\$&')}$`, 'u') }),
+      });
+    await expect(rowOf(`${name} (2)`).getByTestId('screen-state')).toHaveText(/^Stopped/u);
+    await expect(rowOf(name).getByTestId('screen-state')).toHaveText(/^Showing/u);
   } finally {
     await app.close();
   }

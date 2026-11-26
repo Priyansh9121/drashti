@@ -474,7 +474,7 @@ describe('a render error (Session 23)', () => {
     clock.advance(3000);
     dog.renderError(hall, 'output "Main Hall"', 'Error: boom');
     expect(kinds().at(-1)).toBe('gave-up');
-    dog.drawsAgain(hall, 'output "Main Hall"');
+    dog.drawsAgain(hall);
     // No retry left waiting, and nothing reloaded by it.
     clock.advance(RETRY_AGAIN_MS);
     expect(hall.reloads).toBe(1);
@@ -530,7 +530,7 @@ describe('what kept bringing a window down taken off', () => {
     contents.emit('render-process-gone', {}, { reason: 'crashed' });
     clock.advance(100);
     contents.emit('render-process-gone', {}, { reason: 'crashed' });
-    dog.tookOff(contents, 'operator', 'without the video it kept going down on');
+    dog.tookOff(contents, 'without the video it kept going down on');
     clock.advance(100);
     expect(contents.reloads).toBe(2);
     // The back-off's own reload no longer comes.
@@ -544,7 +544,7 @@ describe('what kept bringing a window down taken off', () => {
   it('given up on, it is tried at once, its crash count afresh: a crash loop after that gives up again only at its limit', () => {
     for (let i = 0; i < 4; i++) contents.emit('render-process-gone', {}, { reason: 'crashed' });
     expect(kinds()).toContain('gave-up');
-    dog.tookOff(contents, 'operator', 'without the video it kept going down on');
+    dog.tookOff(contents, 'without the video it kept going down on');
     clock.advance(100);
     expect(contents.reloads).toBe(1);
     // No retry left waiting from the give-up.

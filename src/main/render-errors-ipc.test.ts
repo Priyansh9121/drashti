@@ -37,7 +37,7 @@ const WARM_UP = report(
 );
 const CAUGHT = report('caught', 'Error: A test asked this output to fail as it drew', 'ThrowForTests');
 
-function setUp(failed?: (name: string) => boolean) {
+function setUp(failed?: (window: { name: string; output: WatchTarget }) => boolean) {
   handlers.clear();
   const lines: string[] = [];
   const reloads: string[] = [];
@@ -116,7 +116,7 @@ describe('render errors as Main hears them', () => {
 
   it('an output whose failing video was taken off for it: nothing more for the watchdog; the operator’s window never asked', () => {
     const asked: string[] = [];
-    const { lines, reloads, send } = setUp((name) => {
+    const { lines, reloads, send } = setUp(({ name }) => {
       asked.push(name);
       return true;
     });
