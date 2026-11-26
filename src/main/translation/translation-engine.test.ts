@@ -342,6 +342,25 @@ describe('Prepare translations’ engine', () => {
     expect(releases).toEqual(['en-indic', 'indic-en']);
   });
 
+  it('alpha.24: loads a direction’s model ahead of its first phrase (live captions), once, translating nothing', async () => {
+    const store = models([model('indic-indic', ['translation-gu-hi', 'translation-hi-gu'])]);
+    const { engine, children } = engineWith(store);
+    await engine.prepare('gu', 'hi');
+    await engine.prepare('gu', 'hi');
+    await engine.translate('ક ખ', 'gu', 'hi');
+    expect(children).toHaveLength(1);
+    expect(children[0]?.requests.map((r) => `${String(r['op'])} ${String(r['route'])}`)).toEqual([
+      'load indic-indic',
+      'translate indic-indic',
+    ]);
+    expect(store.acquire).toHaveBeenCalledTimes(1);
+    engine.stop();
+    // Without a model for it, preparing says so, as translating would.
+    await expect(engineWith(models([])).engine.prepare('gu', 'en')).rejects.toMatchObject({
+      code: 'not-installed',
+    });
+  });
+
   it('cancel stops the helper and refuses what was waiting; the next request starts a fresh one', async () => {
     const store = models([model('en-indic', ['translation-en-gu'])]);
     const { engine, children } = engineWith(store);

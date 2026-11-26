@@ -1,0 +1,50 @@
+name: Feature request
+description: Suggest a change to Drashti
+labels:
+  - feature
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This page is public: anyone can read it.** Use placeholder words only: no real names, kirtan, scripture or mandir content, and never a stream key, password, token or Gmail address.
+
+        Drashti uses nothing paid: no paid product, service, plan or licence.
+  - type: textarea
+    id: need
+    attributes:
+      label: What would help
+      description: Who needs this (an operator, a presenter, an admin, a volunteer), and what are they trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: Suggested change
+      description: Describe the result, with a placeholder example. Say how it should work on Mac and Windows, and in Pro Mode or Simple Mode.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Part of Drashti
+      multiple: true
+      options:
+        - The library and importing
+        - Playlists
+        - LIVE and the hall's screens
+        - The stage screen
+        - The stream and recording
+        - Live captions
+        - Phones and tablets
+        - Output nodes
+        - The slide editor
+        - Sound and music
+        - Messages, timers and lower thirds
+        - Setting up, access and updates
+        - The guides and the Manual
+        - Something else
+  - type: textarea
+    id: today
+    attributes:
+      label: How it is done today
+      description: What you do now without it, if anything.

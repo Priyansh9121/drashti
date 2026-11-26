@@ -13,7 +13,9 @@ import { fontFamilyFor, HTML_LANG } from './fonts';
  * Live captions (Session 55, Part 10, engine state 26) on a screen of this canvas: the last one or two lines heard,
  * white on a dark band, centred along the bottom (or the top), as big as the admin chose (on a 1080-line screen 45,
  * 56 or 70 pixels). The stream and the stage always draw them; the audience screens only when chosen
- * (shared/captions.ts). `lift` keeps them above a band already along the bottom (the ticker).
+ * (shared/captions.ts). `lift` keeps them above a band already along the bottom (the ticker). Translated (alpha.24,
+ * QA24-CAPLANG-2): the audience screens and the stream draw the translation, one two-line page at a time and never cut
+ * with "…", and nothing while it is not ready; the stage screens draw the speaker's own words (captionsFor).
  */
 export function CaptionsView({
   state,
@@ -84,6 +86,9 @@ export function CaptionsView({
       data-testid="captions"
       data-source={captions.source}
       data-screen={screen}
+      // alpha.24 (QA24-CAPLANG-2): a translation, and which of its two-line pages (main shows each in turn).
+      data-kind={captions.kind}
+      data-page={captions.page ? `${String(captions.page.n)}/${String(captions.page.of)}` : undefined}
       data-size={captions.size}
       data-place={captions.place}
       lang={captions.language === 'und' ? HTML_LANG[language] : captions.language}

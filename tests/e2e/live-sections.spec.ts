@@ -13,7 +13,10 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * while Drashti runs. Placeholder words only.
  */
 
-/** The sections in their order: each heading's words, its fold button's id, and what shows only while it is open. */
+/**
+ * The sections in their order: each heading's words, its fold button's id, and what shows only while it is open (and
+ * `also`, more of it held to the same).
+ */
 const SECTIONS = [
   { title: 'Audio', id: 'audio', shows: (s: Locator) => s.getByTestId('music-panel') },
   { title: 'Stage screen', id: 'stage', shows: (s: Locator) => s.getByTestId('stage-preview') },
@@ -33,7 +36,13 @@ const SECTIONS = [
     shows: (s: Locator) => s.getByTestId('show-a-stream-link'),
   },
   { title: 'Video inputs', id: 'video-inputs', shows: (s: Locator) => s.getByTestId('add-video-input') },
-  { title: 'Picture in Picture', id: 'picture-in-picture', shows: (s: Locator) => s.getByTestId('pip-open') },
+  {
+    title: 'Picture in Picture',
+    id: 'picture-in-picture',
+    shows: (s: Locator) => s.getByTestId('pip-open'),
+    // Its preview of the box (QA24-PIPPREVIEW-1): folded away and shown with the rest of the section.
+    also: (s: Locator) => s.getByTestId('pip-section-preview'),
+  },
   { title: 'QR code', id: 'qr-code', shows: (s: Locator) => s.getByTestId('qr-code-open') },
   { title: 'MIDI controller', id: 'midi', shows: (s: Locator) => s.getByTestId('open-midi') },
   { title: 'OSC control', id: 'osc', shows: (s: Locator) => s.getByTestId('open-osc') },
@@ -53,6 +62,7 @@ async function expectAllFolded(live: Locator): Promise<void> {
   for (const s of SECTIONS) {
     await expect(toggleOf(live, s.id), `${s.title} starts folded`).toHaveAttribute('aria-expanded', 'false');
     await expect(s.shows(live), `${s.title}'s insides are folded away`).toHaveCount(0);
+    if ('also' in s) await expect(s.also(live), `${s.title}'s insides are folded away`).toHaveCount(0);
   }
 }
 
@@ -86,9 +96,11 @@ test('under LIVE: no More tools, each tool its own folding section after Timers,
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(s.shows(live), `${s.title} shows its tool`).toBeVisible();
+    if ('also' in s) await expect(s.also(live), `${s.title} shows all of it`).toBeVisible();
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(s.shows(live)).toHaveCount(0);
+    if ('also' in s) await expect(s.also(live)).toHaveCount(0);
   }
   // From the keyboard: each heading a button that Enter opens and folds again (Space stays Next in this window, as
   // the keymap has it), and Tab goes down them in order.
@@ -107,7 +119,10 @@ test('under LIVE: no More tools, each tool its own folding section after Timers,
   expect(reached).toEqual(SECTIONS.slice(1).map((s) => `group-${s.id}-toggle`));
   // All open at once: every tool shown, and still nothing for axe.
   for (const s of SECTIONS) await toggleOf(live, s.id).click();
-  for (const s of SECTIONS) await expect(s.shows(live)).toBeVisible();
+  for (const s of SECTIONS) {
+    await expect(s.shows(live)).toBeVisible();
+    if ('also' in s) await expect(s.also(live)).toBeVisible();
+  }
   await expectNoSeriousA11yIssues(win, 'the sections under LIVE, all open', '[data-testid="live-rest"]');
   await app.close();
 });

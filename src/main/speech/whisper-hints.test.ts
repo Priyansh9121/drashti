@@ -26,13 +26,17 @@ function engineWith(hints: CaptionHints | undefined) {
     const href = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
     if (href.endsWith('/health')) return Promise.resolve(new Response('{"status":"ok"}'));
     const body = options?.body;
+    let language: unknown = null;
     if (body instanceof FormData) {
       const prompt = body.get('prompt');
       prompts.push(typeof prompt === 'string' ? prompt : null);
+      language = body.get('language');
     }
+    // A placeholder word in the letters of the language asked (alpha.24: a chosen language's captions keep to them).
+    const word = language === 'gu' ? ' આલ્ફા' : language === 'hi' || language === 'sa' ? ' अल्फा' : ' alpha';
     const reply = {
       language: 'english',
-      segments: [{ no_speech_prob: 0, words: [{ word: ' alpha', start: 0, end: 0.3, probability: 0.9 }] }],
+      segments: [{ no_speech_prob: 0, words: [{ word, start: 0, end: 0.3, probability: 0.9 }] }],
     };
     return Promise.resolve(new Response(JSON.stringify(reply)));
   };

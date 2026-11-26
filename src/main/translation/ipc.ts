@@ -23,6 +23,11 @@ export interface TranslationIpcDeps {
   mayDraft: (event: IpcMainInvokeEvent) => boolean;
   /** The stream is on air or recording. */
   onAir: () => boolean;
+  /**
+   * Translated live captions are running (alpha.24, lead 2's decision a): drafts wait, as on air, so the two
+   * translation helpers never run at once and the careful search never competes with live translation.
+   */
+  liveCaptions?: () => boolean;
   engine: {
     installed(): boolean;
     available(from: TranslationLanguage, to: TranslationLanguage): boolean;
@@ -39,6 +44,8 @@ const isLanguage = (value: unknown): value is TranslationLanguage =>
 
 export const ON_AIR =
   'Prepare translations waits while the stream is on air or recording. Prepare them once it is off air.';
+export const LIVE_CAPTIONS =
+  'Prepare translations waits while translated live captions run. Prepare them once captions are off, or show the speaker’s own words (Captions in).';
 export const NOT_INSTALLED = 'This copy of Drashti has no translation engine.';
 export const NO_MODEL =
   'Prepare translations needs the offline translation model pack for this direction: ask the admin to import it (Help › Caption and Translation Models…).';
@@ -49,7 +56,7 @@ export const READY =
   'Prepare translations fills each empty translation with a draft from the offline engine. A named reader checks every draft before it can show.';
 
 export function translationStatus(
-  d: Pick<TranslationIpcDeps, 'engine' | 'onAir'>,
+  d: Pick<TranslationIpcDeps, 'engine' | 'onAir' | 'liveCaptions'>,
   from: TranslationLanguage,
   to: TranslationLanguage,
 ): TranslationEngineStatus {
@@ -66,7 +73,9 @@ export function translationStatus(
           : NO_MODEL
         : d.onAir()
           ? ON_AIR
-          : READY,
+          : d.liveCaptions?.()
+            ? LIVE_CAPTIONS
+            : READY,
   };
 }
 
@@ -90,6 +99,7 @@ export function handleTranslation(d: TranslationIpcDeps): void {
     )
       return { ok: false, message: 'Choose a text box’s source language and a different target.' };
     if (d.onAir()) return { ok: false, message: ON_AIR };
+    if (d.liveCaptions?.()) return { ok: false, message: LIVE_CAPTIONS };
     if (!d.engine.installed()) return { ok: false, message: NOT_INSTALLED };
     if (!d.engine.available(r.from, r.to))
       return { ok: false, message: d.engine.unknownModel(r.from, r.to) ? UNKNOWN_MODEL : NO_MODEL };
@@ -99,6 +109,9 @@ export function handleTranslation(d: TranslationIpcDeps): void {
       // Stopped because the stream went on air (the PDF guard's hook cancelled it): say that, not just "Stopped".
       if (error instanceof HelperError && error.code === 'cancelled' && d.onAir())
         return { ok: false, message: ON_AIR };
+      // Stopped because translated live captions began (their begin cancels drafts): say that.
+      if (error instanceof HelperError && error.code === 'cancelled' && d.liveCaptions?.())
+        return { ok: false, message: LIVE_CAPTIONS };
       if (!(error instanceof HelperError))
         return {
           ok: false,

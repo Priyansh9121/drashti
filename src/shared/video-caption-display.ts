@@ -23,6 +23,9 @@ export interface CaptionBand {
   size: CaptionSize;
   place: CaptionPlace;
   source: 'live' | 'video';
+  /** alpha.24 (QA24-CAPLANG-2): live speech translated (the audience screens and the stream), and its two-line page. */
+  kind?: 'translation';
+  page?: { n: number; of: number };
 }
 
 /** One caption band. Video choices are library data; live speech keeps its original audience policy. */
