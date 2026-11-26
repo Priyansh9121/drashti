@@ -13,7 +13,14 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PlaybackReading } from '../../scripts/playback-check.mjs';
-import { CONTROLS, FIRST_FRAME_MS, VIDEOS, WATCH_MS, judgePlayback } from '../../scripts/playback-check.mjs';
+import {
+  CONTROLS,
+  FIRST_FRAME_MS,
+  VIDEOS,
+  WATCH_MS,
+  judgePlayback,
+  readPlaybackGpu,
+} from '../../scripts/playback-check.mjs';
 import type { PageGlobals } from '../e2e/helpers';
 import { importAndGetIds, launchApp, letTimePass, operatorPage, operatorReady } from '../e2e/helpers';
 import type { Seen } from '../e2e/hall-looks';
@@ -254,20 +261,7 @@ function blackFramesOf(looks: string[]): number {
 async function runnerOf(app: ElectronApplication): Promise<Pick<PlaybackReading, 'runner' | 'gpu'>> {
   const sw = spawnSync('sw_vers', ['-productVersion'], { encoding: 'utf8' });
   const version = sw.status === 0 ? sw.stdout.trim() : 'unknown';
-  const gpu = await app.evaluate(async ({ app: electronApp }) => {
-    const status = electronApp.getGPUFeatureStatus();
-    const info = (await electronApp.getGPUInfo('basic')) as {
-      gpuDevice?: { vendorId?: number; deviceId?: number; active?: boolean }[];
-    };
-    return {
-      videoDecode: status.video_decode,
-      gpuCompositing: status.gpu_compositing,
-      devices: (info.gpuDevice ?? []).map(
-        (d) =>
-          `${(d.vendorId ?? 0).toString(16)}:${(d.deviceId ?? 0).toString(16)}${d.active ? ' (active)' : ''}`,
-      ),
-    };
-  });
+  const gpu = await app.evaluate(readPlaybackGpu);
   return { runner: `macOS ${version} (${process.arch})`, gpu };
 }
 
