@@ -14,6 +14,8 @@ import type { EngineAction } from './actions';
  * - A video going up by the operator's own change (a command: a row's click, Next, Back, Media, a slide's background
  *   video or a video on the slide, a video input on the audience, Oops, Put it back, Play on its time bar) takes both
  *   covers off, so what was put up is seen.
+ * - Oops and Put it back put the screens back as they were before the change they take back, the covers too (alpha.24
+ *   bug hunt S2-2, coversBack): a cover that change took off comes back, one on all along stays, any other comes off.
  * - Wallpaper and Black-out each take the other off in the same change. An older save with both recovers Black-out.
  * - A cover going on (or a video the engine would bring up by itself under one: a slide moving on by itself, restart
  *   recovery of a file that held both) stops what plays: the background's video or video input comes off, as clearing
@@ -112,6 +114,33 @@ export function putsUp(actions: readonly EngineAction[], next: EngineState): boo
     (next.layers.slide !== null || next.layers.background !== null) &&
     actions.some((a) => PUTS_UP.has(a.type))
   );
+}
+
+/** Black-out and the Wallpaper, each on or off. */
+export interface Covers {
+  blackout: boolean;
+  wallpaper: boolean;
+}
+
+export const coversOf = (state: EngineState): Covers => ({
+  blackout: state.blackout,
+  wallpaper: state.wallpaper,
+});
+
+/**
+ * The covers as Oops and Put it back leave them (alpha.24 bug hunt S2-2), from the covers just `before` and just
+ * `after` the change they take back, and as they are `now`. A cover that was on before that change stays on while it
+ * still is (a message taken back under Black-out leaves it black), and comes back on when that change took it off (a
+ * wrong row's click under Black-out: black again, the slide that was under it under it again). Any other cover comes
+ * off, so what is put back is seen (Session 56: one put on after the change, or one the operator took off since). What
+ * Oops and Put it back put back under a cover is what was under it then, so nothing plays there.
+ */
+export function coversBack(before: Covers, after: Covers, now: Covers): EngineAction[] {
+  const on = (cover: keyof Covers) => before[cover] && (!after[cover] || now[cover]);
+  return [
+    { type: 'blackout/set', on: on('blackout') },
+    { type: 'wallpaper/set', on: on('wallpaper') },
+  ];
 }
 
 /** Both covers off. */

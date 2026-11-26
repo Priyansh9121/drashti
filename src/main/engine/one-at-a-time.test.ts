@@ -282,6 +282,24 @@ describe('LIVE shows one thing at a time (Session 56): a video going up takes th
       expect(covers(engine.current)).toEqual(covered);
     });
 
+  it('Oops leaves off a cover the operator took off since the change it takes back, and takes off one put on since', () => {
+    const { engine, cover } = setup();
+    engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 });
+    cover();
+    engine.dispatch({ type: 'showMessage', message: { id: 'm1', text: 'Placeholder message' } });
+    // Black-out off by the operator's own press: Oops takes the message back and the slide stays seen.
+    engine.dispatch({ type: 'setBlackout', on: false });
+    engine.dispatch({ type: 'oops' });
+    expect(engine.current.layers.messages).toEqual([]);
+    expect(covers(engine.current)).toEqual(OFF);
+    // The Wallpaper on after a slide's click (no cover before it): Oops puts the slide before back, seen.
+    engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 1 });
+    engine.dispatch({ type: 'setWallpaper', on: true });
+    engine.dispatch({ type: 'oops' });
+    expect(engine.current.layers.slide?.slide.id).toBe('p1s1');
+    expect(covers(engine.current)).toEqual(OFF);
+  });
+
   it('a slide with a video on it, and Play on a video waiting under a cover', () => {
     const { engine, cover } = setup();
     cover();
