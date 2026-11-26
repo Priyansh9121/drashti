@@ -115,6 +115,7 @@ function setup(reply: (sourceText: string) => string = () => 'प्लेसह
     download: () => Promise.resolve(),
     show: showCaptions,
     spell: (p) => clean.heard(p),
+    cleanCorrection: (text, apply) => clean.correction(text, apply),
     changed: () => undefined,
     log: { info: () => undefined, warn: () => undefined },
     aiPath: {
