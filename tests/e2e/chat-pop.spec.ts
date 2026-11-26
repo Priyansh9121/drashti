@@ -187,7 +187,14 @@ for (const simple of [false, true]) {
   });
 }
 
-test('Simple popup with Chat not chosen opens a read-only section and preserves the send guard', async () => {
+/** Two frames on: what a change set off (its effects) has happened, so a thing not there now is not coming. */
+const settled = (win: Page) =>
+  win.evaluate(
+    () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
+  );
+
+test('a popup click opens Chat only where it is this mode’s: in Simple Mode without Chat it only closes, and a click never carries over to the other mode', async () => {
+  test.setTimeout(120_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -197,30 +204,38 @@ test('Simple popup with Chat not chosen opens a read-only section and preserves 
     (await apiCall(port, CHAT_API.name, { method: 'POST', token, body: { name: 'Placeholder Sender' } }))
       .status,
   ).toBe(200);
-  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
-  await expect(win.getByTestId('simple-mode')).toHaveCount(1);
-  await expect(win.getByTestId('section-chat')).toHaveCount(0);
-  expect(
-    (
-      await apiCall(port, CHAT_API.send, {
-        method: 'POST',
-        token,
-        body: { text: 'Placeholder read-only message' },
-      })
-    ).status,
-  ).toBe(200);
-  await expect(win.getByTestId('chat-pop')).toBeVisible();
+  const pop = win.getByTestId('chat-pop');
+  const chat = win.getByTestId('section-chat');
+  const send = async (text: string) =>
+    expect((await apiCall(port, CHAT_API.send, { method: 'POST', token, body: { text } })).status).toBe(
+      200,
+    );
+  const setMode = async (mode: 'pro' | 'simple') => {
+    await win.evaluate((m) => (globalThis as PageGlobals).drashti.app.setMode(m), mode);
+    await expect(win.getByTestId('simple-mode')).toHaveCount(mode === 'simple' ? 1 : 0);
+    await expect(win.getByTestId(mode === 'simple' ? 'simple-buttons' : 'layer-bar')).toBeVisible();
+  };
+  // Simple Mode with Chat not chosen: the popup comes as in Pro Mode, and a click only closes it.
+  await setMode('simple');
+  await expect(chat).toHaveCount(0);
+  await send('Placeholder in Simple Mode');
+  await expect(pop).toContainText('Placeholder in Simple Mode');
   await win.getByTestId('chat-pop-open').click();
-  await expect(win.getByTestId('group-chat-toggle')).toHaveAttribute('aria-expanded', 'true');
-  await expect(win.getByTestId('chat-contents')).toContainText('Placeholder read-only message');
-  await expect(win.getByTestId('chat-contents')).toContainText(
-    'To reply here, choose Chat in Pro Mode’s Simple Mode Features.',
-  );
-  await expect(win.getByTestId('chat-composer')).toHaveCount(0);
-  const refused = await win.evaluate(() =>
-    (globalThis as PageGlobals).drashti.chat.send('Placeholder refused reply'),
-  );
-  expect(refused.ok).toBe(false);
+  await expect(pop).toHaveCount(0);
+  await settled(win);
+  await expect(chat).toHaveCount(0);
   expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.simpleFeatures())).toEqual([]);
+  // Pro Mode: a click opens Chat.
+  await setMode('pro');
+  const toggle = win.getByTestId('group-chat-toggle');
+  await send('Placeholder in Pro Mode');
+  await expect(pop).toContainText('Placeholder in Pro Mode');
+  await win.getByTestId('chat-pop-open').click();
+  await expect(pop).toHaveCount(0);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  // Back in Simple Mode, that click never adds Chat there.
+  await setMode('simple');
+  await settled(win);
+  await expect(chat).toHaveCount(0);
   await app.close();
 });

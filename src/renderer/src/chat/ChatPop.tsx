@@ -11,6 +11,11 @@ import { connectChat, useChat } from './chat-store';
 /** Only the operator shells mount this: no audience, stage, phone or stream imports it. */
 export const useChatOpen = create<{ asked: number }>(() => ({ asked: 0 }));
 
+/** A popup's click asking Chat to open (red: today's rule, whatever the mode). */
+export function openChatFromPop(): void {
+  useChatOpen.setState((s) => ({ asked: s.asked + 1 }));
+}
+
 export interface ChatPopViewProps {
   pop: ChatPop | null;
   leaving: boolean;
