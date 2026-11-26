@@ -20,7 +20,7 @@ describe('a wallpaper whose pictures are missing, in words (QA24-WALLBLACK-1)', 
       tile: 'Picture missing',
       notice:
         'The wallpaper’s picture is missing: “Placeholder a.png”. With nothing up, the screens show black.',
-      live: 'Wallpaper’s picture missing: “Placeholder a.png”. With nothing up, the screens show black.',
+      live: 'Wallpaper’s picture missing: “Placeholder a.png”. The screens show black when the wallpaper is up.',
       find: ['a'],
     });
   });
@@ -33,7 +33,7 @@ describe('a wallpaper whose pictures are missing, in words (QA24-WALLBLACK-1)', 
       count: 3,
       tile: 'Pictures missing',
       notice: 'The wallpaper’s 3 pictures are missing. With nothing up, the screens show black.',
-      live: 'Wallpaper’s pictures missing. With nothing up, the screens show black.',
+      live: 'Wallpaper’s pictures missing. The screens show black when the wallpaper is up.',
       find: ['a', 'b'],
     });
   });

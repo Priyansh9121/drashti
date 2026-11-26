@@ -103,7 +103,7 @@ test('a wallpaper whose picture is missing says so (its tile, the panel with Fin
     );
     await expect(n.getByRole('button', { name: 'Find…' })).toBeVisible();
     await expect(page.getByTestId('live-wallpaper-missing')).toHaveText(
-      `Wallpaper’s picture missing: “${FILE}”. With nothing up, the screens show black.`,
+      `Wallpaper’s picture missing: “${FILE}”. The screens show black when the wallpaper is up.`,
     );
     await expect(page.getByTestId('live-preview').getByTestId('scene').first()).toHaveAttribute(
       'data-nothing-up',
