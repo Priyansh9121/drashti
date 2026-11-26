@@ -138,8 +138,11 @@ function windowStandIn() {
   const target = new EventTarget();
   const dataset: Record<string, string> = {};
   const win = Object.assign(target, { document: { documentElement: { dataset } } });
-  const send = (type: string, parts: Record<string, unknown> = {}) => {
-    target.dispatchEvent(Object.assign(new Event(type), parts));
+  /** Sent as the window sends it; whether its default was prevented (taken: Electron's menu bar never sees it). */
+  const send = (type: string, parts: Record<string, unknown> = {}): boolean => {
+    const event = Object.assign(new Event(type, { cancelable: true }), parts);
+    target.dispatchEvent(event);
+    return event.defaultPrevented;
   };
   return { win: win as unknown as Window, dataset, send };
 }
@@ -171,5 +174,35 @@ describe('the window’s root says when the buttons’ keys are hidden', () => {
     expect(help.useHelp.getState().alt).toBe(false);
     help.setHelp(false);
     expect(hidden()).toBe(false);
+  });
+});
+
+describe('a look at the keys never opens Windows’ menu bar', () => {
+  it('takes Alt’s letting go after a look (held half a second or more); a press of Alt alone still opens it', async () => {
+    const help = await freshStore(storage());
+    const { win, send } = windowStandIn();
+    let now = 0;
+    const stop = help.connectKeyHints(win, () => now);
+    // A press (Windows: the menu bar shows and takes the keyboard, as it always has): let by.
+    expect(send('keydown', keyParts('Alt', { alt: true }))).toBe(false);
+    now = 200;
+    expect(send('keyup', keyParts('Alt'))).toBe(false);
+    // A look: held, its repeats too, then let go: taken, so the show keeps the keyboard.
+    now = 1000;
+    expect(send('keydown', keyParts('Alt', { alt: true }))).toBe(false);
+    now = 1300;
+    expect(send('keydown', keyParts('Alt', { alt: true }))).toBe(false);
+    now = 1500;
+    expect(send('keyup', keyParts('Alt'))).toBe(true);
+    // Alt with another key (a shortcut: the menu bar never opens for it) is let by, however long it was held.
+    now = 2000;
+    send('keydown', keyParts('Alt', { alt: true }));
+    send('keydown', keyParts('1', { alt: true }));
+    now = 3000;
+    expect(send('keyup', keyParts('Alt'))).toBe(false);
+    // Other keys, and pointers, are never taken.
+    expect(send('keydown', keyParts('ArrowRight'))).toBe(false);
+    expect(send('pointerdown', keyParts(''))).toBe(false);
+    stop();
   });
 });
