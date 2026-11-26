@@ -239,3 +239,67 @@ test('⌘1 and ⌘2 (Ctrl+1 and Ctrl+2) typed in the Zoom box are the window’s
     await app.close();
   }
 });
+
+test('a press on the PDF closes an open menu, so the show’s keys then move the show; a drag from it selects and drags out nothing', async () => {
+  const { scan } = await writeFlows({ scan: SCAN });
+  const { app } = await launchApp();
+  try {
+    const { win, input, region } = await chooseScan(app, scan, { playlist: true });
+    await input.fill('400');
+    await input.press('Enter');
+    await expect(input).toHaveValue('400%');
+    // Larger than its box: a press on it is where a drag starts.
+    expect(await region.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    await region.scrollIntoViewIfNeeded();
+    // Every press that reaches the page as a mouse press (the app's menus close on one outside them), and every drag.
+    await win.evaluate(() => {
+      const g = globalThis as typeof globalThis & { flowMouseDowns?: number; flowDragStarts?: number };
+      g.flowMouseDowns = 0;
+      g.flowDragStarts = 0;
+      document.addEventListener(
+        'mousedown',
+        () => {
+          g.flowMouseDowns = (g.flowMouseDowns ?? 0) + 1;
+        },
+        true,
+      );
+      document.addEventListener(
+        'dragstart',
+        () => {
+          g.flowDragStarts = (g.flowDragStarts ?? 0) + 1;
+        },
+        true,
+      );
+    });
+    const counts = () =>
+      win.evaluate(() => {
+        const g = globalThis as typeof globalThis & { flowMouseDowns?: number; flowDragStarts?: number };
+        return { mouseDowns: g.flowMouseDowns ?? 0, dragStarts: g.flowDragStarts ?? 0 };
+      });
+    await win.getByRole('button', { name: 'Playlist actions' }).click();
+    const menu = win.getByRole('menu');
+    await expect(menu).toBeVisible();
+    const point = await visiblePoint(region);
+    expect(point.hit, 'The mouse must press on the visible PDF region').toBe(true);
+    const pressed = (await counts()).mouseDowns;
+    await win.mouse.click(point.x, point.y);
+    expect((await counts()).mouseDowns).toBe(pressed + 1);
+    await expect(menu).toHaveCount(0);
+    await expect(region).toBeFocused();
+    const before = await show(win);
+    await win.keyboard.press('ArrowRight');
+    await expect.poll(async () => (await show(win)).rev).toBeGreaterThan(before.rev);
+    // A drag from the page over the open playlist's words and back: nothing selected, nothing dragged out.
+    const title = await win.getByTestId('playlist-title').boundingBox();
+    if (!title) throw new Error('The open playlist has no title');
+    await win.mouse.move(point.x, point.y);
+    await win.mouse.down();
+    await win.mouse.move(title.x + title.width / 2, title.y + title.height / 2, { steps: 6 });
+    await win.mouse.move(point.x + 10, point.y + 10, { steps: 3 });
+    await win.mouse.up();
+    expect(await win.evaluate(() => document.getSelection()?.toString() ?? '')).toBe('');
+    expect((await counts()).dragStarts).toBe(0);
+  } finally {
+    await app.close();
+  }
+});
