@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { emptyLayers } from '../../../shared/engine/state';
-import { KEYMAP, shortcutText } from '../../../shared/keymap';
-import { clearLook, LAYER_CLEARS } from './layer-clears';
+import type { KeyBinding } from '../../../shared/keymap';
+import { KEYMAP, shortcutText, SIMPLE_KEYMAP } from '../../../shared/keymap';
+import { ariaKeys, clearLook, LAYER_CLEARS } from './layer-clears';
 
 /*
  * The layer bar's clears follow the keys (Session 51): left to right Slide F2, Background F3, Audio F5,
@@ -61,5 +62,29 @@ describe('a layer’s clear, lit or compact', () => {
   it('is compact before the show’s state is known', () => {
     expect(clearLook(undefined, 'slide')).toBe('compact');
     expect(clearLook(null, 'ticker')).toBe('compact');
+  });
+});
+
+/*
+ * Each button along the bar says its keys to a screen reader (aria-keyshortcuts), as they act now: a compact clear
+ * shows no key, and with Help off (uihelp) the lit ones' keys are unseen too, so the name alone would not say them.
+ */
+describe('the bar’s buttons’ keys for a screen reader', () => {
+  it('are each clear’s key, Clear all’s, the Wallpaper’s and Black-out’s, in both modes', () => {
+    for (const keymap of [KEYMAP, SIMPLE_KEYMAP]) {
+      const clears = LAYER_CLEARS.map((c) => ariaKeys(c.action, 'darwin', keymap));
+      expect(clears).toEqual(['F2', 'F3', 'F5', 'F6', 'F7']);
+      expect(ariaKeys('clearAll', 'win32', keymap)).toBe('F1');
+      expect(ariaKeys('toggleWallpaper', 'win32', keymap)).toBe('F12');
+      expect(ariaKeys('toggleBlackout', 'win32', keymap)).toBe('B .');
+    }
+  });
+
+  it('are none for an action with no key now (Black-out with the single-letter keys off), and name Mod as each system does', () => {
+    const without: KeyBinding[] = KEYMAP.filter((b) => b.action !== 'toggleBlackout');
+    expect(ariaKeys('toggleBlackout', 'darwin', without)).toBeUndefined();
+    const modded: KeyBinding[] = [{ action: 'clearAll', keys: ['Mod+Shift+K'], label: 'Clear all' }];
+    expect(ariaKeys('clearAll', 'darwin', modded)).toBe('Meta+Shift+K');
+    expect(ariaKeys('clearAll', 'win32', modded)).toBe('Control+Shift+K');
   });
 });
