@@ -73,7 +73,9 @@ async function textUpTo(response: Response, max: number): Promise<string | null>
     if (done) break;
     size += value.byteLength;
     if (size > max) {
-      void reader.cancel();
+      // Given up unread. A connection that failed meanwhile fails the giving up too: caught here (QA24-CRASH-1; it was
+      // left to fail uncaught in the main process). The check says the answer was refused.
+      await reader.cancel().catch(() => undefined);
       return null;
     }
     chunks.push(value);
