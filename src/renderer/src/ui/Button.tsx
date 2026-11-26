@@ -1,4 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react';
+// A button that is not a show control answers the pointer and the keyboard (alpha.24, ui/motion.css).
+import './motion.css';
 import { cx } from './cx';
 import type { Icon } from './icons';
 import { Kbd } from './Kbd';
@@ -57,7 +59,9 @@ const weight = (variant: ButtonVariant) =>
   variant === 'primary' || variant === 'strong' ? 'font-bold' : 'font-medium';
 /**
  * A short colour change on hover and focus. Never on a show control (Session 25): Black-out, Logo,
- * the clears, Next and Back change in the same frame as the screens, so `instant` leaves it out.
+ * the clears, Next and Back change in the same frame as the screens, so `instant` leaves it out. Since alpha.24 a
+ * button that is not one also eases its focus ring in, dims while pressed and (Lively) lifts a pixel when pointed at
+ * (ui/motion.css, by its data-variant, never with data-show-control).
  */
 const fade = 'transition-[background-color,border-color,color,box-shadow,filter]';
 
@@ -140,6 +144,11 @@ export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
   size?: ButtonSize;
   /** Where the tooltip goes. */
   tooltipSide?: 'top' | 'bottom';
+  /**
+   * A show control (alpha.24, the release lead's review of uimotion, S4: a timer's Start or Show for the audience): its
+   * state changes at once, with no colour fade, and nothing ever moves it (data-show-control).
+   */
+  instant?: boolean;
   ref?: Ref<HTMLButtonElement>;
 }
 
@@ -151,6 +160,7 @@ export function IconButton({
   variant = 'ghost',
   size = 'md',
   tooltipSide = 'top',
+  instant = false,
   className,
   type = 'button',
   ...props
@@ -161,10 +171,11 @@ export function IconButton({
         type={type}
         aria-label={label}
         data-variant={variant}
+        data-show-control={instant ? '' : undefined}
         className={cx(
           base,
           'whitespace-nowrap',
-          fade,
+          !instant && fade,
           weight(variant),
           variants[variant],
           squareSizes[size],

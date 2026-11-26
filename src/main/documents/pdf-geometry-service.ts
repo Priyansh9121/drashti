@@ -187,6 +187,11 @@ export class PdfPrintGeometry {
     return !this.quarantined && this.active === null;
   }
 
+  /** Its worker did not confirm its exit, so no other starts (O1: a later quit is not held by it). */
+  get givenUp(): boolean {
+    return this.quarantined;
+  }
+
   async stop(): Promise<void> {
     this.stopped = true;
     const active = this.active;
