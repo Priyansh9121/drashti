@@ -185,6 +185,8 @@ A picture that says **Convert picture**, such as HEIC, needs converting in **Med
 
 In Pro Mode, drop a PDF on Sabha flow to use it as the running order; with one already loaded, confirm **Replace the running order?** or Cancel to keep it, and when several PDFs are dropped only the first is used.
 
+In the operator window, drag the PDF page with the mouse to move it both ways, or type 25% to 400% in **Zoom** and press Enter or leave the box; Escape restores the current zoom, and zooming keeps your place.
+
 A scanned PDF, or one whose letters come out wrong, says so and shows only its page.
 
 ![The operator window as it was before Sabha flow came: its left column with Library at the top](../screenshots/operator-1280x720.png)
