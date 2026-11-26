@@ -115,6 +115,7 @@ function setup(reply: (sourceText: string) => string = () => 'प्लेसह
     download: () => Promise.resolve(),
     show: showCaptions,
     spell: (p) => clean.heard(p),
+    cleanCorrection: (text, apply) => clean.correction(text, apply),
     changed: () => undefined,
     log: { info: () => undefined, warn: () => undefined },
     aiPath: {
@@ -250,7 +251,7 @@ describe('the alpha.24 captions join: the early final, words left out and transl
     t.service.close();
   });
 
-  it('an operator’s correction with a listed word never reaches the stage band beside the translation (J1)', async () => {
+  it('an operator’s correction with a listed word never reaches the translator, the review or the stage band beside the translation (J1, S1)', async () => {
     const t = setup();
     t.service.start();
     await t.service.setOn(true);
@@ -260,8 +261,9 @@ describe('the alpha.24 captions join: the early final, words left out and transl
     await vi.advanceTimersByTimeAsync(300);
     const current = t.coordinator.view().current;
     expect(current).toMatchObject({ phraseId: 's1', status: 'settled' });
+    // Through the operator's own way in: Apply correction's IPC calls the captions service (caption-prototype-ipc.ts).
     expect(
-      t.coordinator.correct({
+      t.service.correctPrototype({
         sessionId: current?.sessionId ?? '',
         phraseId: 's1',
         revision: current?.revision ?? 0,
@@ -271,6 +273,31 @@ describe('the alpha.24 captions join: the early final, words left out and transl
     await vi.advanceTimersByTimeAsync(300);
     expect(t.last()).toMatchObject({ lines: ['प्लेसहोल्डर अनुवाद'], stage: { lines: ['પહેલો ત્રીજો'] } });
     expect(JSON.stringify(t.screens)).not.toMatch(BAD);
+    // The translator is asked the corrected words without the listed one (review S1), so its rendering of that word
+    // (a form not on the list) can never reach the hall or the stream; the operator's review holds them so too.
+    expect(t.asked.map((a) => a.sourceText)).toEqual(['પહેલો બીજો', 'પહેલો ત્રીજો']);
+    const corrected = t.coordinator.view().current;
+    expect(corrected).toMatchObject({ phraseId: 's1', status: 'corrected', sourceText: 'પહેલો ત્રીજો' });
+    expect(t.clean.view().leftOut).toBe(1);
+    // A correction of nothing but listed words is refused, as an empty one is: nothing is asked, shown or counted.
+    expect(
+      t.service.correctPrototype({
+        sessionId: corrected?.sessionId ?? '',
+        phraseId: 's1',
+        revision: corrected?.revision ?? 0,
+        text: 'zqvorn ઢુમ્પક',
+      }),
+    ).toBe(false);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(t.asked.map((a) => a.sourceText)).toEqual(['પહેલો બીજો', 'પહેલો ત્રીજો']);
+    expect(t.coordinator.view().current).toMatchObject({
+      revision: corrected?.revision,
+      status: 'corrected',
+      sourceText: 'પહેલો ત્રીજો',
+    });
+    expect(t.last()).toMatchObject({ lines: ['प्लेसहोल्डर अनुवाद'], stage: { lines: ['પહેલો ત્રીજો'] } });
+    expect(t.clean.view().leftOut).toBe(1);
+    expect(t.everything()).not.toMatch(BAD);
     t.service.close();
   });
 });
