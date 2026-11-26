@@ -84,7 +84,7 @@ Simple Mode has no keys for Screens, Search, the quick bar, the list of keys, Re
 
 ## F-keys on a laptop
 
-**What it is.** On many laptops, and on a Mac's own keyboard, the top row changes the brightness or the sound unless Fn is held, and a MacBook Pro with a Touch Bar has no F-keys at all. Drashti's F-keys need the plain F-keys: on Windows, and on a Mac with Apple silicon or with Intel.
+**What it is.** On many laptops, and on a Mac's own keyboard, the top row changes the brightness or the sound unless Fn is held, and a MacBook Pro with a Touch Bar has no F-keys at all. Drashti's F-keys need the plain F-keys: on Windows, and on a Mac with Apple silicon or with Intel. The foot of the keys sheet says what your computer needs, and Simple Mode's first steps say it once on a Mac.
 
 **When you would use it.** When **F1** or **F12** does nothing.
 

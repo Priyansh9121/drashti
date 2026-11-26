@@ -146,6 +146,24 @@ export const SHOW_F_KEYS: readonly string[] = KEYMAP.flatMap((b) =>
 );
 
 /**
+ * What the show's F-keys need on this computer's keyboard, in its words (alpha.24, keyplat R4; the owner's "shortcuts
+ * should be adaptable to mac, mac intel, and windows"). A Mac's own keyboard, Apple silicon or Intel, uses its top row
+ * for the brightness and the sound unless fn is held, and a MacBook Pro with a Touch Bar (the Intel ones of 2016 to
+ * 2020, the 13-inch M1 and M2) has no F-keys at all; a Windows laptop may need Fn, or Fn Lock. The keys sheet says it;
+ * the manual's Keys chapter says the rest.
+ */
+export function fKeyHint(platform: string): string {
+  return platform === 'darwin'
+    ? 'The F-keys on a Mac keyboard: hold fn with the F-key, or turn on Use F1, F2, etc. keys as standard function keys (System Settings › Keyboard › Keyboard Shortcuts… › Function Keys). With a Touch Bar, hold fn to see F1 to F12, or add Drashti to the apps listed under Function Keys.'
+    : 'The F-keys on a laptop: hold Fn with the F-key, or turn on Fn Lock (often Fn and Esc together).';
+}
+
+/** Simple Mode's first steps, which it has instead of a keys sheet, say it once: on a Mac only. */
+export function fKeyFirstStep(platform: string): string | null {
+  return platform === 'darwin' ? 'On a Mac keyboard, hold fn with an F-key such as F1.' : null;
+}
+
+/**
  * The keys sheet, built from KEYMAP and grouped by what the operator is doing (Session 25): every
  * action once (a unit test checks), so the sheet never drifts from the keys.
  */
