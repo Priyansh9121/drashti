@@ -19,8 +19,11 @@ export function footKept(foot: {
 
 /**
  * What tells the Undo line the pointer may have come into or left the left column (`changed`; it then reads the
- * column's :hover again): the column's own mouseenter and mouseleave. A drag moves no pointer: these say nothing
- * during one. `page` (the document) and `roomKept` are for the room's own watch.
+ * column's :hover again): the column's own mouseenter and mouseleave, and, while its room is kept, every mouseover in
+ * the window (`page`, the document) too. A menu or dialog that closes over the column under a still pointer gives the
+ * column its :hover back with no mouseenter, and the first move straight out of it then sends no mouseleave; the
+ * mouseover of what the pointer comes onto still comes (the review of QA24-UNDOLINE-2, SHOULD-2). A drag moves no
+ * pointer: none of these say anything during one.
  */
 export function watchPointer(
   column: EventTarget | null,
@@ -30,8 +33,11 @@ export function watchPointer(
 ): () => void {
   column?.addEventListener('mouseenter', changed);
   column?.addEventListener('mouseleave', changed);
+  const moves = roomKept ? page : null;
+  moves?.addEventListener('mouseover', changed);
   return () => {
     column?.removeEventListener('mouseenter', changed);
     column?.removeEventListener('mouseleave', changed);
+    moves?.removeEventListener('mouseover', changed);
   };
 }

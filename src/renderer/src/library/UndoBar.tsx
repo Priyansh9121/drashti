@@ -39,7 +39,7 @@ const leftColumn = (): Element | null => document.querySelector('[data-left-colu
 
 /** The pointer coming into or leaving the left column, while the line shows (undo-room.ts). */
 const watchLine = (changed: () => void) => watchPointer(leftColumn(), document, false, changed);
-/** The same while its room is kept (undo-room.ts: the room's own watch). */
+/** The same while its room is kept, and every mouseover in the window too (undo-room.ts: the review's SHOULD-2). */
 const watchRoom = (changed: () => void) => watchPointer(leftColumn(), document, true, changed);
 
 /** Whether the pointer is over the left column, as the window's own :hover has it. */
