@@ -12,6 +12,17 @@ describe('quit refusal', () => {
     expect(resume).toHaveBeenCalledOnce();
   });
 
+  it('keeps the guard during an owned asynchronous hold decided by a later listener', async () => {
+    const event = { defaultPrevented: false };
+    const resume = vi.fn();
+    let held = false;
+    onQuitRefused(event, resume, false, () => held);
+    event.defaultPrevented = true;
+    held = true;
+    await Promise.resolve();
+    expect(resume).not.toHaveBeenCalled();
+  });
+
   it('leaves an accepted quit guarded', async () => {
     const resume = vi.fn();
     onQuitRefused({ defaultPrevented: false }, resume);

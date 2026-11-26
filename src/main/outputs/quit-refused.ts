@@ -3,6 +3,7 @@ export function onQuitRefused(
   event: { readonly defaultPrevented: boolean },
   resume: () => void,
   unload = false,
+  _isHeld: () => boolean = () => false,
 ): void {
   queueMicrotask(() => {
     // will-prevent-unload is inverted: preventDefault permits the unload.
