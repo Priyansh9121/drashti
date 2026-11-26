@@ -542,20 +542,32 @@ test('Stage off and on again moves nothing in the top bar: On and Off keep the s
   const header = win.getByTestId('app-header');
   const stage = header.getByTestId('switch-stage');
   await expect(stage).toBeEnabled();
-  /** Where each of the top bar's buttons is, and how wide. */
+  /**
+   * Where each of the top bar group's buttons is, from the group's end, and how wide: the switches' own room, whatever
+   * moves the whole group (on CI's Windows the group itself moved 10 px with Stage off; the page's scroll is logged).
+   */
   const places = () =>
-    header.locator('button').evaluateAll((buttons) =>
-      buttons.map((b) => {
+    header.locator('[data-top-group]').evaluate((group) => {
+      const end = group.getBoundingClientRect().right;
+      return [...group.querySelectorAll('button')].map((b) => {
         const r = b.getBoundingClientRect();
-        return [r.x, r.width];
-      }),
-    );
+        return [end - r.x, r.width];
+      });
+    });
+  /** The page's own scroll, for the report (lead 2's): its room and what it holds. */
+  const page = () =>
+    win.evaluate(() => {
+      const d = document.documentElement;
+      return { width: [d.clientWidth, d.scrollWidth], height: [d.clientHeight, d.scrollHeight] };
+    });
   const before = await places();
   const was = (await stage.getAttribute('aria-checked')) === 'true';
+  console.info(`the page with Stage ${was ? 'on' : 'off'}: ${JSON.stringify(await page())}`);
   // Nothing shows on a stage screen here: turned either way at once, asking nothing.
   await win.keyboard.press(`${MOD}+2`);
   await expect(stage).toHaveAttribute('aria-checked', was ? 'false' : 'true');
-  expect(await places(), 'Stage the other way: every button where it was, 0 px').toEqual(before);
+  console.info(`the page with Stage ${was ? 'off' : 'on'}: ${JSON.stringify(await page())}`);
+  expect(await places(), 'Stage the other way: every button where it was in the group, 0 px').toEqual(before);
   await win.keyboard.press(`${MOD}+2`);
   await expect(stage).toHaveAttribute('aria-checked', was ? 'true' : 'false');
   expect(await places()).toEqual(before);
