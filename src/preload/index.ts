@@ -219,6 +219,13 @@ const bridge: DrashtiBridge = {
     exportFile: () => invoke(IPC.captionWords.export),
     setHints: (language, on) => invoke(IPC.captionWords.setHints, language, on),
   },
+  captionClean: {
+    view: () => invoke(IPC.captionClean.view),
+    set: (words) => invoke(IPC.captionClean.set, words),
+    importFile: () => invoke(IPC.captionClean.import),
+    exportFile: () => invoke(IPC.captionClean.export),
+    onChanged: (listener) => on(IPC.captionClean.changed, listener),
+  },
   videoCaptions: {
     view: (mediaId) => invoke(IPC.videoCaptions.view, mediaId),
     select: (mediaId, trackId) => invoke(IPC.videoCaptions.select, mediaId, trackId),

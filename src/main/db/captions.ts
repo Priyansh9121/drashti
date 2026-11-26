@@ -1,14 +1,21 @@
 import { parseCaptionSettings, type CaptionSettings } from '../../shared/captions';
 import type { Db } from './database';
 
-/** Live captions' settings in the library (Session 55, Part 10, migration 066): one row. */
+/**
+ * Live captions' settings in the library (Session 55, Part 10, migration 066; "Captions in", alpha.24, migration
+ * 093): one row.
+ */
 export class CaptionSettingsRepo {
   constructor(private readonly db: Db) {}
 
   get(): CaptionSettings {
     const row = this.db
-      .prepare('SELECT language, audience, size, place FROM caption_settings WHERE id = 1')
-      .get() as { language: string; audience: number; size: string; place: string } | undefined;
+      .prepare(
+        'SELECT language, audience, size, place, caption_language AS captionLanguage FROM caption_settings WHERE id = 1',
+      )
+      .get() as
+      | { language: string; audience: number; size: string; place: string; captionLanguage: string }
+      | undefined;
     return parseCaptionSettings(row && { ...row, audience: row.audience === 1 });
   }
 
@@ -16,9 +23,17 @@ export class CaptionSettingsRepo {
     const s = parseCaptionSettings(settings);
     this.db
       .prepare(
-        `INSERT INTO caption_settings (id, language, audience, size, place) VALUES (1, @language, @audience, @size, @place)
-         ON CONFLICT (id) DO UPDATE SET language = @language, audience = @audience, size = @size, place = @place`,
+        `INSERT INTO caption_settings (id, language, audience, size, place, caption_language)
+         VALUES (1, @language, @audience, @size, @place, @captionLanguage)
+         ON CONFLICT (id) DO UPDATE SET language = @language, audience = @audience, size = @size, place = @place,
+           caption_language = @captionLanguage`,
       )
-      .run({ language: s.language, audience: s.audience ? 1 : 0, size: s.size, place: s.place });
+      .run({
+        language: s.language,
+        audience: s.audience ? 1 : 0,
+        size: s.size,
+        place: s.place,
+        captionLanguage: s.captionLanguage ?? 'same',
+      });
   }
 }

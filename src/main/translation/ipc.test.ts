@@ -5,6 +5,7 @@ import { fakeHelper } from '../testing/fake-translate-helper';
 import { INDICTRANS2_FILES, INDICTRANS2_FORMAT, TranslationEngine } from './translation-engine';
 import { HelperError, TranslationHelper } from './translation-helper';
 import {
+  LIVE_CAPTIONS,
   NOT_HERE,
   NOT_INSTALLED,
   NO_MODEL,
@@ -211,6 +212,36 @@ describe('Prepare translations’ requests', () => {
     await expect(call(IPC.slideEditor.translationDraft, request)).resolves.toEqual({
       ok: false,
       message: ON_AIR,
+    });
+  });
+
+  it('waits while translated live captions run, as on air (lead 2’s decision a: never two helpers at once)', async () => {
+    let live = true;
+    const { call, translate } = setUp({ liveCaptions: () => live });
+    await expect(call(IPC.slideEditor.translationStatus, 'en', 'gu')).resolves.toMatchObject({
+      available: true,
+      message: LIVE_CAPTIONS,
+    });
+    await expect(call(IPC.slideEditor.translationDraft, request)).resolves.toEqual({
+      ok: false,
+      message: LIVE_CAPTIONS,
+    });
+    expect(translate).not.toHaveBeenCalled();
+    expect(LIVE_CAPTIONS).toMatch(/translated live captions/u);
+    // Stopped because translated captions began: says that, not just "Stopped".
+    live = false;
+    const stopped = setUp(
+      { liveCaptions: () => live },
+      {
+        translate: vi.fn(() => {
+          live = true;
+          return Promise.reject(new HelperError('cancelled', 'Stopped.'));
+        }),
+      },
+    );
+    await expect(stopped.call(IPC.slideEditor.translationDraft, request)).resolves.toEqual({
+      ok: false,
+      message: LIVE_CAPTIONS,
     });
   });
 });

@@ -46,17 +46,27 @@ describe('caption settings (Part 10, migration 066)', () => {
       audience: false,
       size: 'medium',
       place: 'bottom',
+      captionLanguage: 'same',
     });
     expect(parseCaptionSettings({ language: 'gu', audience: true, size: 'large', place: 'top' })).toEqual({
       language: 'gu',
       audience: true,
       size: 'large',
       place: 'top',
+      captionLanguage: 'same',
     });
     expect(parseCaptionSettings({ language: 'fr', audience: 'yes', size: 'huge', place: 'middle' })).toEqual(
       DEFAULT_CAPTION_SETTINGS,
     );
     expect(parseCaptionSettings({ language: 'sa' }).language).toBe('sa');
+  });
+
+  it('"Captions in" (alpha.24, migration 093): kept when known, the speaker’s own words otherwise', () => {
+    expect(parseCaptionSettings({ language: 'gu', captionLanguage: 'hi' }).captionLanguage).toBe('hi');
+    for (const t of ['same', 'gu', 'hi', 'en'])
+      expect(parseCaptionSettings({ captionLanguage: t }).captionLanguage).toBe(t);
+    for (const bad of ['sa', 'auto', 'fr', 1, null, undefined])
+      expect(parseCaptionSettings({ captionLanguage: bad }).captionLanguage).toBe('same');
   });
 });
 
@@ -77,6 +87,41 @@ describe('where captions show (Part 10)', () => {
     expect(captionsFor(null, 'stream')).toBeNull();
     expect(captionsFor(undefined, 'stage')).toBeNull();
     expect(captionsFor({ ...shown, lines: [] }, 'stream')).toBeNull();
+  });
+
+  it('alpha.24: while the others show a translation, the stage draws the speaker’s own words, or nothing', () => {
+    const translated: CaptionsShown = {
+      ...shown,
+      fit: true,
+      kind: 'translation',
+      lines: ['Placeholder translated line'],
+      language: 'hi',
+      audience: true,
+      page: { n: 1, of: 2 },
+      stage: { lines: ['Placeholder spoken line'], language: 'gu', fit: true },
+    };
+    expect(captionsFor(translated, 'stream')).toBe(translated);
+    expect(captionsFor(translated, 'hall')).toBe(translated);
+    expect(captionsFor({ ...translated, audience: false }, 'hall')).toBeNull();
+    expect(captionsFor(translated, 'stage')).toEqual({
+      fit: true,
+      lines: ['Placeholder spoken line'],
+      language: 'gu',
+      audience: true,
+      size: 'medium',
+      place: 'bottom',
+    });
+    // The speaker's words before any translation is ready: the stage only.
+    const waiting: CaptionsShown = { ...translated, lines: [] };
+    expect(captionsFor(waiting, 'stream')).toBeNull();
+    expect(captionsFor(waiting, 'hall')).toBeNull();
+    expect(captionsFor(waiting, 'stage')?.lines).toEqual(['Placeholder spoken line']);
+    // Nothing for the stage now.
+    expect(captionsFor({ ...translated, stage: null }, 'stage')).toBeNull();
+    expect(captionsFor({ ...translated, stage: { lines: [], language: 'gu' } }, 'stage')).toBeNull();
+    expect(captionsFor({ ...translated, stage: null }, 'stream')?.lines).toEqual([
+      'Placeholder translated line',
+    ]);
   });
 });
 

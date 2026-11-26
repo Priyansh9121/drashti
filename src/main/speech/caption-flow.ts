@@ -1,5 +1,5 @@
 import type { CaptionCorrection, CaptionReview, CaptionRevision } from '../../shared/caption-coordinator';
-import type { Heard, SpeechState } from '../../shared/speech';
+import type { Heard, SpeechLanguage, SpeechState } from '../../shared/speech';
 import type { SpeechHub } from './speech-hub';
 
 /*
@@ -21,6 +21,8 @@ export interface ClauseSink {
   view(): CaptionReview;
   correct(correction: CaptionCorrection): boolean;
   dismiss(key: Omit<CaptionCorrection, 'text'>): boolean;
+  /** The phrase being heard was left out whole (alpha.24, QA24-CAPCLEAN-1): what showed of it comes off. */
+  withdraw?(phraseId: string): boolean;
 }
 
 /**
@@ -35,6 +37,11 @@ export interface CaptionFlowOptions {
   spelling?: CaptionSpelling;
   /** The local sound recorder's draft gets each final phrase with the glossary's spelling (never a correction). */
   onFinalPhrase?: (phrase: Heard) => void;
+  /**
+   * alpha.24 ("Captions in", QA24-CAPLANG-2): the language each phrase heard in `language` is shown in (a translation
+   * target), or the language itself; left out, the speaker's own words as before.
+   */
+  target?: (language: SpeechLanguage) => SpeechLanguage;
 }
 
 export interface CaptionFlow {
@@ -77,7 +84,15 @@ export function createCaptionFlow(options: CaptionFlowOptions): CaptionFlow {
       .normalize('NFC')
       .trim();
     if (h.final) options.onFinalPhrase?.(h !== given ? { ...h, text } : h);
-    if (text === '') return;
+    if (text === '') {
+      // Every word of the phrase being heard was left out (alpha.24, QA24-CAPCLEAN-1, review F4): what showed of it
+      // comes off the screens.
+      if (last !== null && last.id === h.id && !last.final) {
+        options.coordinator.withdraw?.(h.id);
+        last = null;
+      }
+      return;
+    }
     const same = last !== null && last.id === h.id;
     if (same && last !== null && (last.final || (last.text === text && !h.final))) return;
     const revision = same && last !== null ? last.revision + 1 : 1;
@@ -87,7 +102,7 @@ export function createCaptionFlow(options: CaptionFlowOptions): CaptionFlow {
       phraseId: h.id,
       revision,
       sourceLanguage: h.language,
-      targetLanguage: h.language,
+      targetLanguage: options.target?.(h.language) ?? h.language,
       sourceText: text,
       startAt: h.startAt,
       endAt: h.endAt,
