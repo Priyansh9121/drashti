@@ -193,6 +193,8 @@ describe('translated captions through the coordinator (alpha.24, QA24-CAPLANG-2)
     // Still in flight when the fourth settles: the third is overtaken.
     c.accept(clause('Fourth placeholder', 1, 'settled', 's4'));
     expect(skips).toEqual(['late', 'failed', 'late']);
+    // The overtaken request settles (cancelled) first; then the fourth is asked.
+    await vi.advanceTimersByTimeAsync(0);
     expect(requests).toHaveLength(4);
     finish(3, 'चौथा');
     await vi.advanceTimersByTimeAsync(300);
