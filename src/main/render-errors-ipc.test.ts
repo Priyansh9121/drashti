@@ -127,6 +127,34 @@ describe('render errors as Main hears them', () => {
     expect(lines).toHaveLength(2);
   });
 
+  // S1-1 (the alpha.24 bug hunt): two TVs of one model share a name; what the page failed on is found by its page.
+  it('two outputs of one name: what keeps failing is asked of the failing one’s own page, and the watchdog told of it', () => {
+    handlers.clear();
+    const left = { side: 'left' } as unknown as WatchTarget;
+    const right = { side: 'right' } as unknown as WatchTarget;
+    const asked: unknown[] = [];
+    const reloaded: unknown[] = [];
+    hearRenderErrors({
+      log: () => undefined,
+      watchdog: {
+        renderError: (target: WatchTarget) => {
+          reloaded.push(target);
+        },
+      } as unknown as RendererWatchdog,
+      windowOf: (sender) => ({ name: HALL, output: sender.id === OUTPUT ? left : right }),
+      failed: (window: unknown) => {
+        asked.push(window);
+        return false;
+      },
+    });
+    handlers.get(IPC.app.renderError)?.(
+      { sender: { id: OUTPUT + 1 } } as unknown as IpcMainInvokeEvent,
+      CAUGHT,
+    );
+    expect(asked).toEqual([{ name: HALL, output: right }]);
+    expect(reloaded).toEqual([right]);
+  });
+
   it('a report that is not one is dropped, as before', () => {
     const { lines, reloads, send } = setUp();
     send(OUTPUT, report('later', 'Error: placeholder', 'Placeholder'));
