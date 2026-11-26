@@ -504,6 +504,83 @@ describe('the phone’s open playlist', () => {
     expect(tools.usePhoneTools.getState().docs.has('other')).toBe(true);
   });
 
+  it('a connection whose first hall read failed lets go of every row once a later hall answers, whoever reads it (a24-review-phonefix S2)', async () => {
+    // A phone away while a deck was edited, then back with its first hall refused: the onOnline chain stopped, and a
+    // later change naming another deck let go of that one alone, so the edited deck stayed as it was before.
+    const tools = await import('./phone-tools-store');
+    const failed = () =>
+      new Response(JSON.stringify({ ok: false, message: 'Placeholder: not now' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    const kept = () => [...tools.usePhoneTools.getState().docs.keys()].sort();
+    // The playlists answer at once (none); the halls wait to be answered here, each in turn.
+    const halls: ((response: Response) => void)[] = [];
+    fetcher.mockImplementation((url) =>
+      url === '/api/v1/playlists'
+        ? Promise.resolve(json({ ok: true, playlists: [] }))
+        : new Promise<Response>((resolve) => {
+            if (url === '/api/v1/hall') halls.push(resolve);
+          }),
+    );
+    /** The next hall read, once it is asked (after `after` of them), answered with `response`. */
+    const answerHall = async (after: number, response: Response) => {
+      await vi.waitFor(() => expect(halls.length).toBeGreaterThan(after));
+      halls[after]?.(response);
+    };
+    const asked = () => halls.length;
+
+    // A library change that names another deck, its refresh the first hall heard.
+    tools.usePhoneTools.setState({
+      docs: new Map([
+        ['deck-1', null],
+        ['deck-2', null],
+      ]),
+    });
+    let before = asked();
+    online();
+    await answerHall(before, failed());
+    await settle();
+    expect(kept()).toEqual(['deck-1', 'deck-2']);
+    before = asked();
+    changed('presentations', ['deck-2']);
+    await answerHall(before, answer(null));
+    await vi.waitFor(() => expect(kept()).toEqual([]));
+
+    // A screens change whose hall is the first heard.
+    tools.usePhoneTools.setState({ docs: new Map([['deck-1', null]]) });
+    before = asked();
+    online();
+    await answerHall(before, failed());
+    await settle();
+    expect(kept()).toEqual(['deck-1']);
+    before = asked();
+    const playlistsBefore = askedPaths().filter((u) => u === '/api/v1/playlists').length;
+    changed('screens');
+    await answerHall(before, answer(null));
+    await vi.waitFor(() => expect(kept()).toEqual([]));
+    await vi.waitFor(() =>
+      expect(askedPaths().filter((u) => u === '/api/v1/playlists').length, 'the playlists read again').toBe(
+        playlistsBefore + 1,
+      ),
+    );
+  });
+
+  it('the phone tools’ own listener lets go of only the presentations a library change names (a24-review-phonefix S3)', async () => {
+    const tools = await import('./phone-tools-store');
+    tools.startPhoneTools();
+    tools.usePhoneTools.setState({
+      docs: new Map([
+        ['deck', null],
+        ['other', null],
+      ]),
+    });
+    changed('presentations', ['deck']);
+    expect([...tools.usePhoneTools.getState().docs.keys()]).toEqual(['other']);
+    changed('presentations');
+    expect(tools.usePhoneTools.getState().docs.size).toBe(0);
+  });
+
   it('clears the previous playlist’s rows while reading the next one', async () => {
     remote.useRemote.setState({ items: [header('old')] });
     const reading = remote.showPlaylist('two');
