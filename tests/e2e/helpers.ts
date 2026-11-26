@@ -710,6 +710,10 @@ export async function openSection(page: Page, section: LiveSection): Promise<voi
   const toggle = page.getByTestId(`group-${section}-toggle`);
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  // Its chevron settled (alpha.24): where Chromium draws with a graphics chip it turns over --dur-open (ui/motion.css),
+  // and a spec that measures the section next must read its boxes still, never mid-turn (live-column-widths.spec.ts on
+  // CI's Mac, run 45894668186: a 14 px chevron a few degrees round is 14.7 px wide).
+  await expect.poll(() => toggle.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
 }
 
 /** Unfold every section under LIVE (Pro Mode's), top to bottom. */
