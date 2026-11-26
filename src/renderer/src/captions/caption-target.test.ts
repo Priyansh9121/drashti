@@ -171,16 +171,30 @@ describe('"Captions in" in the Live captions dialog (alpha.24, QA24-CAPLANG-2)',
     const html = field(view({ target: 'hi', translation: { offered: false, unavailable: 'no-pack' } }));
     // Still open, so the speaker's own words can be chosen again; the translations are greyed out.
     expect(selectTag(html)).not.toMatch(/\sdisabled=""/u);
-    expect(options(html).filter((o) => o.disabled).map((o) => o.value)).toEqual(['gu', 'hi', 'en']);
-    const notice = /data-testid="captions-target-unavailable"[^>]*>(.*?)<\/div><\/div>/u.exec(html)?.[1] ?? '';
+    expect(
+      options(html)
+        .filter((o) => o.disabled)
+        .map((o) => o.value),
+    ).toEqual(['gu', 'hi', 'en']);
+    const notice =
+      /data-testid="captions-target-unavailable"[^>]*>(.*?)<\/div><\/div>/u.exec(html)?.[1] ?? '';
     expect(words(notice)).toContain(unavailableText('no-pack'));
     expect(words(notice)).toMatch(/audience screens and the stream show no captions/u);
     expect(words(notice)).toContain('Same as the speaker');
     expect(html).toMatch(/role="alert"[^>]*data-testid="captions-target-unavailable"/u);
     // As heard or Sanskrit: the speaker's own words show, and it says so (a warning, not a failure).
-    const heard = field(view({ language: 'auto', target: 'hi', translation: { offered: false, unavailable: 'speaker-as-heard' } }));
+    const heard = field(
+      view({
+        language: 'auto',
+        target: 'hi',
+        translation: { offered: false, unavailable: 'speaker-as-heard' },
+      }),
+    );
     expect(words(heard)).toContain(unavailableText('speaker-as-heard'));
     expect(heard).not.toMatch(/audience screens and the stream show no captions/u);
+    // Nothing is translated as heard: no Trial warning and no count of skipped phrases.
+    expect(heard).not.toContain('captions-target-trial');
+    expect(heard).not.toContain('captions-target-skipped');
   });
 
   it('a translation chosen: the Trial warning, that it is a machine translation and a reader checks a rehearsal first', () => {
@@ -206,8 +220,12 @@ describe('"Captions in" in the Live captions dialog (alpha.24, QA24-CAPLANG-2)',
 
   it('the speaker’s own language chosen as the target: says the speaker’s words show, no warning of a translation', () => {
     const html = field(view({ language: 'hi', target: 'hi' }));
-    expect(html).toMatch(/<option value="hi" selected="" disabled="">|<option value="hi" disabled="" selected="">/u);
-    expect(words(html)).toMatch(/The speaker’s language is Hindi, so captions show the speaker’s own words\./u);
+    expect(html).toMatch(
+      /<option value="hi" selected="" disabled="">|<option value="hi" disabled="" selected="">/u,
+    );
+    expect(words(html)).toMatch(
+      /The speaker’s language is Hindi, so captions show the speaker’s own words\./u,
+    );
     expect(html).not.toContain('captions-target-trial');
   });
 
@@ -228,7 +246,9 @@ describe('"Captions in" in the Live captions dialog (alpha.24, QA24-CAPLANG-2)',
     const fault = /data-testid="captions-target-fault"[^>]*>(.*?)<\/div><\/div>/u.exec(html)?.[1] ?? '';
     expect(words(fault)).toBe('Last problem translating captions: Placeholder fault words.');
     // No fault: nothing said of one.
-    expect(field(view({ target: 'hi', translation: { target: 'hi' } }))).not.toContain('captions-target-fault');
+    expect(field(view({ target: 'hi', translation: { target: 'hi' } }))).not.toContain(
+      'captions-target-fault',
+    );
   });
 });
 
@@ -250,18 +270,30 @@ describe('the status bar while a chosen translation cannot be made (alpha.24, 2c
     );
     expect(translationStatusLine(off(null))).toBe('Translated captions are off on this computer.');
     expect(
-      translationStatusLine(view({ target: 'hi', translation: { offered: false, fault: 'Placeholder stop.' } })),
+      translationStatusLine(
+        view({ target: 'hi', translation: { offered: false, fault: 'Placeholder stop.' } }),
+      ),
     ).toBe('Translated captions are off: Placeholder stop.');
     // Nothing to say: working, the speaker's own words chosen, a pair that does not translate, or captions off.
     expect(translationStatusLine(view({ target: 'hi', translation: { target: 'hi' } }))).toBeNull();
-    expect(translationStatusLine(view({ translation: { offered: false, unavailable: 'no-pack' } }))).toBeNull();
-    expect(translationStatusLine(view({ language: 'hi', target: 'hi', translation: { offered: false } }))).toBeNull();
+    expect(
+      translationStatusLine(view({ translation: { offered: false, unavailable: 'no-pack' } })),
+    ).toBeNull();
+    expect(
+      translationStatusLine(view({ language: 'hi', target: 'hi', translation: { offered: false } })),
+    ).toBeNull();
     expect(
       translationStatusLine(
-        view({ language: 'auto', target: 'hi', translation: { offered: false, unavailable: 'speaker-as-heard' } }),
+        view({
+          language: 'auto',
+          target: 'hi',
+          translation: { offered: false, unavailable: 'speaker-as-heard' },
+        }),
       ),
     ).toBeNull();
-    expect(translationStatusLine(view({ on: false, ...{ target: 'hi' }, translation: { offered: false } }))).toBeNull();
+    expect(
+      translationStatusLine(view({ on: false, ...{ target: 'hi' }, translation: { offered: false } })),
+    ).toBeNull();
     expect(translationStatusLine(null)).toBeNull();
     // Captions' own line (resting, no sound input) is unchanged and comes first: the store shows it.
     expect(captionsStatusLine(off('no-pack'))).toBeNull();

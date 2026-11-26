@@ -44,7 +44,11 @@ const attr = (html: string, name: string) =>
   new RegExp(`data-testid="captions"[^>]*\\s${name}="([^"]*)"`, 'u').exec(html)?.[1] ??
   new RegExp(`\\s${name}="([^"]*)"[^>]*data-testid="captions"`, 'u').exec(html)?.[1] ??
   null;
-const langOf = (html: string) => /<div[^>]*\slang="([^"]+)"[^>]*data-testid="captions"|data-testid="captions"[^>]*\slang="([^"]+)"/u.exec(html)?.slice(1).find(Boolean) ?? null;
+const langOf = (html: string) =>
+  /<div[^>]*\slang="([^"]+)"[^>]*data-testid="captions"|data-testid="captions"[^>]*\slang="([^"]+)"/u
+    .exec(html)
+    ?.slice(1)
+    .find(Boolean) ?? null;
 
 describe('translated live captions on each kind of screen (alpha.24, 2b A)', () => {
   it('the audience screens and the stream draw the translation, its page marked, in its language', () => {
@@ -84,7 +88,13 @@ describe('translated live captions on each kind of screen (alpha.24, 2b A)', () 
     }
     // Speech in the speaker's own words is not marked as a page or a translation (today's captions).
     const own = band(
-      withCaptions({ lines: ['Placeholder heard'], language: 'gu', audience: true, size: 'medium', place: 'bottom' }),
+      withCaptions({
+        lines: ['Placeholder heard'],
+        language: 'gu',
+        audience: true,
+        size: 'medium',
+        place: 'bottom',
+      }),
       'stream',
     );
     expect(attr(own, 'data-kind')).toBeNull();
@@ -93,7 +103,8 @@ describe('translated live captions on each kind of screen (alpha.24, 2b A)', () 
   });
 
   it('nothing on the audience screens or the stream while the translation is not ready: never the speaker’s words in its place', () => {
-    const waiting = withCaptions({ ...TRANSLATED, lines: [], page: undefined } as CaptionsShown);
+    const { page: _page, ...unpaged } = TRANSLATED;
+    const waiting = withCaptions({ ...unpaged, lines: [] });
     expect(band(waiting, 'hall')).toBe('');
     expect(band(waiting, 'stream')).toBe('');
     // The stage still shows the speaker.

@@ -26,6 +26,7 @@ import { Notice } from '../ui/Notice';
 import { Progress } from '../ui/Progress';
 import { Toggle } from '../ui/Toggle';
 import { CaptionWordsSection } from './CaptionWordsDialog';
+import { CaptionTargetField } from './CaptionTargetField';
 import { closeCaptions, connectCaptions, takeCaptions, useCaptions } from './captions-store';
 import { CaptionPrototypePanel } from './CaptionPrototypePanel';
 import { openModelPacks } from '../model-packs/model-packs-store';
@@ -49,7 +50,8 @@ import {
  * stream and the stage screens, and on the audience screens if chosen. On or off on this computer (off until an
  * admin turns it on), the model (downloaded once), the language, and the captions' size and place. Since alpha.22:
  * the speaker's language (File › Speaker's Language too), a model of its own for Gujarati, Hindi or English where
- * this copy knows one, and the live timing on this computer (folded away until asked for).
+ * this copy knows one, and the live timing on this computer (folded away until asked for). Since alpha.24: "Captions in",
+ * the speaker's words translated for the audience screens and the stream (CaptionTargetField.tsx).
  */
 
 const LANGUAGES: { id: SpeechLanguage | 'auto'; name: string }[] = [
@@ -188,6 +190,8 @@ function CaptionsForm({ view }: { view: CaptionsStatus }) {
         <p className="text-sm text-muted">
           Change it as the speakers change: File › Speaker’s Language does the same during the show.
         </p>
+        {/* Captions in another language (alpha.24, QA24-CAPLANG-2): under Speaker's language, Pro Mode's dialog only. */}
+        <CaptionTargetField view={view} save={save} />
         {view.languageModels.some((m) => m.known.length > 0 || m.chosen !== null) && (
           <div className="space-y-3" data-testid="captions-language-models">
             <p className="text-sm text-muted">

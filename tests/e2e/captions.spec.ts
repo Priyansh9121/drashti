@@ -378,7 +378,9 @@ test('"Captions in" under Speaker’s language: greyed out with the reason, the 
       }),
     ).toBe(true);
 
-    const real: CaptionsStatus = await win.evaluate(() => (globalThis as PageGlobals).drashti.captions.view());
+    const real: CaptionsStatus = await win.evaluate(() =>
+      (globalThis as PageGlobals).drashti.captions.view(),
+    );
     const translation = (over: Partial<CaptionTranslationStatus>): CaptionTranslationStatus => ({
       target: null,
       offered: true,
@@ -396,10 +398,17 @@ test('"Captions in" under Speaker’s language: greyed out with the reason, the 
         },
         { channel: IPC.captions.changed, payload: { ...real, ...over } },
       );
-    const gujarati = (captionLanguage: 'same' | 'hi') => ({ ...real.settings, language: 'gu' as const, captionLanguage });
+    const gujarati = (captionLanguage: 'same' | 'hi') => ({
+      ...real.settings,
+      language: 'gu' as const,
+      captionLanguage,
+    });
 
     // This computer cannot translate (no pack): greyed out, and its description says why.
-    await tell({ settings: gujarati('same'), translation: translation({ offered: false, unavailable: 'no-pack' }) });
+    await tell({
+      settings: gujarati('same'),
+      translation: translation({ offered: false, unavailable: 'no-pack' }),
+    });
     await expect(target).toBeDisabled();
     await expect(target).toHaveAccessibleDescription(unavailableText('no-pack'));
     await tell({
@@ -412,7 +421,8 @@ test('"Captions in" under Speaker’s language: greyed out with the reason, the 
     await tell({ settings: gujarati('same'), translation: translation({}) });
     await expect(target).toBeEnabled();
     await expect(target.locator('option[value="gu"]')).toBeDisabled();
-    for (const other of ['same', 'hi', 'en']) await expect(target.locator(`option[value="${other}"]`)).toBeEnabled();
+    for (const other of ['same', 'hi', 'en'])
+      await expect(target.locator(`option[value="${other}"]`)).toBeEnabled();
 
     // Hindi chosen and translating: the Trial warning, the phrases skipped (no live region) and the last fault.
     await tell({
@@ -436,13 +446,20 @@ test('"Captions in" under Speaker’s language: greyed out with the reason, the 
       { width: 1280, height: 720 },
     ]) {
       await win.setViewportSize(size);
-      await expectFits(dialog, `the Live captions dialog translating at ${String(size.width)} × ${String(size.height)}`);
+      await expectFits(
+        dialog,
+        `the Live captions dialog translating at ${String(size.width)} × ${String(size.height)}`,
+      );
     }
     await expectNoSeriousA11yIssues(win, 'Live captions translated into Hindi');
 
     // Chosen, but the pack has gone: the reason, and that the audience screens and the stream show no captions;
     // the speaker's own words can still be chosen again.
-    await tell({ on: true, settings: gujarati('hi'), translation: translation({ offered: false, unavailable: 'no-pack' }) });
+    await tell({
+      on: true,
+      settings: gujarati('hi'),
+      translation: translation({ offered: false, unavailable: 'no-pack' }),
+    });
     const unavailable = dialog.getByTestId('captions-target-unavailable');
     await expect(unavailable).toContainText(unavailableText('no-pack'));
     await expect(unavailable).toContainText('the audience screens and the stream show no captions');
@@ -457,7 +474,10 @@ test('"Captions in" under Speaker’s language: greyed out with the reason, the 
     await expect(line).toHaveText(
       'Translated captions are off: the translation model pack is not on this computer.Live Captions…',
     );
-    await expectFits(win.getByRole('contentinfo', { name: 'Status' }), 'the status bar, translated captions off');
+    await expectFits(
+      win.getByRole('contentinfo', { name: 'Status' }),
+      'the status bar, translated captions off',
+    );
   } finally {
     await app.close();
   }
