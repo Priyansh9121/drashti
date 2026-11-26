@@ -83,8 +83,8 @@ import { chatShowOnScreen, startChat, useChat } from '../chat/chat-store';
  * pictures are small previews. Each tap takes effect after the one before it (taps.ts). Until alpha.23 the remote
  * also had the library, More (the computer's screens, music, the stage screen, messages, timers, the books and the
  * lower thirds), the quick bar, every clear, black-out, the wallpaper, the time bar and what plays: the network refuses
- * them from a phone now, and their files here (Clears' other clears, QuickBar, RemotePlaying, Playing, DesktopTools,
- * PhoneToolsLayer, Media, LibraryPanel, PhoneFiles, MoreTools, StageScreen, Timers, Wallpapers…) are no longer drawn.
+ * them from a phone now. Their files went out of the repository in alpha.24, all but Clears' other clears,
+ * RemotePlaying, Playing, PhoneFiles and StageTimers, which are still here and no longer drawn.
  */
 
 const CANVAS = { width: 1920, height: 1080 };
