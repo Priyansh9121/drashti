@@ -543,8 +543,8 @@ test('Stage off and on again moves nothing in the top bar: On and Off keep the s
   const stage = header.getByTestId('switch-stage');
   await expect(stage).toBeEnabled();
   /**
-   * Where each of the top bar group's buttons is, from the group's end, and how wide: the switches' own room, whatever
-   * moves the whole group (on CI's Windows the group itself moved 10 px with Stage off; the page's scroll is logged).
+   * Where each of the top bar group's buttons is, from the group's end, and how wide: the switches' own room (the
+   * page's own scroll, which moved the whole group, is checked apart, below).
    */
   const places = () =>
     header.locator('[data-top-group]').evaluate((group) => {
@@ -554,7 +554,11 @@ test('Stage off and on again moves nothing in the top bar: On and Off keep the s
         return [end - r.x, r.width];
       });
     });
-  /** The page's own scroll, for the report (lead 2's): its room and what it holds. */
+  /**
+   * The page's own scroll: its room and what it holds, the same either way. With Stage off, the status bar's Stage off
+   * and its Turn on (28 px tall in a 28 px bar) made it 3 px taller than the window (720, 723 on CI's Windows, run
+   * a22-uitop-1127-093143-70913), so the page scrolled and its scrollbar took 10 px from the whole window.
+   */
   const page = () =>
     win.evaluate(() => {
       const d = document.documentElement;
@@ -562,11 +566,12 @@ test('Stage off and on again moves nothing in the top bar: On and Off keep the s
     });
   const before = await places();
   const was = (await stage.getAttribute('aria-checked')) === 'true';
-  console.info(`the page with Stage ${was ? 'on' : 'off'}: ${JSON.stringify(await page())}`);
+  const room = await page();
+  expect(room.height[1], 'the page fits the window').toBeLessThanOrEqual(room.height[0] ?? 0);
   // Nothing shows on a stage screen here: turned either way at once, asking nothing.
   await win.keyboard.press(`${MOD}+2`);
   await expect(stage).toHaveAttribute('aria-checked', was ? 'false' : 'true');
-  console.info(`the page with Stage ${was ? 'off' : 'on'}: ${JSON.stringify(await page())}`);
+  expect(await page(), `Stage ${was ? 'off' : 'on'}: the page scrolls no more than before`).toEqual(room);
   expect(await places(), 'Stage the other way: every button where it was in the group, 0 px').toEqual(before);
   await win.keyboard.press(`${MOD}+2`);
   await expect(stage).toHaveAttribute('aria-checked', was ? 'true' : 'false');
