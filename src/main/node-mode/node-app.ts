@@ -69,6 +69,7 @@ import {
   watchDisplays,
 } from '../outputs/electron-outputs';
 import { OutputManager } from '../outputs/output-manager';
+import { onQuitRefused } from '../outputs/quit-refused';
 import type { SleepGuard } from '../outputs/sleep-guard';
 import type { SelfTestResult } from '../selftest';
 import { runNodeWatchdogSelfTest } from '../selftest';
@@ -1240,6 +1241,20 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   handle(IPC.videoInputs.access, () => 'denied' as const);
   handle(IPC.videoInputs.report, () => null);
 
+  const resumeAfterQuitRefused = () => manager.cancelQuitting();
+  const watchQuitRefusal = (window: BrowserWindow) => {
+    window.on('close', (event) => onQuitRefused(event, resumeAfterQuitRefused));
+    window.webContents.on('will-prevent-unload', (event) =>
+      onQuitRefused(event, resumeAfterQuitRefused, true),
+    );
+  };
+  for (const window of BrowserWindow.getAllWindows()) watchQuitRefusal(window);
+  app.on('browser-window-created', (_event, window) => watchQuitRefusal(window));
+  app.on('before-quit', (event) => {
+    manager.quitting();
+    onQuitRefused(event, resumeAfterQuitRefused);
+  });
+
   nodeWindow = new BrowserWindow({
     width: 760,
     height: 700,
@@ -1276,6 +1291,10 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   });
   nodeWindow.on('closed', () => {
     nodeWindow = null;
+    // The node quits with its window: every output closes now and none opens again (QA24-QUITRACE-1). An output opened
+    // once a quit had begun (a display change, Main's screens) is one Electron's quit never closes, and app.quit() again
+    // does nothing while it quits: it would keep the node running.
+    manager.closeForQuit();
     app.quit();
   });
   deps.atQuit('Main’s access', () => {

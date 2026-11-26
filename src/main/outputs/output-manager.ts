@@ -70,6 +70,13 @@ export class OutputManager {
    * until on again. Stage starts as it was left (alpha.22, told as the manager is made); Audience on at every start.
    */
   private readonly off: Set<ScreenSwitch>;
+  /**
+   * Drashti is quitting (QA24-QUITRACE-1): no window opens or is put back any more. Electron's quit closes only the
+   * windows open as it began, and app.quit() again does nothing while it quits, so a window opened now would keep
+   * Drashti running and the quit would never end.
+   */
+  private quit = false;
+  private closed = false;
 
   constructor(private readonly deps: OutputManagerDeps) {
     this.off = new Set(deps.startsOff ?? []);
@@ -107,6 +114,8 @@ export class OutputManager {
   }
 
   reconcile(): void {
+    // Quitting: nothing opens or is put back (QA24-QUITRACE-1); the quit closes what is open.
+    if (this.quit) return;
     const displays = this.deps.listDisplays();
     const screens = this.deps.screens();
     const assigned = screens.filter(
@@ -269,8 +278,34 @@ export class OutputManager {
     return [...this.open].map(([screenId, e]) => ({ screenId, window: e.window, displayId: e.displayId }));
   }
 
-  closeAll(): void {
+  /**
+   * The quit has begun (QA24-QUITRACE-1): from now on no window opens and none held through a display drop is put back,
+   * whatever reconciles (a display change or the displays' reading ending, a screen or a switch changed, a page drawing
+   * again). The windows open now are left for the quit to close (closeAll, or Electron's own).
+   */
+  quitting(): void {
+    this.quit = true;
+  }
+
+  /** A refused quit lets screens follow displays again. */
+  cancelQuitting(): void {
+    if (this.closed || !this.quit) return;
+    this.quit = false;
+    this.reconcile();
+  }
+
+  /** Close gap windows while the quit can still be refused. */
+  closeForQuit(): void {
+    this.quit = true;
     for (const entry of this.open.values()) if (!entry.window.isDestroyed()) entry.window.close();
+    // Keep ownership until destruction is observed: close may be refused or still pending.
+    for (const held of this.held.values()) if (!held.window.isDestroyed()) held.window.close();
+  }
+
+  /** Every window closes, held ones too, and none opens again (the quit's last stop; QA24-QUITRACE-1). */
+  closeAll(): void {
+    this.closed = true;
+    this.closeForQuit();
     this.open.clear();
     for (const screenId of [...this.held.keys()]) this.letGo(screenId);
   }

@@ -351,6 +351,7 @@ import {
 } from './outputs/keep-screens';
 import { placeOperator } from './outputs/operator-guard';
 import { DISPLAY_DROP_MS, OutputManager } from './outputs/output-manager';
+import { onQuitRefused } from './outputs/quit-refused';
 import { ScreensService } from './outputs/screens-service';
 import type { ScreensSetup } from './outputs/screens-setup';
 import { afterStop, WaitingFile } from './outputs/screens-setup';
@@ -3632,8 +3633,9 @@ function start(): void {
   /** The displays read again (their own identities), the outputs following, then each one plugged in given its job. */
   const displaysRead = () => {
     void displayIds.refresh().then(() => {
-      // Read as Drashti quits, after the library has closed: nothing to do.
-      if (db === null) return;
+      // Read as Drashti quits (QA24-QUITRACE-1: the start's reading can end after the quit has begun), or after the
+      // library has closed: nothing to do.
+      if (db === null || quitStarted) return;
       manager.reconcile();
       autoScreens.check();
     });
@@ -10455,6 +10457,24 @@ function start(): void {
     return quitConfirmed;
   };
 
+  // Cancellation can come from a later listener or any window's beforeunload (macOS included).
+  // Observe after synchronous listeners finish, while the library and stop list are still live.
+  const resumeAfterQuitRefused = () => {
+    if (db === null) return;
+    quitStarted = false;
+    quitting = false;
+    quitConfirmed = false;
+    manager.cancelQuitting();
+  };
+  const watchQuitRefusal = (window: BrowserWindow) => {
+    window.on('close', (event) => onQuitRefused(event, resumeAfterQuitRefused));
+    window.webContents.on('will-prevent-unload', (event) =>
+      onQuitRefused(event, resumeAfterQuitRefused, true),
+    );
+  };
+  for (const window of BrowserWindow.getAllWindows()) watchQuitRefusal(window);
+  app.on('browser-window-created', (_event, window) => watchQuitRefusal(window));
+
   operatorWindow = createOperatorWindow(appearance.background());
   appearance.track(operatorWindow);
   // The opening (Session 55): timed from the window's making; a page loaded again (the watchdog's reload, Reload
@@ -10585,9 +10605,15 @@ function start(): void {
     operatorWindow = null;
     // Output windows would otherwise keep the app alive.
     app.quit();
+    // In a quit, app.quit() does nothing more: an output opened once it had begun (QA24-QUITRACE-1: Electron closes
+    // only the windows open as it began) closes here, with every other, and none opens again.
+    if (quitStarted) manager.closeForQuit();
   });
   let quitSavingSound = false;
   app.on('before-quit', (event) => {
+    // Our bounded sound/source drains resume the quit themselves; preventDefault there is a hold, not refusal.
+    let held = false;
+    onQuitRefused(event, resumeAfterQuitRefused, false, () => held);
     if (!confirmQuit()) {
       event.preventDefault();
       return;
@@ -10597,12 +10623,16 @@ function start(): void {
     // quit says whether Drashti or what came after was slow.
     if (!quitStarted) log.info('Quitting');
     quitStarted = true;
+    // No output opens or is put back now (QA24-QUITRACE-1: the start's display reading, ending 16 ms after Quitting,
+    // opened again the output the quit had just closed, and Drashti ran on).
+    manager.quitting();
     const soundSaved = streaming.quitting();
     studio.quitting();
     // The HEVC question's own page, if it is still asking (it can be held for seconds): it goes now.
     hevcPage?.close();
     slideEditor?.quitting();
     if (soundSaved) {
+      held = true;
       event.preventDefault();
       if (!quitSavingSound) {
         quitSavingSound = true;
@@ -10634,13 +10664,16 @@ function start(): void {
         event,
         () => app.quit(),
         (result) => {
+          resumeAfterQuitRefused();
           log.error(
             `Source preparation did not confirm shutdown (${result.reason}); the library remains open.`,
           );
         },
       )
-    )
+    ) {
+      held = true;
       return;
+    }
   });
 
   const runSelfTest = () =>
@@ -11649,8 +11682,8 @@ function start(): void {
   manager.reconcile();
   displaysRead();
   watchDisplays(() => {
-    // A display change noticed as Drashti quits comes after the library has closed: nothing to do.
-    if (db === null) return;
+    // A display change noticed as Drashti quits (QA24-QUITRACE-1), or after the library has closed: nothing to do.
+    if (db === null || quitStarted) return;
     manager.reconcile();
     displaysRead();
   });
