@@ -105,8 +105,8 @@ function MatchMain({ view }: { view: NodeView }) {
       )}
       {offered && u.phase === 'ready' && u.install === 'by-hand' && (
         <Notice tone="info">
-          This copy of Drashti is not signed, so the Mac cannot install it by itself: quit Drashti, open the
-          downloaded file and drag Drashti into Applications.
+          This copy of Drashti is not signed with an Apple Developer ID, so the Mac cannot install it by
+          itself: quit Drashti, open the downloaded file and drag Drashti into Applications.
           <Button size="sm" className="mt-2" onClick={() => void window.drashti.node.updateShowFile()}>
             Show the file
           </Button>

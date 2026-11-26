@@ -218,6 +218,47 @@ jobs:
     ).toEqual([`release.yml:29: ${env}`]);
   });
 
+  it('refuses a quoted environment key, and the whole secrets object outside build-mac’s import step (signing re-review)', () => {
+    const env = "only release.yml's build-mac may name an environment";
+    const whole =
+      "the whole secrets object (toJSON(secrets) or secrets[…]) belongs to release.yml's build-mac import step alone";
+    // A quoted key is the same key to YAML.
+    for (const key of ['"environment"', "'environment'"])
+      expect(
+        checkWorkflow(
+          good.replace('    runs-on: ubuntu-latest', `    ${key}: release\n    runs-on: ubuntu-latest`),
+          'ci.yml',
+        ),
+        key,
+      ).toEqual([`ci.yml:5: ${env}`]);
+    // Every secret at once, or one by a name worked out: the environment's too, without naming them.
+    for (const expression of [
+      'toJSON(secrets)',
+      'tojson( secrets )',
+      "secrets['ANY_NAME']",
+      'secrets [ inputs.what ]',
+    ])
+      expect(checkWorkflow(good.replace('inputs.what', expression), 'ci.yml'), expression).toEqual([
+        `ci.yml:13: ${whole}`,
+      ]);
+    // In build-mac, in a step other than the import, and in build-windows.
+    const packaged = signing.replace(
+      '        run: node scripts/package-release.mjs',
+      '        env:\n          ALL: ${{ toJSON(secrets) }}\n        run: node scripts/package-release.mjs',
+    );
+    expect(checkWorkflow(packaged, 'release.yml')).toEqual([`release.yml:18: ${whole}`]);
+    const windows = signing.replace(
+      '    steps: []',
+      "    env:\n      ONE: ${{ secrets['MAC_CERT_P12'] }}\n    steps: []",
+    );
+    expect(checkWorkflow(windows, 'release.yml')).toEqual([`release.yml:31: ${whole}`]);
+    // A job named secrets, and needs: on it, are not the secrets object.
+    expect(checkWorkflow(good.replace('  build:', '  secrets:'), 'ci.yml')).toEqual([]);
+    expect(
+      checkWorkflow(good.replace('    runs-on:', '    needs: [secrets, checks]\n    runs-on:'), 'ci.yml'),
+    ).toEqual([]);
+  });
+
   it('this repository’s workflows keep them', () => {
     expect(checkWorkflows(join(__dirname, '..', '..', '..', '.github', 'workflows'))).toEqual([]);
   });
