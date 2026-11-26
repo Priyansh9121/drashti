@@ -114,6 +114,14 @@ const HOLD_EARLY = 0.008;
 const IN_STEP = 2 / 30;
 /** A file still out of step once it has played on after landing is aimed again at once, so many times in a row. */
 const REAIMS = 2;
+/**
+ * A cue held before its Go (S5) is woken at least this often (ms; a24-cue306). Chromium lets go of a paused player's
+ * decoder once it has been idle 15 s, looked at every 5 s (renderer_web_media_player_delegate.cc), unless its video fills
+ * most of its page (web_media_player_impl.cc, OnIdleTimeout): LIVE's preview does not, nor does the sound window's
+ * audio, so Go had to set them up again inside its 120 ms lead, and LIVE started up to 207 ms late on CI's Mac. A play
+ * marks a player not idle; the pause after it starts its 15 s again.
+ */
+const KEEP_AWAKE_MS = 10_000;
 
 /**
  * Play a library file in a media element, starting where a playback that
@@ -271,8 +279,38 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     else v.addEventListener('loadeddata', frame, { once: true });
   };
   const onPlaying = () => {
+    // Played and paused again in one task (a held cue's wake, keepAwake): its word comes with it paused, and is no
+    // start. Its start after Go is measured as any is.
+    if (v.paused) return;
+    v.removeEventListener('playing', onPlaying);
     // eslint-disable-next-line no-restricted-properties -- a length of time: when it began to play
     if (seekFrom === 0 && settleFrom === 0) startFrom = performance.now();
+  };
+  // A cue held before its Go (a24-cue306): when it was last woken, or first held; and whether its clock has run since
+  // (its Go: a pause of the time bar after it waits as any paused file does, never woken).
+  let wokeAt: number | null = null;
+  let gone = false;
+  /**
+   * Keep a held cue's player from Chromium's idle release (KEEP_AWAKE_MS), woken at the last check before it has been
+   * still that long: in one task, played at rate 0 and paused again, its own rate given back. Chromium's player is given
+   * the rate before it plays (as the Go lead's warm-up is), so nothing moves and nothing sounds, and it is paused on the
+   * same frame before anything else runs; its events come after, with it paused (onPlaying above, BackgroundMedia's
+   * start word and every other listener read it so). Its Go then finds the same player, and only its rate changes.
+   */
+  const keepAwake = () => {
+    // eslint-disable-next-line no-restricted-properties -- a length of time: how long a held cue has been still
+    const now = performance.now();
+    if (wokeAt === null) {
+      wokeAt = now;
+      return;
+    }
+    if (now - wokeAt < KEEP_AWAKE_MS - CHECK_MS || !v.paused || v.seeking || v.ended) return;
+    wokeAt = now;
+    const rate = v.playbackRate;
+    v.playbackRate = 0;
+    void v.play().catch(() => undefined);
+    v.pause();
+    v.playbackRate = rate;
   };
   const onMetadata = () => {
     if (audible) audioOnlyTracks(v);
@@ -366,8 +404,10 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
         if (!v.paused) v.pause();
         if (v.currentTime !== at) v.currentTime = at;
       } else holdAt(at);
+      if (options.prepareScheduledStart && intended?.paused === true && !gone) keepAwake();
       return;
     }
+    gone = true;
     const { start, end } = playbackBounds(c.clip, v.duration);
     const point = endPoint(c);
     // An end point is held once the clock gets there, or once the element has (a moment ahead of the
@@ -472,7 +512,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     armHold();
   };
   v.muted = !audible;
-  v.addEventListener('playing', onPlaying, { once: true });
+  v.addEventListener('playing', onPlaying);
   if (options.catchesUp === true) v.addEventListener('playing', paceAtStart);
   v.addEventListener('loadedmetadata', onMetadata, { once: true });
   v.addEventListener('error', failed);
