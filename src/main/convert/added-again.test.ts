@@ -330,7 +330,7 @@ describe('a converted original, added again anywhere (Session 51)', () => {
       INSERT INTO libraries (id, name) VALUES ('lib', 'Placeholder');
       INSERT INTO presentations (id, library_id, name) VALUES ('p', 'lib', 'Placeholder deck');
       INSERT INTO slide_groups (id, presentation_id, name, position) VALUES ('g', 'p', 'Placeholder', 0);
-      INSERT INTO slides (id, group_id, position, deck) VALUES ('deck', 'g', 0, '{"media":{"picture":"mp4"}}');
+      INSERT INTO slides (id, group_id, position, deck) VALUES ('deck', 'g', 0, '{"media":[{"mediaId":"mp4"}]}');
       INSERT INTO playlist_items (id, playlist_id, position, kind, media_id) VALUES ('later', 'pl', 0, 'media', 'avi');
     `);
     db.prepare("UPDATE media_conversions SET moved = ? WHERE id = 'cv-avi'").run(
@@ -362,7 +362,7 @@ describe('a converted original, added again anywhere (Session 51)', () => {
       expect(JSON.parse(record.moved)).toMatchObject({ decks: ['deck'], items: ['later'] });
       expect(service.undo('cv-avi')).toEqual({ ok: true });
       expect(db.prepare("SELECT deck FROM slides WHERE id = 'deck'").get()).toEqual({
-        deck: '{"media":{"picture":"avi"}}',
+        deck: '{"media":[{"mediaId":"avi"}]}',
       });
       expect(db.prepare("SELECT media_id FROM playlist_items WHERE id = 'later'").get()).toEqual({
         media_id: 'avi',
