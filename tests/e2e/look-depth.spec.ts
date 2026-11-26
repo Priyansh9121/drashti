@@ -27,17 +27,21 @@ function drawnNow(win: Page) {
       return el ? getComputedStyle(el) : null;
     };
     const column = (id: string) => {
-      const s = st(`[data-testid="${id}"]`);
-      return s
-        ? [
-            s.backgroundColor,
-            s.borderLeftWidth,
-            s.borderRightWidth,
-            s.borderLeftColor,
-            s.borderTopLeftRadius,
-            s.backgroundClip,
-          ]
-        : null;
+      const el = document.querySelector(`[data-testid="${id}"]`);
+      if (!el) return null;
+      const s = getComputedStyle(el);
+      // Its corners rounded by a ring of the ground over them (no rounded clip: the review's S1).
+      const corners = getComputedStyle(el, '::after');
+      return [
+        s.backgroundColor,
+        s.borderLeftWidth,
+        s.borderRightWidth,
+        s.borderLeftColor,
+        s.borderTopLeftRadius,
+        s.backgroundClip,
+        corners.borderTopLeftRadius,
+        corners.boxShadow,
+      ];
     };
     const header = st('[data-header]');
     const bar = st('[data-zone="bar"]');
@@ -75,7 +79,16 @@ function drawnNow(win: Page) {
 
 /** What Depth draws in an appearance Follow the computer shows (Black or White, each zone its own surfaces). */
 const depthOf = (a: Appearance, ground: string) => {
-  const panel = (bg: string) => [rgb(bg), '4px', '4px', CLEAR, '12px', 'padding-box'];
+  const panel = (bg: string) => [
+    rgb(bg),
+    '4px',
+    '4px',
+    CLEAR,
+    '0px',
+    'padding-box',
+    '12px',
+    `${ground} 0px 0px 0px 12px`,
+  ];
   return {
     look: 'depth',
     ground,
@@ -237,6 +250,7 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
   const flat = await drawnNow(win);
   expect(flat.header?.[0]).toBe(rgb(BLACK.decoration.header));
   expect(flat.left?.slice(0, 3)).toEqual([rgb(BLACK.colours.panel), '0px', '0px']);
+  expect(flat.left?.[7], 'flat: no ring over the corners').toBe('none');
   expect(flat.playlistsAt).toBe(0);
   await chooseMenuItem(app, 'appearance-follow');
   await expect(win.locator('html')).toHaveAttribute('data-window-look', 'depth');

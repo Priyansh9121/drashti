@@ -135,7 +135,17 @@ function drawn(value: string, colours: Record<string, string>, under: string): s
 }
 
 /** The words that sit on controls, rows and sections: they read at 4.5:1 there (WCAG 1.4.3). */
-const WORDS = ['fg', 'muted', 'faint', 'accent'] as const;
+const WORDS = [
+  'fg',
+  'muted',
+  'faint',
+  'accent',
+  'danger',
+  'warning-fg',
+  'success-fg',
+  'danger-fg',
+  'rec',
+] as const; // every text colour rules.ts measures on every surface (the release lead's review, S2)
 
 describe('B · Depth: styles/look-depth.css', () => {
   it('is there, loaded by the operator window alone, once (never the screens in the hall, the stream or the phones)', () => {
@@ -207,13 +217,15 @@ describe('B · Depth: styles/look-depth.css', () => {
       // A section's row an opaque colour of its own (a 3 % lift of its column's panel): a fold's fading copy of the
       // section's insides is drawn on the first opaque colour round them (uimotion's ui/fold.ts), so the row's own.
       '--state-row': 'color-mix(in srgb, var(--color-fg) 5%, var(--color-panel))',
-      '--state-disabled': '0.4',
     });
     for (const base of ['dark', 'light'] as const) {
       const look = block(`${SCOPE}[data-base='${base}']`);
       const own = block(`${SCOPE}[data-base='${base}'] :is(body, [data-zone])`);
       expect(own['--state-hover'], `${base}: hover`).toBeDefined();
       expect(own['--state-press'], `${base}: press`).toBeDefined();
+      expect(own['--state-live-base'], `${base}: the live row's own surface`).toMatch(
+        /^var\(--color-panel-[23]\)$/u,
+      );
       // A panel's light along its top, seen (the mockup's 1 px inset highlight): at least 9 % white on a dark panel,
       // and on a light one all but white.
       const light = look['--elev-light'] ?? '';
@@ -230,6 +242,28 @@ describe('B · Depth: styles/look-depth.css', () => {
         expect(alpha, `${base}: ${name}`).toBeLessThan(0.3);
       }
     }
+  });
+
+  it('rounds the columns with no rounded clip: square columns clipped to their box, a ring of the ground over their corners', () => {
+    // The release lead's review, S1: a rounded overflow clip over a column's scrolling parts may cost a layer drawn
+    // afresh at every frame; a square clip and a no-blur ring in the ground's colour round the corners instead.
+    const columns = rules.filter((r) => r.selector.includes("[data-testid='column-middle']"));
+    for (const r of columns) {
+      const rounded = r.decls['border-radius'];
+      if (rounded !== undefined) expect(rounded, r.selector).toBe('0');
+      if (r.decls['overflow'] !== undefined) expect(r.decls['overflow'], r.selector).toBe('clip');
+    }
+    const mask = rules.find(
+      (r) => r.selector.endsWith('::after') && r.selector.includes("[data-testid='column-left']"),
+    );
+    expect(mask?.decls).toMatchObject({
+      content: "''",
+      position: 'absolute',
+      inset: '0',
+      'border-radius': 'var(--radius-panel)',
+      'box-shadow': '0 0 0 var(--radius-panel) var(--depth-ground)',
+      'pointer-events': 'none',
+    });
   });
 
   it('LIVE is a red ring and a light red tint, never a glow: the live picture and the live row', () => {
@@ -288,8 +322,12 @@ describe('B · Depth: styles/look-depth.css', () => {
           hover: drawn(own['--state-hover'] ?? '', colours, zones[zone].panel),
           press: drawn(own['--state-press'] ?? '', colours, zones[zone].panel),
           row: drawn(own['--state-row'] ?? '', colours, zones[zone].panel),
-          // The live row: its tint over its raised surface (playlists/SlideRow.tsx: bg-panel-3).
-          live: drawn(look['--state-live-tint'] ?? '', colours, zones[zone]['panel-3']),
+          // The live row: its tint over its own surface (--state-live-base, in place of SlideRow.tsx's bg-panel-3).
+          live: drawn(
+            look['--state-live-tint'] ?? '',
+            colours,
+            drawn(own['--state-live-base'] ?? '', colours, ''),
+          ),
         };
         for (const [place, bg] of Object.entries(places))
           for (const word of WORDS) {
@@ -299,6 +337,7 @@ describe('B · Depth: styles/look-depth.css', () => {
         // Hover and press are seen: apart from the control at rest.
         expect(places['hover'], `${zone}: hover`).not.toBe(places['rest']);
         expect(places['press'], `${zone}: press`).not.toBe(places['hover']);
+        expect(places['press'], `${zone}: press`).not.toBe(places['rest']);
       }
       expect(low).toEqual([]);
     });
