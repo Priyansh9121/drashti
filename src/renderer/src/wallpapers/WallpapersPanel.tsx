@@ -144,7 +144,7 @@ export function WallpaperTile({ wallpaper, chosen }: { wallpaper: Wallpaper; cho
             <span
               data-testid="wallpaper-missing"
               title={missing?.tile}
-              className="block text-center text-[11px] leading-tight font-medium break-words text-warning-fg"
+              className="block py-1 text-center text-[11px] leading-tight font-medium break-words text-warning-fg"
             >
               {missing?.tile}
             </span>
