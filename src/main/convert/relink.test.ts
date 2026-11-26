@@ -51,6 +51,7 @@ describe('moving everything to the converted file', () => {
       themes: ['th'],
       tracks: [],
       decks: [],
+      wallpapers: [],
     });
     expect(uses(db, 'old')).toEqual([0, 0, 0, 0, 0, 0]);
     expect(uses(db, 'new')).toEqual([1, 1, 1, 1, 1, 1]);
