@@ -89,7 +89,7 @@ export function ChatPopup() {
     const timer = setTimeout(() => setNow(Date.now()), Math.max(0, at - Date.now()));
     return () => clearTimeout(timer);
   }, [pop, now]);
-  const phase = popPhase(pop, Math.max(now, Date.now()), still);
+  const phase = popPhase(pop, now, still);
   return (
     <div className="pointer-events-none absolute bottom-full left-1/2 z-40 mb-2 -translate-x-1/2">
       <ChatPopView

@@ -77,11 +77,11 @@ for (const simple of [false, true]) {
     expect(box.y).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
     // A show key still reaches the engine while the popup is showing.
-    const black = (await engine(win)).state.layers.blackout;
+    const black = (await engine(win)).state.blackout;
     await win.keyboard.press('b');
-    await expect.poll(async () => (await engine(win)).state.layers.blackout).toBe(!black);
+    await expect.poll(async () => (await engine(win)).state.blackout).toBe(!black);
     await win.keyboard.press('b');
-    await expect.poll(async () => (await engine(win)).state.layers.blackout).toBe(black);
+    await expect.poll(async () => (await engine(win)).state.blackout).toBe(black);
     // Audience and stage use their own renderer, with no popup or chat words.
     expect(outputPages(app).length).toBeGreaterThanOrEqual(2);
     for (const output of outputPages(app)) {
