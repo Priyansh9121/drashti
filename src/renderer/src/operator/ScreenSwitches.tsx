@@ -69,6 +69,14 @@ export function switchLook(on: boolean): { variant: ButtonVariant; dot: string; 
     : { variant: 'warning', dot: 'bg-warning', word: 'Off' };
 }
 
+/**
+ * Audience and Stage change the hall's screens, so no interface motion ever moves them (uimotion's review): no lift
+ * as the pointer rests on one, no press, no colour fade; each state is there at once, as a show control's is. They are
+ * not marked show controls (data-show-control) all the same: the header's decoration gradient never lies under one
+ * (appearance-drawing.spec.ts, in every appearance that has one). Important, so these hold over the motion rules.
+ */
+export const SWITCH_STILL = 'translate-none! transform-none! transition-none!';
+
 function SwitchButton({ which, platform }: { which: ScreenSwitch; platform: string }) {
   const switches = useScreenSwitches((s) => s.switches);
   const known = useScreenSwitches((s) => s.known);
@@ -88,7 +96,8 @@ function SwitchButton({ which, platform }: { which: ScreenSwitch; platform: stri
       side="bottom"
     >
       {/* Its name is read out with its state (a switch, on or off); On and Off are there for the eye, in words.
-          Not a show control (no `instant`): the header is decoration, and no show control sits on it. */}
+          Not a show control (no `instant`): the header is decoration, and no show control sits on it; still all the
+          same (SWITCH_STILL). */}
       <Button
         size="sm"
         variant={look.variant}
@@ -97,6 +106,7 @@ function SwitchButton({ which, platform }: { which: ScreenSwitch; platform: stri
         disabled={disabled}
         data-testid={`switch-${which}`}
         data-on={on ? 'true' : 'false'}
+        className={SWITCH_STILL}
         onClick={() => void toggleSwitch(which).then(say)}
       >
         <span aria-hidden="true" className={cx('h-1.5 w-1.5 shrink-0 rounded-full', look.dot)} />
