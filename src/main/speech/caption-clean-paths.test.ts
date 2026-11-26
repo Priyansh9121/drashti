@@ -294,6 +294,38 @@ describe('the words-left-out seam on every caption path', () => {
     t.service.close();
   });
 
+  it('a phrase withdrawn while heard, on caption AI: its later words still show, the final among them (review R2-1)', async () => {
+    const t = captions({ language: 'gu', ai: true });
+    t.service.start();
+    await t.service.setOn(true);
+    t.say('પહેલો', true, 's1');
+    vi.advanceTimersByTime(400);
+    // A clean partial, then one with nothing but a listed word: withdrawn.
+    t.say('નમૂનો', false, 's2');
+    vi.advanceTimersByTime(400);
+    expect(t.screens.at(-1)?.lines).toEqual(['નમૂનો']);
+    t.say('ઢુમ્પક', false, 's2');
+    vi.advanceTimersByTime(400);
+    expect(t.screens.at(-1)).toBeNull();
+    // The same phrase heard on: its clean words show again, and its final.
+    t.say('ઢુમ્પક બીજો', false, 's2');
+    vi.advanceTimersByTime(400);
+    expect(t.screens.at(-1)?.lines).toEqual(['બીજો']);
+    t.say('ઢુમ્પક બીજો ત્રીજો', true, 's2');
+    vi.advanceTimersByTime(400);
+    expect(t.screens.at(-1)?.lines).toEqual(['બીજો ત્રીજો']);
+    expect(t.finals.map((f) => f.text)).toEqual(['પહેલો', 'બીજો ત્રીજો']);
+    // The phrase before stays for the review; the next phrase comes as ever.
+    expect(t.coordinator.view()).toMatchObject({
+      current: { phraseId: 's2', sourceText: 'બીજો ત્રીજો', status: 'settled' },
+      previous: { phraseId: 's1' },
+    });
+    t.say('ચોથો', true, 's3');
+    vi.advanceTimersByTime(400);
+    expect(t.screens.at(-1)?.lines).toEqual(['ચોથો']);
+    t.service.close();
+  });
+
   it('the coordinator takes a phrase being heard off the screens when it is withdrawn, never a settled one', async () => {
     const s = seam();
     const coordinator = new CaptionCoordinator({
