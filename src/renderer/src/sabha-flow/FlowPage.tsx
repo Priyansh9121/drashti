@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { SabhaFlow } from '../../../shared/sabha-flow';
 import { pagesCapped, pagesShown } from '../../../shared/sabha-flow-lines';
 import { IconButton } from '../ui/Button';
@@ -14,15 +14,34 @@ import { Loading } from '../ui/States';
  */
 
 /** The zoom steps, as a share of the panel's width. */
-export const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4] as const;
+export const ZOOM_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4] as const;
 const FIT = 1;
-const LEAST = 0.5;
+const LEAST = 0.25;
 const MOST = 4;
 
 /** One step larger or smaller than `zoom` (the nearest step that way), kept within the steps. */
 export function zoomStep(zoom: number, way: 1 | -1): number {
   if (way === 1) return ZOOM_STEPS.find((z) => z > zoom + 1e-6) ?? MOST;
   return [...ZOOM_STEPS].reverse().find((z) => z < zoom - 1e-6) ?? LEAST;
+}
+
+/** Refuse invalid input rather than silently changing it to a different zoom. */
+export function parseZoom(text: string): number | null {
+  const match = /^(\d+(?:\.\d+)?)\s*%?$/u.exec(text.trim());
+  if (!match) return null;
+  const value = Number(match[1]) / 100;
+  return value >= LEAST && value <= MOST ? value : null;
+}
+
+/** Keep the page coordinate under an anchor; padding is outside the scaled page. The browser caps the far edge. */
+export function zoomPosition(
+  scroll: number,
+  anchor: number,
+  before: number,
+  after: number,
+  padding = 0,
+): number {
+  return Math.max(0, (scroll + anchor - padding) * (after / before) + padding - anchor);
 }
 
 type PageImage = { url: string } | { url: null };
@@ -73,6 +92,44 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
   const capped = pagesCapped(flow);
   const [zoom, setZoom] = useState(FIT);
   const box = useRef<HTMLDivElement>(null);
+  const [draft, setDraft] = useState('100%');
+  const [error, setError] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const currentZoom = useRef(FIT);
+  const pending = useRef<{ left: number; top: number } | null>(null);
+  const drag = useRef<{ id: number; x: number; y: number; left: number; top: number } | null>(null);
+  const changeZoom = useCallback((next: number, point?: { x: number; y: number }) => {
+    const el = box.current;
+    const before = currentZoom.current;
+    if (el && before !== next) {
+      const rect = el.getBoundingClientRect();
+      const x = point ? point.x - rect.left - el.clientLeft : el.clientWidth / 2;
+      const y = point ? point.y - rect.top - el.clientTop : el.clientHeight / 2;
+      const style = getComputedStyle(el);
+      pending.current = {
+        left: zoomPosition(el.scrollLeft, x, before, next, parseFloat(style.paddingLeft)),
+        top: zoomPosition(el.scrollTop, y, before, next, parseFloat(style.paddingTop)),
+      };
+    }
+    currentZoom.current = next;
+    setZoom(next);
+    setDraft(`${String(Math.round(next * 100))}%`);
+    setError(false);
+  }, []);
+  useLayoutEffect(() => {
+    if (box.current && pending.current) {
+      box.current.scrollLeft = pending.current.left;
+      box.current.scrollTop = pending.current.top;
+      pending.current = null;
+    }
+  }, [zoom]);
+  const applyDraft = () => {
+    const next = parseZoom(draft);
+    if (next === null) {
+      setError(true);
+      setDraft(`${String(Math.round(currentZoom.current * 100))}%`);
+    } else changeZoom(next);
+  };
   // Cmd or Ctrl with the wheel (a trackpad's pinch comes so too) zooms; a plain wheel scrolls. React's wheel listener
   // cannot keep the window from zooming the whole page, so this one is the element's own, not passive.
   useEffect(() => {
@@ -81,17 +138,17 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
-      setZoom((z) => zoomStep(z, e.deltaY < 0 ? 1 : -1));
+      changeZoom(zoomStep(currentZoom.current, e.deltaY < 0 ? 1 : -1), { x: e.clientX, y: e.clientY });
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => {
       el.removeEventListener('wheel', onWheel);
     };
-  }, []);
+  }, [changeZoom]);
   const percent = `${String(Math.round(zoom * 100))}%`;
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="flow-page-view">
-      <div className="flex shrink-0 items-center gap-1 px-3 py-1">
+      <div className="flex shrink-0 flex-wrap items-center gap-1 px-3 py-1">
         <IconButton
           icon={ZoomOut}
           size="sm"
@@ -99,12 +156,39 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
           data-testid="flow-zoom-out"
           disabled={zoom <= LEAST}
           onClick={() => {
-            setZoom((z) => zoomStep(z, -1));
+            changeZoom(zoomStep(currentZoom.current, -1));
           }}
         />
-        <span className="min-w-10 text-center text-xs text-muted tabular-nums" data-testid="flow-zoom">
-          {percent}
-        </span>
+        <input
+          aria-label="Zoom"
+          aria-invalid={error}
+          aria-describedby={error ? 'flow-zoom-error' : undefined}
+          className="w-14 rounded border border-line-strong bg-panel text-center text-xs tabular-nums"
+          data-testid="flow-zoom"
+          type="text"
+          inputMode="decimal"
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setError(false);
+          }}
+          onBlur={applyDraft}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              applyDraft();
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              setDraft(percent);
+              setError(false);
+            }
+          }}
+          onKeyUp={(e) => {
+            e.stopPropagation();
+          }}
+        />
         <IconButton
           icon={ZoomIn}
           size="sm"
@@ -112,7 +196,7 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
           data-testid="flow-zoom-in"
           disabled={zoom >= MOST}
           onClick={() => {
-            setZoom((z) => zoomStep(z, 1));
+            changeZoom(zoomStep(currentZoom.current, 1));
           }}
         />
         <IconButton
@@ -122,9 +206,14 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
           data-testid="flow-zoom-fit"
           disabled={zoom === FIT}
           onClick={() => {
-            setZoom(FIT);
+            changeZoom(FIT);
           }}
         />
+        {error && (
+          <span id="flow-zoom-error" role="alert" className="text-xs text-muted">
+            Type a zoom from 25% to 400%
+          </span>
+        )}
       </div>
       {/* It scrolls, so it takes the keyboard (its arrows then go to the show, as everywhere in the window). */}
       <div
@@ -132,10 +221,46 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
         role="region"
         aria-label={`PDF page of ${flow.fileName}, ${percent}`}
         tabIndex={0}
-        className="min-h-0 flex-1 overflow-auto bg-panel-2 p-2"
+        className={`min-h-0 flex-1 select-none overflow-auto [scrollbar-gutter:stable] bg-panel-2 p-2 ${dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        onPointerDown={(e) => {
+          if (e.button !== 0 || !e.isPrimary) return;
+          const el = e.currentTarget;
+          if (el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight) return;
+          e.preventDefault();
+          el.focus({ preventScroll: true });
+          el.setPointerCapture(e.pointerId);
+          drag.current = {
+            id: e.pointerId,
+            x: e.clientX,
+            y: e.clientY,
+            left: el.scrollLeft,
+            top: el.scrollTop,
+          };
+          setDragging(true);
+        }}
+        onPointerMove={(e) => {
+          const start = drag.current;
+          if (start?.id !== e.pointerId) return;
+          e.currentTarget.scrollLeft = start.left + start.x - e.clientX;
+          e.currentTarget.scrollTop = start.top + start.y - e.clientY;
+        }}
+        onPointerUp={(e) => {
+          if (drag.current?.id !== e.pointerId) return;
+          drag.current = null;
+          setDragging(false);
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }}
+        onPointerCancel={() => {
+          drag.current = null;
+          setDragging(false);
+        }}
+        onLostPointerCapture={() => {
+          drag.current = null;
+          setDragging(false);
+        }}
         data-testid="flow-pages"
       >
-        <div className="flex flex-col gap-2" style={{ width: `${String(zoom * 100)}%` }}>
+        <div className="flex flex-col" style={{ width: `${String(zoom * 100)}%`, gap: 8 * zoom }}>
           {pages.map((page, i) => {
             const name = `Page ${String(i + 1)} of ${String(flow.pageCount)}`;
             if (page === undefined) return <Loading key={i} label={`Drawing page ${String(i + 1)}…`} />;
@@ -155,7 +280,7 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
                 decoding="async"
                 draggable={false}
                 data-testid="flow-page"
-                className="block h-auto w-full bg-white shadow-sm"
+                className="pointer-events-none block h-auto w-full bg-white shadow-sm"
               />
             );
           })}

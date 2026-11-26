@@ -2,12 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { parseZoom, zoomPosition, zoomStep, ZOOM_STEPS } from './FlowPage';
 
 describe('PDF zoom', () => {
-  it.each([['130', 1.3], ['130%', 1.3], [' 75 ', 0.75], ['25', 0.25], ['400%', 4]])('accepts %s', (text, value) => {
+  it.each([
+    ['130', 1.3],
+    ['130%', 1.3],
+    [' 75 ', 0.75],
+    ['25', 0.25],
+    ['400%', 4],
+  ])('accepts %s', (text, value) => {
     expect(parseZoom(text)).toBe(value);
   });
-  it.each(['24', '401', 'abc', '', '130%%', 'Infinity', '1e2'])('refuses %s without changing zoom', (text) => {
-    expect(parseZoom(text)).toBeNull();
-  });
+  it.each(['24', '401', 'abc', '', '130%%', 'Infinity', '1e2'])(
+    'refuses %s without changing zoom',
+    (text) => {
+      expect(parseZoom(text)).toBeNull();
+    },
+  );
   it('steps from arbitrary zooms and stops at the limits', () => {
     expect(ZOOM_STEPS).toEqual([0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]);
     expect(zoomStep(1.3, 1)).toBe(1.5);

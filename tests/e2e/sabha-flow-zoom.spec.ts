@@ -4,6 +4,7 @@ import { launchApp, operatorPage, operatorReady } from './helpers';
 import { SCAN, writeFlows } from './sabha-flow-fixtures';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 import { expectFits } from './fit';
+import { setUpPlaceholderShow } from './placeholder-show';
 
 test('PDF typed zoom, safe keys, anchored zoom and captured mouse movement at CI window size', async () => {
   const { scan } = await writeFlows({ scan: SCAN });
@@ -12,6 +13,14 @@ test('PDF typed zoom, safe keys, anchored zoom and captured mouse movement at CI
     const win = await operatorPage(app);
     await operatorReady(win);
     await sizeOperatorWindow(app, win, CI_WINDOW);
+    const { kirtanId } = await setUpPlaceholderShow(win, { video: false });
+    await win.evaluate(async (id) => {
+      await (globalThis as PageGlobals).drashti.engine.dispatch({
+        type: 'goLive',
+        presentationId: id,
+        slideIndex: 0,
+      });
+    }, kirtanId);
     await win.getByRole('button', { name: 'Sabha flow', exact: true }).click();
     await app.evaluate(({ dialog }, path) => {
       dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [path] });
@@ -42,16 +51,25 @@ test('PDF typed zoom, safe keys, anchored zoom and captured mouse movement at CI
     await input.press('Escape');
     await expect(input).toHaveValue('200%');
     await expect(panel.getByRole('alert')).toHaveCount(0);
-    const before = await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
+    const show = () =>
+      win.evaluate(async () => {
+        const { rev, state } = await (globalThis as PageGlobals).drashti.engine.snapshot();
+        return { rev, state };
+      });
+    const before = await show();
+    expect(before.state.layers.slide).not.toBeNull();
     await input.focus();
     await input.press('ArrowRight');
     await input.press('Space');
     await input.press('b');
     await input.press('Escape');
-    expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot())).toEqual(before);
+    expect(await show()).toEqual(before);
     await input.fill('400');
     await input.press('Enter');
-    await region.evaluate((el) => { el.scrollLeft = 160; el.scrollTop = 180; });
+    await region.evaluate((el) => {
+      el.scrollLeft = 160;
+      el.scrollTop = 180;
+    });
     const start = await scroll();
     const bounds = await region.boundingBox();
     if (!bounds) throw new Error('PDF region has no bounds');
@@ -70,19 +88,33 @@ test('PDF typed zoom, safe keys, anchored zoom and captured mouse movement at CI
     const released = await scroll();
     await win.mouse.move(x, y);
     expect(await scroll()).toEqual(released);
-    await region.evaluate((el) => { el.scrollLeft = 100; el.scrollTop = 200; });
-    const anchor = await region.evaluate((el) => ({ x: (el.scrollLeft + el.clientWidth / 2 - 8) / 4, y: (el.scrollTop + el.clientHeight / 2 - 8) / 4 }));
+    await region.evaluate((el) => {
+      el.scrollLeft = 100;
+      el.scrollTop = 200;
+    });
+    const anchor = await region.evaluate((el) => ({
+      x: (el.scrollLeft + el.clientWidth / 2 - 8) / 4,
+      y: (el.scrollTop + el.clientHeight / 2 - 8) / 4,
+    }));
     await panel.getByRole('button', { name: 'Zoom out', exact: true }).click();
     await expect(input).toHaveValue('300%');
-    const after = await region.evaluate((el) => ({ x: (el.scrollLeft + el.clientWidth / 2 - 8) / 3, y: (el.scrollTop + el.clientHeight / 2 - 8) / 3 }));
+    const after = await region.evaluate((el) => ({
+      x: (el.scrollLeft + el.clientWidth / 2 - 8) / 3,
+      y: (el.scrollTop + el.clientHeight / 2 - 8) / 3,
+    }));
     expect(Math.abs(after.x - anchor.x)).toBeLessThan(1);
     expect(Math.abs(after.y - anchor.y)).toBeLessThan(1);
-    await region.evaluate((el) => { el.scrollLeft = 100; el.scrollTop = 200; });
+    await region.evaluate((el) => {
+      el.scrollLeft = 100;
+      el.scrollTop = 200;
+    });
     const pointerBefore = await scroll();
     await region.dispatchEvent('wheel', { ctrlKey: true, deltaY: -100, clientX: x, clientY: y });
     await expect(input).toHaveValue('400%');
     const pointerAfter = await scroll();
-    expect(Math.abs((pointerAfter.x + bounds.width / 2 - 8) / 4 - (pointerBefore.x + bounds.width / 2 - 8) / 3)).toBeLessThan(2);
+    expect(
+      Math.abs((pointerAfter.x + bounds.width / 2 - 8) / 4 - (pointerBefore.x + bounds.width / 2 - 8) / 3),
+    ).toBeLessThan(2);
     await panel.getByRole('button', { name: 'Fit to the panel' }).click();
     await expect(input).toHaveValue('100%');
     await expectFits(panel, 'PDF typed zoom at 1024 × 645');
