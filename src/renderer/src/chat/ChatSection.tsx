@@ -1,3 +1,4 @@
+import { useChatOpen } from './ChatPop';
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -408,6 +409,7 @@ export function ChatContents({ operateOnly }: { operateOnly: boolean }) {
 
 /** The Chat section under LIVE (Simple Mode's too, while it is chosen). */
 export function ChatSection() {
+  const openAsked = useChatOpen((s) => s.asked);
   const operateOnly = useOperateOnly();
   const unread = unreadWords(useChatUnread());
   const empty = useChat((s) => (s.view?.messages.length ?? 0) === 0);
@@ -423,6 +425,7 @@ export function ChatSection() {
         icon={MessagesSquare}
         {...LIVE_SECTION}
         remember="chat"
+        openAsked={openAsked}
         // The whole section, folded or open, is blanked in Report a Problem's picture (a22-chat-core's ask), and its
         // open part again on its own (ChatContentsView).
         {...PRIVATE}
