@@ -565,6 +565,54 @@ describe('Help › Drashti Manual… (x37, Session 60: the owner’s "A, new Man
   );
 });
 
+describe('Help › Show Help (alpha.24, helpmenu: the status bar’s Help switch in the menu bar)', () => {
+  it.each(PLATFORMS)(
+    'is under Guides… in Pro Mode and in Simple Mode, ticked while Help is on, and chosen turns the switch (%s)',
+    (platform) => {
+      for (const mode of ['pro', 'simple'] as const)
+        for (const shown of [false, true]) {
+          let chosen = 0;
+          on(platform, () => {
+            installMenu({
+              ...actions(mode).a,
+              help: {
+                on: shown,
+                toggle: () => {
+                  chosen++;
+                },
+              },
+            });
+          });
+          const where = `${mode}, Help ${shown ? 'on' : 'off'}`;
+          const help = (built.at(-1) ?? []).find((m) => m.role === 'help')?.submenu;
+          const list = Array.isArray(help) ? help : [];
+          expect(
+            list.slice(0, 4).map((m) => m.id ?? m.type),
+            where,
+          ).toEqual(['manual', 'guides', 'help-switch', 'separator']);
+          // No key of its own: the switch has none (Alt, Option on a Mac, only shows the keys while it is held).
+          expect(item('help-switch'), where).toEqual({
+            id: 'help-switch',
+            label: 'Show Help',
+            type: 'checkbox',
+            checked: shown,
+            click: expect.any(Function) as unknown,
+          });
+          (item('help-switch')?.click as (() => void) | undefined)?.();
+          expect(chosen, where).toBe(1);
+        }
+    },
+  );
+
+  it('is left out where there is no switch to keep in step (left out of the actions, as on a node)', () => {
+    on('darwin', () => setUp('pro'));
+    expect(item('help-switch')).toBeUndefined();
+    const help = (built.at(-1) ?? []).find((m) => m.role === 'help')?.submenu;
+    const list = Array.isArray(help) ? help : [];
+    expect(list.slice(0, 3).map((m) => m.id ?? m.type)).toEqual(['manual', 'guides', 'separator']);
+  });
+});
+
 describe('Help › Save Diagnostics (alpha.21, logs for 100+ installs (c): the log of a chosen period)', () => {
   it.each(PLATFORMS)(
     'is a submenu in Pro Mode, Simple Mode and on a node: Today… (save-diagnostics, its old id), Yesterday…, The Last 7 Days…, then One Day with each earlier day kept, newest first, each saving its period (%s)',
