@@ -328,6 +328,153 @@ describe('a file played once to an end point', () => {
     }
   });
 
+  /** A stand-in element that notes each play(): when, and at what rate. */
+  const notingPlays = (v: FakeMedia) => {
+    const plays: { at: number; rate: number }[] = [];
+    const play = v.play.bind(v);
+    v.play = () => {
+      plays.push({ at: Date.now(), rate: v.playbackRate });
+      return play();
+    };
+    return plays;
+  };
+
+  it('keeps a cue held over half a minute awake: woken at least every 10 s at rate 0, its frame never moved, its rate back for Go', () => {
+    // a24-cue306 (video-cue-crossfade.spec.ts:306 on CI's Mac): Chromium lets go of a paused player's decoder once it
+    // has been idle 15 s (looked at every 5 s), unless its video fills most of its page. LIVE's preview does not, nor
+    // does the sound window's audio, so Go had to rebuild them inside its 120 ms lead (LIVE 55-207 ms late). A play and
+    // a pause in one task, at rate 0, tells Chromium it is not idle; nothing moves or sounds.
+    const v = new FakeMedia(8);
+    const plays = notingPlays(v);
+    const heldFrom = Date.now();
+    const timing: { loop: boolean; seek: PlaybackSeek } = {
+      loop: false,
+      seek: { at: Date.now(), toMs: 1000, paused: true },
+    };
+    const stop = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'cued',
+      startedAt: Date.now(),
+      prepareScheduledStart: true,
+      timing: () => timing,
+    });
+    try {
+      vi.advanceTimersByTime(20);
+      const seeks = v.seeks;
+      const moved: number[] = [];
+      for (let ms = 0; ms < 35_000; ms++) {
+        vi.advanceTimersByTime(1);
+        // After every task: paused, on its trimmed frame.
+        if (!v.paused || v.currentTime !== 1) moved.push(Date.now() - heldFrom);
+      }
+      expect(moved, 'never playing or moved at the end of a task while it is held').toEqual([]);
+      const woken = plays.map((p) => p.at);
+      const times = [heldFrom, ...woken, Date.now()];
+      const gaps = times.slice(1).map((t, i) => t - (times[i] ?? t));
+      expect(woken.length, 'woken while it is held').toBeGreaterThanOrEqual(3);
+      expect(Math.max(...gaps), 'never 10 s without a wake').toBeLessThanOrEqual(10_000);
+      expect(
+        plays.every((p) => p.rate === 0),
+        'each wake plays at rate 0',
+      ).toBe(true);
+      expect(v.seeks, 'no seek while it is held').toBe(seeks);
+      expect(v.playbackRate, 'its own rate again, as Go expects it').toBe(1);
+      // Go, as for a cue held a moment: its lead warms it at rate 0, and at Go only its rate changes.
+      const at = Date.now() + 120;
+      timing.seek = { at, toMs: 1000 };
+      stop.resync();
+      expect(v.paused).toBe(false);
+      expect(v.playbackRate).toBe(0);
+      vi.advanceTimersByTime(119);
+      expect(v.currentTime, 'no motion before Go').toBe(1);
+      vi.advanceTimersByTime(2);
+      expect(v.playbackRate).toBe(1);
+      expect(v.currentTime).toBeCloseTo(1.001, 3);
+      expect(v.seeks).toBe(seeks);
+    } finally {
+      stop();
+    }
+  });
+
+  it("takes a held cue's wakes for no start: one whose Go comes late and whose sound starts late is aimed again after a long hold, as after a short one", () => {
+    // Its start is measured from its 'playing' (Sessions 31-36). A wake's comes with the element paused again: were it
+    // taken as the start, the real one after Go would go unmeasured and 0.2 s late be left to 2% a second.
+    const seeksAfterGo = (holdMs: number) => {
+      const v = new FakeMedia(8, { startLate: 200 });
+      const timing: { loop: boolean; seek: PlaybackSeek } = {
+        loop: false,
+        seek: { at: Date.now(), toMs: 1000, paused: true },
+      };
+      const stop = startPlayback(v as unknown as HTMLMediaElement, {
+        mediaId: 'cued',
+        startedAt: Date.now(),
+        prepareScheduledStart: true,
+        audible: true,
+        limits: SOUND_LIMITS,
+        timing: () => timing,
+      });
+      try {
+        vi.advanceTimersByTime(holdMs);
+        // This page hears of Go 40 ms after it: no lead, it plays from where it is held.
+        timing.seek = { at: Date.now() - 40, toMs: 1000 };
+        stop.resync();
+        const seeks = v.seeks;
+        vi.advanceTimersByTime(1000);
+        return v.seeks - seeks;
+      } finally {
+        stop();
+      }
+    };
+    const short = seeksAfterGo(1000);
+    expect(short, 'a start 0.2 s late is aimed again').toBeGreaterThan(0);
+    expect(seeksAfterGo(35_000), 'after a long hold, the same').toBe(short);
+  });
+
+  it('wakes only a cue held before its Go: not a played cue the time bar paused, nor any other paused file', () => {
+    // A file that is no cue, paused half a minute.
+    const other = new FakeMedia(60);
+    const otherPlays = notingPlays(other);
+    const paused = { loop: false, seek: { at: Date.now(), toMs: 1000, paused: true } };
+    const stopOther = startPlayback(other as unknown as HTMLMediaElement, {
+      mediaId: 'other',
+      startedAt: Date.now(),
+      timing: () => paused,
+    });
+    try {
+      vi.advanceTimersByTime(35_000);
+      expect(otherPlays).toEqual([]);
+    } finally {
+      stopOther();
+    }
+    // A cue that went at its Go, then paused by the time bar half a minute.
+    const v = new FakeMedia(60);
+    const plays = notingPlays(v);
+    const timing: { loop: boolean; seek: PlaybackSeek } = {
+      loop: false,
+      seek: { at: Date.now(), toMs: 1000, paused: true },
+    };
+    const stop = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'cued',
+      startedAt: Date.now(),
+      prepareScheduledStart: true,
+      timing: () => timing,
+    });
+    try {
+      vi.advanceTimersByTime(1000);
+      timing.seek = { at: Date.now(), toMs: 1000 };
+      stop.resync();
+      vi.advanceTimersByTime(1000);
+      expect(v.paused).toBe(false);
+      timing.seek = { at: Date.now(), toMs: 2000, paused: true };
+      stop.resync();
+      const before = plays.length;
+      vi.advanceTimersByTime(35_000);
+      expect(plays.length - before, 'not woken while the time bar holds it').toBe(0);
+      expect(v.paused).toBe(true);
+    } finally {
+      stop();
+    }
+  });
+
   it('uses an already decoded frame immediately only when the caller opts in', () => {
     vi.stubGlobal('HTMLMediaElement', { HAVE_METADATA: 1, HAVE_CURRENT_DATA: 2 });
     for (const reuseLoadedSource of [true, false]) {
