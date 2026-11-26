@@ -214,6 +214,75 @@ describe('the lines shown on the screens, with bad words left out', () => {
   });
 });
 
+describe('the stage band beside a translation (alpha.24 captions join, J1)', () => {
+  /** A translation for the hall and the stream, with the speaker's own words for the stage beside it. */
+  const translated = (lines: string[], stage: string[] | null): CaptionsShown => ({
+    ...shown(lines, 'hi'),
+    kind: 'translation',
+    stage: stage === null ? null : { lines: stage, language: 'en', fit: true },
+  });
+
+  it('leaves the words out of the stage band too, whether the translation has come or not', () => {
+    const { clean } = setup();
+    // An operator's correction holds a listed word: the stage band never shows it.
+    expect(clean.shown(translated(['पहला नमूना'], ['alpha zqvorn beta']))).toMatchObject({
+      lines: ['पहला नमूना'],
+      stage: { lines: ['alpha beta'], language: 'en', fit: true },
+    });
+    // Waiting for the translation: the stage band is checked all the same.
+    expect(clean.shown(translated([], ['alpha vexmor', 'quill beta']))).toMatchObject({
+      lines: [],
+      stage: { lines: ['alpha', 'beta'] },
+    });
+    // Both bands at once.
+    expect(clean.shown(translated(['पहला ढ़ुम्पक नमूना'], ['zqvorn gamma']))).toMatchObject({
+      lines: ['पहला नमूना'],
+      stage: { lines: ['gamma'] },
+    });
+  });
+
+  it('never takes the stage band away while it has words: nothing is shown only when both bands are left empty', () => {
+    const { clean } = setup();
+    // The translation is left out whole: the stage keeps the speaker's words.
+    expect(clean.shown(translated(['ढ़ुम्पक'], ['alpha beta']))).toMatchObject({
+      lines: [],
+      stage: { lines: ['alpha beta'] },
+    });
+    // The stage band is left out whole: it goes, and the translation stays.
+    expect(clean.shown(translated(['पहला नमूना'], ['zqvorn']))).toMatchObject({
+      lines: ['पहला नमूना'],
+      stage: null,
+    });
+    expect(clean.shown(translated([], ['zqvorn']))).toBeNull();
+    expect(clean.shown(translated(['ढ़ुम्पक'], ['zqvorn']))).toBeNull();
+    expect(clean.shown(translated(['ढ़ुम्पक'], null))).toBeNull();
+  });
+
+  it('gives both bands back as they came when neither has anything to leave out', () => {
+    const { clean } = setup();
+    const c = translated(['पहला नमूना'], ['alpha beta']);
+    expect(clean.shown(c)).toBe(c);
+    const waiting = translated([], ['alpha beta']);
+    expect(clean.shown(waiting)).toBe(waiting);
+    const none = translated(['पहला नमूना'], null);
+    expect(clean.shown(none)).toBe(none);
+  });
+
+  it('counts each band’s words once, however often it is painted, and never again when only the other band changes', () => {
+    const { clean } = setup();
+    clean.captionsOn(true);
+    // The translation's one listed word, painted as the stage band follows the next phrase being heard.
+    clean.shown(translated(['पहला ढ़ुम्पक नमूना'], ['alpha']));
+    clean.shown(translated(['पहला ढ़ुम्पक नमूना'], ['alpha beta']));
+    clean.shown(translated(['पहला ढ़ुम्पक नमूना'], ['alpha beta gamma']));
+    expect(clean.view().leftOut).toBe(1);
+    // A correction on the stage band with a listed word: counted once while it is painted again and again.
+    clean.shown(translated(['पहला नमूना'], ['alpha zqvorn']));
+    clean.shown(translated(['दूसरा नमूना'], ['alpha zqvorn']));
+    expect(clean.view().leftOut).toBe(2);
+  });
+});
+
 describe('the count of words left out', () => {
   it('counts each phrase once however often it is revised, and each caption once however often it is painted', () => {
     const { clean, counts } = setup();
