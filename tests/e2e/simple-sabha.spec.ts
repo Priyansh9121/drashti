@@ -86,16 +86,19 @@ test('Pro Mode’s window with only what a one-projector sabha needs: the playli
   await expect(right.getByTestId('show-back')).toBeVisible();
   await expect(right.getByTestId('audio-group')).toBeVisible();
   // Along the bottom: Clear all, Slide, Background and Audio beside it (Session 56), the Wallpaper and Black-out, and
-  // no other clear.
+  // no other clear; by their names, as the clears with nothing up show their icons alone (alpha.24).
   const bar = simple.getByTestId('simple-buttons');
-  await expect(bar.getByRole('button')).toHaveText([
+  const buttons = bar.getByRole('button');
+  const names = [
     /^Clear all/u,
-    /^Slide/u,
-    /^Background/u,
-    /^Audio/u,
+    /^Clear slide/u,
+    /^Clear background/u,
+    /^Clear audio/u,
     /^Wallpaper/u,
     /^Black-out/u,
-  ]);
+  ];
+  await expect(buttons).toHaveCount(names.length);
+  for (const [i, name] of names.entries()) await expect(buttons.nth(i)).toHaveAccessibleName(name);
 
   // Nothing else: no stream, phones, screens or library; no stage, messages, timers, lower thirds or any tool's section
   // (More tools until alpha.22); no Oops button, no playlist's menu, no Close.
