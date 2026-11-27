@@ -1,5 +1,6 @@
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { cx } from '../ui/cx';
+import { blockAsItStands } from './live-stand';
 import { useNoticePlace } from './notice-place';
 
 /**
@@ -41,27 +42,37 @@ function lastCard(place: HTMLElement): number {
  */
 export function LiveColumn({ still, rest }: { still: ReactNode; rest: ReactNode }) {
   const column = useRef<HTMLElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
   const block = useRef<HTMLDivElement>(null);
   const foot = useRef<HTMLDivElement>(null);
   const [stands, setStands] = useState(true);
   useLayoutEffect(() => {
     const c = column.current;
+    const s = scroller.current;
     const b = block.current;
     const f = foot.current;
-    if (!c || !b || !f) return;
-    // The block's own height is the same either way, so the choice never flips back and forth.
+    if (!c || !s || !b || !f) return;
+    // The block judged by its height as it stands (alpha.24, live-stand.ts): a scrollbar beside it while the whole
+    // column scrolls narrows it and its picture, so judged as it is then the choice would flip back and forth.
     const choose = () => {
+      const picture = b.querySelector<HTMLElement>('[data-testid="live-preview"]');
+      const height = blockAsItStands({
+        block: b.offsetHeight,
+        scrollbar: s.offsetWidth - s.clientWidth,
+        picture: picture ? { width: picture.offsetWidth, height: picture.offsetHeight } : null,
+      });
       const most = Math.max(
         NOTICES_MIN_PX,
         lastCard(f),
-        Math.min(c.clientHeight * NOTICES_SHARE, c.clientHeight - b.offsetHeight),
+        Math.min(c.clientHeight * NOTICES_SHARE, c.clientHeight - height),
       );
       f.style.maxHeight = `${String(Math.floor(most))}px`;
-      setStands(c.clientHeight - f.offsetHeight - b.offsetHeight >= LIVE_REST_MIN_PX);
+      setStands(c.clientHeight - f.offsetHeight - height >= LIVE_REST_MIN_PX);
     };
     choose();
     const seen = new ResizeObserver(choose);
     seen.observe(c);
+    seen.observe(s);
     seen.observe(b);
     seen.observe(f);
     // A notice coming or going, which may not change the place's own size once it is at its most.
@@ -84,6 +95,7 @@ export function LiveColumn({ still, rest }: { still: ReactNode; rest: ReactNode 
       data-still={stands ? 'true' : 'false'}
     >
       <div
+        ref={scroller}
         className={cx(
           'relative flex min-h-0 flex-1 flex-col',
           stands ? 'overflow-hidden' : 'overflow-y-auto pb-3',
