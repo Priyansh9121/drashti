@@ -163,6 +163,31 @@ function newWaysToDraw(win: Page) {
   });
 }
 
+/**
+ * Back's and Oops's left edges and the next picture's right edge, each against the live picture's own (0: in line with
+ * it), and the picture's box. a24-lookgap put Depth's picture back at the width and place it has in a flat look (356 x
+ * 202 in CI's 380 px live column), 4 px past the row under it on each side (lead 2's lookcheck); the row and Oops's
+ * line reach the gaps' room back too, so they line up with the picture again, as in a flat look.
+ */
+function liveEdges(win: Page) {
+  return win.evaluate(() => {
+    const box = (id: string) =>
+      document.querySelector(`[data-testid="column-right"] [data-testid="${id}"]`)?.getBoundingClientRect() ??
+      null;
+    const picture = box('live-preview');
+    const step = (a: number | undefined, b: number | undefined) =>
+      a === undefined || b === undefined ? null : Math.round((a - b) * 10) / 10;
+    return {
+      picture: picture
+        ? [picture.x, picture.width, picture.height].map((v) => Math.round(v * 10) / 10)
+        : null,
+      back: step(box('show-back')?.left, picture?.left),
+      oops: step(box('show-oops')?.left, picture?.left),
+      nextUp: step(picture?.right, box('next-up')?.right),
+    };
+  });
+}
+
 const turnComputer = (app: ElectronApplication, source: 'light' | 'dark') =>
   app.evaluate(({ nativeTheme }, s) => {
     nativeTheme.themeSource = s;
@@ -175,6 +200,8 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
+  // The live picture's box in each Depth base, to hold against a flat look's below.
+  const pictures: (number[] | null)[] = [];
   for (const [source, a] of [
     ['light', WHITE],
     ['dark', BLACK],
@@ -210,6 +237,14 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
       /^rgba\(212, 42, 49, 0\.\d+\) 0px 0px 0px \d+px inset$/u,
     );
     expect(await newWaysToDraw(win), `${a.name}: in a show`).toEqual([]);
+    // Back, Oops and the next picture in line with the live picture's edges.
+    const edges = await liveEdges(win);
+    expect(edges, `${a.name}: Back, Oops and Next up at the picture's edges`).toMatchObject({
+      back: 0,
+      oops: 0,
+      nextUp: 0,
+    });
+    pictures.push(edges.picture);
     await win.evaluate(() =>
       (
         globalThis as unknown as { drashti: { engine: { dispatch(c: unknown): Promise<unknown> } } }
@@ -234,6 +269,12 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
     splitter: CLEAR,
   });
   expect(await newWaysToDraw(win), 'Simple Mode').toEqual([]);
+  // Simple Mode's Back and next picture in line with its live picture (it has no Oops).
+  expect(await liveEdges(win), "Simple Mode: Back and Next up at the picture's edges").toMatchObject({
+    back: 0,
+    oops: null,
+    nextUp: 0,
+  });
   await chooseMenuItem(app, 'switch-mode');
   await expect(win.getByTestId('simple-mode')).toHaveCount(0);
 
@@ -252,6 +293,17 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
   expect(flat.left?.slice(0, 3)).toEqual([rgb(BLACK.colours.panel), '0px', '0px']);
   expect(flat.left?.[7], 'flat: no ring over the corners').toBe('none');
   expect(flat.playlistsAt).toBe(0);
+  // Flat: the picture and the row under it as before, the picture's box the one Depth draws.
+  const flatEdges = await liveEdges(win);
+  expect(flatEdges, "flat: Back, Oops and Next up at the picture's edges").toMatchObject({
+    back: 0,
+    oops: 0,
+    nextUp: 0,
+  });
+  expect(pictures, "the live picture's box: Depth's the flat look's").toEqual([
+    flatEdges.picture,
+    flatEdges.picture,
+  ]);
   await chooseMenuItem(app, 'appearance-follow');
   await expect(win.locator('html')).toHaveAttribute('data-window-look', 'depth');
   await app.close();
