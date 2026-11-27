@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectFits } from './fit';
 import type { PageGlobals } from './helpers';
+import { helpOn } from './help';
 import {
   chooseMenuItem,
   importAndGetIds,
@@ -52,6 +53,7 @@ for (const mode of ['pro', 'simple'] as const) {
       const { app } = await launchApp();
       const win = await operatorPage(app);
       await operatorReady(win);
+      await helpOn(win);
       await sizeOperatorWindow(app, win, size);
       if (mode === 'simple') {
         await chooseMenuItem(app, 'switch-mode');
@@ -302,6 +304,7 @@ test('Start here at 1024 × 645 and 1024 × 768 in an empty library: centred or 
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
   await win.getByTestId('welcome-skip').click();
+  await helpOn(win);
   const startHere = win.getByTestId('start-here');
   await expect(startHere.getByTestId('start-step')).toHaveCount(3);
   // Step 3 says the screens set themselves (Session 55), with Set Up Screens… (the case CI could not click).
@@ -370,6 +373,7 @@ test('the open playlist’s and the slides’ “What is this?” at 1024 × 645
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await helpOn(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
   // A playlist of one placeholder presentation, open in the middle, its slides as rows under its name (Session 55);
   // the slides' own card is the library's chosen presentation's, with no playlist open.
@@ -410,6 +414,7 @@ test('the welcome and the practice show at 1024 × 645, every button clickable; 
   const { app } = await launchApp(FIRST_START);
   const win = await operatorPage(app);
   await operatorReady(win);
+  await helpOn(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
   const welcome = win.getByTestId('welcome');
   await expectFits(welcome, 'the welcome at 1024 × 645');
@@ -477,6 +482,7 @@ test('Simple Mode’s bar fits from 1008 px wide, its Slide, Background and Audi
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await helpOn(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
   // A picture and a sound for its Background and Audio to light up, imported in Pro Mode.
   const dir = mkdtempSync(join(tmpdir(), 'drashti-small-window-'));

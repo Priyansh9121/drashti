@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
+import { helpOn } from './help';
 import {
   closeLibrary,
   importAndGetIds,
@@ -89,6 +90,7 @@ test('the quick bar: hidden when empty; a picture, a slide row, a video row and 
   const { app, userData } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await helpOn(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
   // Hidden when empty.
   await expect(win.getByTestId('layer-bar')).toBeVisible();
@@ -228,6 +230,7 @@ test('a full quick bar of 8, long names cut, fits one row above the bar of clear
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await helpOn(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
   const eight = Array.from({ length: 8 }, (_, i) => ({
     kind: 'message' as const,

@@ -25,6 +25,7 @@ import {
   setUpScreen,
   type PageGlobals,
 } from './helpers';
+import { helpOn } from './help';
 import { setUpPlaceholderShow } from './placeholder-show';
 import { expectPhoneRefuses } from './phone-refuses';
 import { makeTestImage, makeTestTone } from './test-media';
@@ -128,6 +129,7 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
     const { app } = await launchApp(NETWORK_ENV);
     const win = await operatorPage(app);
     await operatorReady(win);
+    await helpOn(win);
     const show = await setUpPlaceholderShow(win);
     await setUpScreen(win);
     const output = await outputPage(app);

@@ -4,7 +4,7 @@ Simple Mode is this window with only what a small sabha with one projector needs
 
 ## Simple Mode
 
-**What it is.** A plainer window for running a sabha from a playlist. Along the bottom: **Clear all**, **Slide**, **Background** and **Audio**, **Wallpaper** and **Black-out**, each with its key. A display plugged in sets itself, as in Pro Mode.
+**What it is.** A plainer window for running a sabha from a playlist. Along the bottom: **Clear all**, **Slide**, **Background** and **Audio**, **Wallpaper** and **Black-out**, each with its key (shown while **Help** is on in the status bar, or while you hold **Alt**, **Option ⌥** on a Mac). A display plugged in sets itself, as in Pro Mode.
 
 **When you would use it.** For a small sabha run by a volunteer, or a computer whose access is Simple Mode only.
 

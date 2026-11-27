@@ -5,6 +5,7 @@ import { PANEL_HELP } from '../../src/shared/panel-help';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { NETWORK_ENV, networkOn } from './devices';
 import { chooseMenuItem, launchApp, openLibrary, operatorPage, operatorReady, slidesOf } from './helpers';
+import { helpOn } from './help';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -27,6 +28,7 @@ test('What is this? opens a panel’s words under its heading, never over the sh
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
+  await helpOn(win);
   // A playlist open, and the network on, so the open playlist's and Announcements' ? show (Sessions 31–36).
   await setUpPlaceholderShow(win);
   await networkOn(win);
@@ -87,6 +89,7 @@ test('Open the manual opens the Drashti Manual at the panel’s chapter, at its 
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
+  await helpOn(win);
   await setUpPlaceholderShow(win);
   await showRunning(win);
   // Next and Back's words, in their place, then Open the manual (Read more until x37).

@@ -4,6 +4,7 @@ import { KEY_GROUPS, KEYMAP } from '../../src/shared/keymap';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
+import { helpOn } from './help';
 import {
   chooseMenuItem,
   holdStill,
@@ -128,6 +129,7 @@ test('single-letter keys (B, . and ?) are on to begin with, and can be turned of
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
+  await helpOn(win);
   const sheet = win.getByTestId('keys-sheet');
   const blackoutButton = win.getByTestId('blackout-button');
   const wallpaperButton = win.getByTestId('wallpaper-button');
@@ -204,6 +206,7 @@ test('single-letter keys (B, . and ?) are on to begin with, and can be turned of
   const again = await relaunchApp(userData);
   const win2 = await operatorPage(again.app);
   await operatorReady(win2);
+  await helpOn(win2);
   expect(await singleKeys(win2)).toBe(false);
   await letGo(win2);
   const before2 = await show(win2);
@@ -249,6 +252,7 @@ test('the operator window shows, the single-letter keys on, when their setting c
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
+  await helpOn(win);
   await expect(win.getByTestId('blackout-button').locator('kbd')).toHaveText('B');
   expect(await singleKeys(win)).toBe(true);
   await letGo(win);
