@@ -344,6 +344,23 @@ for (const mode of ['pro', 'simple'] as const)
       await expect(win.locator('[role="tooltip"]'), where).toHaveText(NO_STAGE_WHOLE);
       await win.mouse.move(0, 0);
       await expect(win.locator('[role="tooltip"]')).toHaveCount(0);
+      // Each button its own tooltip on keyboard focus (the release lead's alpha.25 item 40, in saidwords): Set up Stage
+      // screen… says what it does, the X says Dismiss with the line. By the keyboard from the Help switch before them.
+      await win.getByTestId('help-toggle').focus();
+      if (mode === 'pro') {
+        await win.keyboard.press('Tab');
+        await expect(line.getByTestId('screens-said-set-up-stage'), where).toBeFocused();
+        await expect(win.locator('[role="tooltip"]'), where).toHaveText(
+          'Set up Stage screen…: opens Screens, to give a display the Stage job',
+        );
+      }
+      await win.keyboard.press('Tab');
+      await expect(line.getByRole('button', { name: 'Dismiss' }), where).toBeFocused();
+      await expect(win.locator('[role="tooltip"]'), where).toHaveText(`Dismiss: ${NO_STAGE_WHOLE}`);
+      await win.evaluate(() => {
+        (document.activeElement as HTMLElement | null)?.blur();
+      });
+      await expect(win.locator('[role="tooltip"]')).toHaveCount(0);
       // Closed and said again (Stage on again with no Stage screen, Stage already on): nothing else in the status bar
       // moves as it goes or comes, the access line's place among them.
       const withLine = await statusBar(win);

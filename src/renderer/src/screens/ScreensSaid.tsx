@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { SET_UP_STAGE } from '../../../shared/screen-switches';
 import { useScreenSwitches } from '../operator/screen-switches-store';
 import type { ScreensSaid } from '../../../shared/screens';
-import { saidShort } from '../../../shared/screens';
+import { saidShort, saidTips } from '../../../shared/screens';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Info, Monitor, MonitorOff, Settings, Tv, X } from '../ui/icons';
@@ -112,30 +112,36 @@ function SaidLine({ said, onChange }: { said: ScreensSaid; onChange: ((displayId
     close(said.id);
     onChange?.(id);
   };
+  // Each part its own tooltip (alpha.25 item 40, done in saidwords): the words the whole line, each button what it does,
+  // the X Dismiss with the line. Their words are in the line already for screen readers: the tooltips only show them.
+  const tips = saidTips(said);
   return (
-    // Its words are in it already, for screen readers: the tooltip only shows them.
-    <Tooltip content={said.text} describes={false}>
-      <div
-        data-testid="screens-said"
-        data-kind={said.kind}
-        className={cx(
-          'mr-3 flex h-6 shrink-0 items-center gap-1.5 rounded-sm pl-1.5 whitespace-nowrap',
-          warning ? 'bg-warning-bg text-warning-fg' : 'bg-panel-2 text-fg',
-        )}
-      >
-        <IconShape size={13} aria-hidden="true" className={cx('shrink-0', !warning && 'text-accent')} />
-        {/* In sight, the short words; read out, the whole line. */}
-        <span
-          aria-hidden="true"
-          className={cx(audienceOff && givesWay && 'max-[1280px]:hidden')}
-          data-testid="screens-said-short"
-        >
-          {saidShort(said)}
+    <div
+      data-testid="screens-said"
+      data-kind={said.kind}
+      className={cx(
+        'mr-3 flex h-6 shrink-0 items-center gap-1.5 rounded-sm pl-1.5 whitespace-nowrap',
+        warning ? 'bg-warning-bg text-warning-fg' : 'bg-panel-2 text-fg',
+      )}
+    >
+      {/* The icon and, in sight, the short words (the icon alone where they give way); read out, the whole line. */}
+      <Tooltip content={tips.words} describes={false}>
+        <span className="flex items-center gap-1.5">
+          <IconShape size={13} aria-hidden="true" className={cx('shrink-0', !warning && 'text-accent')} />
+          <span
+            aria-hidden="true"
+            className={cx(audienceOff && givesWay && 'max-[1280px]:hidden')}
+            data-testid="screens-said-short"
+          >
+            {saidShort(said)}
+          </span>
         </span>
-        <span className="sr-only" data-testid="screens-said-text">
-          {said.text}
-        </span>
-        {onChange && said.kind === 'set' && first !== undefined && (
+      </Tooltip>
+      <span className="sr-only" data-testid="screens-said-text">
+        {said.text}
+      </span>
+      {onChange && said.kind === 'set' && first !== undefined && (
+        <Tooltip content={tips.action} describes={false}>
           <Button
             size="sm"
             icon={Settings}
@@ -147,8 +153,10 @@ function SaidLine({ said, onChange }: { said: ScreensSaid; onChange: ((displayId
           >
             Change…
           </Button>
-        )}
-        {onChange && said.kind === 'no-stage' && first !== undefined && (
+        </Tooltip>
+      )}
+      {onChange && said.kind === 'no-stage' && first !== undefined && (
+        <Tooltip content={tips.action} describes={false}>
           <Button
             size="sm"
             icon={Tv}
@@ -160,8 +168,10 @@ function SaidLine({ said, onChange }: { said: ScreensSaid; onChange: ((displayId
           >
             {SET_UP_STAGE}
           </Button>
-        )}
-        {/* 24 × 24 (WCAG 2.5.8), as the notices' own. */}
+        </Tooltip>
+      )}
+      {/* 24 × 24 (WCAG 2.5.8), as the notices' own. */}
+      <Tooltip content={tips.dismiss} describes={false}>
         <button
           type="button"
           aria-label="Dismiss"
@@ -172,7 +182,7 @@ function SaidLine({ said, onChange }: { said: ScreensSaid; onChange: ((displayId
         >
           <X size={13} aria-hidden="true" />
         </button>
-      </div>
-    </Tooltip>
+      </Tooltip>
+    </div>
   );
 }

@@ -2,6 +2,7 @@ import type { ClockStyle } from './format';
 import type { Lang } from './model';
 import type { ScreenGeometry } from './screen-geometry';
 import type { HallPicture } from './stage-layouts';
+import { SET_UP_STAGE } from './screen-switches';
 
 /** How a screen's canvas is scaled into its output window. */
 export type ScalingMode = 'fit' | 'fill' | 'stretch';
@@ -199,6 +200,25 @@ export function saidShort(said: Pick<ScreensSaid, 'kind' | 'displayIds'>): strin
   if (said.kind === 'mirroring') return 'Screen mirrored';
   const given = said.displayIds.length;
   return given > 1 ? `${String(given)} new screens set up` : 'New screen set up';
+}
+
+/**
+ * Each part of the line's own tooltip (the release lead's alpha.25 item 40, done in saidwords): on keyboard focus both
+ * buttons had shown the line's sentence. The words (and the icon) show the whole line; the action button says what it
+ * does (none while mirroring); the X says Dismiss, with the line.
+ */
+export function saidTips(said: Pick<ScreensSaid, 'kind' | 'text'>): {
+  words: string;
+  action: string | null;
+  dismiss: string;
+} {
+  const action =
+    said.kind === 'no-stage'
+      ? `${SET_UP_STAGE}: opens Screens, to give a display the Stage job`
+      : said.kind === 'set'
+        ? 'Change…: opens Screens at this display, to give it another job'
+        : null;
+  return { words: said.text, action, dismiss: `Dismiss: ${said.text}` };
 }
 
 /** The job a display's use stands for: a stage group's is the stage, any other group's the audience picture. */
