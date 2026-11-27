@@ -5,7 +5,7 @@ export class SecurityCommandError extends SigningKeychainError {
   readonly subcommand: string;
   readonly failure: ImportFailure;
 }
-export type ImportFailure = 'password' | 'format' | 'invalid' | 'unknown';
+export type ImportFailure = 'password' | 'format' | 'invalid' | 'unknown' | 'timeout';
 export function importFailure(output: string): ImportFailure;
 export function importReason(failure: ImportFailure, pfx: boolean): string;
 export const NOT_A_P12: string;
@@ -23,9 +23,19 @@ export interface SpawnResult {
   status: number | null;
   stdout: string;
   stderr?: string;
+  signal?: string | null;
+  error?: Error & { code?: string };
 }
-export type Spawn = (command: string, args: string[], options: { encoding: 'utf8' }) => SpawnResult;
-export type Security = (args: string[], administrator?: boolean) => string;
+export interface SpawnOptions {
+  encoding: 'utf8';
+  timeout: number;
+  killSignal: 'SIGKILL';
+}
+export type Spawn = (command: string, args: string[], options: SpawnOptions) => SpawnResult;
+/** Every call is bounded: `timeoutMs` (default COMMAND_TIMEOUT_MS), then killed. */
+export type Security = (args: string[], administrator?: boolean, timeoutMs?: number) => string;
+export const COMMAND_TIMEOUT_MS: number;
+export const TRUST_REMOVAL_TIMEOUT_MS: number;
 export function securityRunner(spawn?: Spawn): Security;
 export interface KeychainDeps {
   env: Record<string, string | undefined>;
