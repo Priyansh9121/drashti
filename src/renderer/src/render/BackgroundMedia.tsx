@@ -47,6 +47,7 @@ import { useInputReport, useVideoInput } from './video-input';
 import { hasNoPicture, tellCannotPlay, tellNoPicture, tellPlaysHere, watchStart } from './no-picture';
 import { NO_FIRST_FRAME, NO_START_IN_TIME } from '../../../shared/no-picture';
 import { SHAPED_PLACE, shapedVideoStyle, shapeFor, useVideoShapes } from './video-shape';
+import { quietEndOfWait, untilPresented } from './present-wait';
 
 function style(fit: MediaFit, visible: boolean) {
   return {
@@ -69,9 +70,6 @@ function style(fit: MediaFit, visible: boolean) {
  * shape, stretched to it (`shape`: its width over its height; its place, the slot's wrap, is then the box's container:
  * BackgroundPlayer).
  */
-/** How long a video drawn over the picture before waits for its first presented frame before it is taken as ready. */
-const PRESENT_WAIT_MS = 300;
-
 function VideoSlot({
   slot,
   visible,
@@ -218,28 +216,21 @@ function VideoSlot({
     playback.current?.resync();
   }, [seekAt, clipKey]);
   // Drawn over the picture before with its data in (alpha.20): ready once Chromium has presented a frame of it on the
-  // screen, so the picture before goes only then, never leaving the hall a black frame between (CI
-  // x54-1121-023510-80364: shown the moment its data was in, it was not yet presented). A frame callback that does not
-  // come (a paused video presents no new frame) is not waited on long.
+  // screen, so the picture before goes only then, never with nothing of it to show (render/present-wait.ts).
   const presenting = slot.state === 'loaded' && visible;
   useEffect(() => {
     const v = ref.current;
     if (!presenting || !v) return;
-    let done = false;
-    const presented = () => {
-      if (done) return;
-      done = true;
-      dispatch({ type: 'ready', key, at: engineNow() });
-    };
-    const callback = v.requestVideoFrameCallback(presented);
-    // eslint-disable-next-line no-restricted-syntax -- only stops waiting for a frame callback: what shows is decided by the slots
-    const fallback = setTimeout(presented, PRESENT_WAIT_MS);
-    return () => {
-      done = true;
-      v.cancelVideoFrameCallback(callback);
-      clearTimeout(fallback);
-    };
-  }, [presenting, key, dispatch]);
+    return untilPresented(
+      v,
+      () => {
+        dispatch({ type: 'ready', key, at: engineNow() });
+      },
+      // A frame that never comes (a decoder that stopped, a page that draws nothing for long): the no-first-frame watch
+      // ends the wait, the picture before going then, never kept for ever; nothing said to Main (present-wait.ts).
+      quietEndOfWait(v, mediaId),
+    );
+  }, [presenting, key, mediaId, dispatch]);
 
   const opacity = visible ? 1 : layer.cueId ? PRIVATE_VIDEO_OPACITY : 0;
   return (

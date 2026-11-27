@@ -128,7 +128,9 @@ export function retryAfterLanding(slots: Slots, landed: number): string | null {
  * A background that is ready goes on screen: dissolving in over the one there, when it came with a slide
  * that dissolves and that dissolve is not over at `at` (from where the slide began, or from `at` if it was
  * not ready then); otherwise at once. A video input's capture takes a moment to open (Session 50), the picture
- * before it staying meanwhile: it dissolves in from when it is ready, however late, never cut in.
+ * before it staying meanwhile: it dissolves in from when it is ready, however late, never cut in. What dissolves out
+ * is whatever is drawn there: one that failed while it played too, drawn as it was (Q60-31), never dropped to leave
+ * the new one dissolving in from black (alpha.24, a24-bgblack).
  */
 function arrive(slots: Slots, ready: Slot, at: number | undefined): Slots {
   const fade = ready.joined ? undefined : ready.layer.fade;
@@ -136,7 +138,7 @@ function arrive(slots: Slots, ready: Slot, at: number | undefined): Slots {
     return {
       shown: ready,
       incoming: null,
-      leaving: slots.shown?.state === 'ready' ? slots.shown : null,
+      leaving: slots.shown && isDrawn(slots.shown) ? slots.shown : null,
       fade: { start: Math.max(fade.at, at), ms: fade.durationMs },
     };
   return { shown: ready, incoming: null, leaving: null, fade: null };

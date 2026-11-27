@@ -173,6 +173,45 @@ describe('background slots', () => {
     });
   });
 
+  it('dissolves a dissolving slide’s background in over one that failed while it played, drawn as it was: never in from black (Q60-31)', () => {
+    const faded = video('F', 100, { fade: { at: 100, durationMs: 1000 } });
+    let s = run(
+      { type: 'layer', layer: a },
+      { type: 'ready', key: slotKey(a) },
+      { type: 'failed', key: slotKey(a) },
+      { type: 'layer', layer: faded },
+    );
+    // Drawn as it was meanwhile (the test above), until the new one is ready.
+    expect(drawnKeyOf(s)).toBe(slotKey(a));
+    s = slotsReducer(s, { type: 'ready', key: slotKey(faded), at: 90 });
+    // It goes as the new one comes, over the slide's dissolve, as a playing one does: nothing black under the new one.
+    expect(s).toMatchObject({
+      shown: { key: slotKey(faded), state: 'ready' },
+      leaving: { key: slotKey(a), state: 'failed', drawn: true },
+      fade: { start: 100, ms: 1000 },
+    });
+    expect(drawnKeyOf(s)).toBe(slotKey(faded));
+    s = slotsReducer(s, { type: 'faded', start: 100 });
+    expect(s).toMatchObject({ shown: { key: slotKey(faded) }, leaving: null, fade: null });
+    // A video input that comes in over it dissolves in the same way (Session 50).
+    const input: InputBackground = {
+      kind: 'input',
+      inputId: 'I',
+      name: 'Placeholder input',
+      device: 'fake_device_0',
+      fit: 'fit',
+      startedAt: 7,
+    };
+    s = run(
+      { type: 'layer', layer: a },
+      { type: 'ready', key: slotKey(a) },
+      { type: 'failed', key: slotKey(a) },
+      { type: 'layer', layer: { ...input, fade: { at: 7, durationMs: 500 } } },
+      { type: 'ready', key: slotKey(input), at: 50 },
+    );
+    expect(s).toMatchObject({ leaving: { key: slotKey(a), drawn: true }, fade: { start: 50, ms: 500 } });
+  });
+
   it('a dissolve cut short by another background carries on to its end: never left part-way, dim (Session 23)', () => {
     const faded = video('F', 100, { fade: { at: 100, durationMs: 1000 } });
     const third = video('T', 500, { fade: { at: 500, durationMs: 1000 } });
