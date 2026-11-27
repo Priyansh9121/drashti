@@ -194,4 +194,54 @@ describe("the operator window's Go work behind LIVE's first moving frame (golive
     page.frameAt(150);
     expect(page.order).toEqual(['rate', 'shown', 'work']);
   });
+
+  // a24 golive, lead 2's rule 3: Go cancelled, replaced or followed by Clear all within those 250 ms. The slot or the
+  // scene goes, its effect's cleanup cancels the wait, and nothing of the old Go runs later.
+  it('runs nothing for a Go cancelled or cleared within the 250 ms: not at its first moving frame, nor at the fallback', () => {
+    const page = new Page();
+    const seen: number[] = [];
+    const cancel = atGoMoment(
+      100,
+      (now) => seen.push(now),
+      { checkNow: false, afterStart: afterCueStart('gm-b', 'shown') },
+      page,
+    );
+    page.later(() => cueStarted('gm-b'), 100);
+    page.frameAt(102);
+    cancel();
+    page.later(() => cueShown('gm-b'), 40);
+    page.frameAt(150);
+    page.frameAt(400);
+    expect(seen).toEqual([]);
+  });
+
+  it('runs a Go replaced within the 250 ms at its own first moving frame, never at the old one', () => {
+    const page = new Page();
+    const order: string[] = [];
+    const old = atGoMoment(
+      100,
+      () => order.push('old'),
+      { checkNow: false, afterStart: afterCueStart('gm-c', 'shown') },
+      page,
+    );
+    page.later(() => cueStarted('gm-c'), 100);
+    page.frameAt(102);
+    // A new cue's Go 50 ms later: the old wait goes with its slot, a new one waits on the new cue.
+    old();
+    atGoMoment(
+      150,
+      () => order.push('new'),
+      { checkNow: false, afterStart: afterCueStart('gm-d', 'shown') },
+      page,
+    );
+    page.later(() => cueShown('gm-c'), 20);
+    page.frameAt(130);
+    expect(order, 'the old cue shown: nothing').toEqual([]);
+    page.later(() => cueStarted('gm-d'), 20);
+    page.frameAt(152);
+    expect(order, 'the new cue at its rate: not yet').toEqual([]);
+    page.later(() => cueShown('gm-d'), 40);
+    page.frameAt(200);
+    expect(order).toEqual(['new']);
+  });
 });

@@ -6,6 +6,7 @@ import {
   heldUntilStarted,
   isCueStarted,
   startedNow,
+  watchFirstMove,
   whenCueStarted,
 } from './cue-started';
 
@@ -77,5 +78,74 @@ describe("the operator preview's word that a cued picture started at Go", () => 
     expect(heldUntilStarted('cue-h', 1000, 1250, 'shown'), '250 ms past Go').toBe(false);
     cueShown('cue-h');
     expect(heldUntilStarted('cue-h', 1000, 1100, 'shown')).toBe(false);
+  });
+
+  it("keeps LIVE's own picture's wait on its rate: it comes on as before, the window's other work after", () => {
+    const own = vi.fn(),
+      other = vi.fn();
+    afterCueStart('cue-i').whenStarted(own);
+    afterCueStart('cue-i', 'shown').whenStarted(other);
+    cueStarted('cue-i');
+    expect(own, "LIVE's own picture, at its rate").toHaveBeenCalledTimes(1);
+    expect(other).not.toHaveBeenCalled();
+    cueShown('cue-i');
+    expect(other).toHaveBeenCalledTimes(1);
+    expect(own).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts a first moving frame shown as a start too', () => {
+    const own = vi.fn();
+    afterCueStart('cue-j').whenStarted(own);
+    cueShown('cue-j');
+    expect(own).toHaveBeenCalledTimes(1);
+    expect(isCueStarted('cue-j')).toBe(true);
+    expect(heldUntilStarted('cue-j', 1000, 1100, 'shown')).toBe(false);
+  });
+});
+
+describe("LIVE's watch for its cued picture's first moving frame (golive)", () => {
+  /** A stand-in element: its frame callbacks, run as the test presents frames. */
+  const element = () => {
+    const asked = new Map<number, VideoFrameRequestCallback>();
+    let next = 0;
+    return {
+      asked,
+      requestVideoFrameCallback: (run: VideoFrameRequestCallback) => {
+        asked.set(++next, run);
+        return next;
+      },
+      cancelVideoFrameCallback: (id: number) => {
+        asked.delete(id);
+      },
+      present(mediaTime: number) {
+        const runs = [...asked.values()];
+        asked.clear();
+        for (const run of runs) run(0, { mediaTime } as VideoFrameCallbackMetadata);
+      },
+    };
+  };
+
+  it('tells it once, on the first frame past where it was held, never for the held trimmed frame', () => {
+    const v = element();
+    const shown = vi.fn();
+    watchFirstMove(v, 1.000002, shown);
+    v.present(1.000002);
+    v.present(1.0005);
+    expect(shown, 'the held frame, and one within a ms of it').not.toHaveBeenCalled();
+    v.present(1.033);
+    expect(shown).toHaveBeenCalledTimes(1);
+    v.present(1.067);
+    expect(shown, 'once').toHaveBeenCalledTimes(1);
+    expect(v.asked.size, 'nothing more asked').toBe(0);
+  });
+
+  it('asks nothing more once stopped (the cue gone, the preview closed)', () => {
+    const v = element();
+    const shown = vi.fn();
+    const stop = watchFirstMove(v, 1, shown);
+    stop();
+    expect(v.asked.size).toBe(0);
+    v.present(1.033);
+    expect(shown).not.toHaveBeenCalled();
   });
 });
