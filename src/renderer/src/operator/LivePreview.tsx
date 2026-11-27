@@ -1,4 +1,3 @@
-import { VideoCueStrip } from './VideoCueStrip';
 import { PreparedTranslationStatus } from './PreparedTranslationStatus';
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { usePractice, useShowRev, useShowState } from '../practice/practice-store';
@@ -24,7 +23,7 @@ import { cx } from '../ui/cx';
 import { Eraser, Repeat2, Square, Timer } from '../ui/icons';
 import { dispatch } from './actions';
 import { connectDrawingMode, useDrawingMode } from './drawing-mode';
-import { LiveZoomControls, ZoomablePreview } from './LiveZoom';
+import { ZoomablePreview } from './LiveZoom';
 import { useNow } from '../render/useNow';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { HOLD_WARM_UP, NO_GPU_ENDS_HOLD, SKIP_WARM_UP } from '../render/warm-up-mode';
@@ -220,7 +219,8 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
         {help.button}
       </div>
       {help.card && <div className="-mx-3">{help.card}</div>}
-      <VideoCueStrip />
+      {/* The cued video's card and the live zoom's buttons are under Next, Back and the time bars since alpha.24 (lead
+          2's cuestill: operator/App.tsx, simple/SimpleApp.tsx, practice/PracticeShow.tsx), so they never move them. */}
       {state?.repeat && <Repeating run={state.repeat} />}
       {state?.layers.slide?.timer && <TimerAlone shown={state.layers.slide.timer} />}
       {state?.layers.timer && <AudienceTimerUp state={state} />}
@@ -316,8 +316,6 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
         </p>
       )}
       {state?.autoAdvance && <TimeLeft count={state.autoAdvance} />}
-      {/* Zooming a live picture is the show's: not in the practice show, which has no pictures. */}
-      {!practising && <LiveZoomControls />}
     </section>
   );
 }

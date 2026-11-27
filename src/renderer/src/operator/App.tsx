@@ -41,6 +41,8 @@ import { connectQuickBar, pressQuick, quickMenuItems } from '../quick-bar/quick-
 import { Header } from './Header';
 import { LayerBar } from './LayerBar';
 import { NextBack } from './NextBack';
+import { LiveZoomControls } from './LiveZoom';
+import { VideoCueStrip } from './VideoCueStrip';
 import { PracticeShow } from '../practice/PracticeShow';
 import { practiceKey, stopPractice, usePractice } from '../practice/practice-store';
 import { closeWelcome, openWelcome, Welcome } from '../setup/Welcome';
@@ -452,6 +454,15 @@ function ProApp({ info }: { info: AppInfo | null }) {
                   <NextBack platform={platform} run={run} />
                   {/* The time bar for what plays (Session 54), under Next and Back so they never move. */}
                   <PlayingBars className="px-3 pt-2" />
+                  {/* The cued video's card, then the live zoom's buttons while a picture is up (alpha.24, lead 2's
+                  cuestill): under Next, Back, Oops and the time bars, so the picture, they and the bars' Play and
+                  Pause never move as either comes or goes (the card came above the picture, the buttons between it
+                  and Next, 66 and 36 px); Go stays in sight at CI's 1024 × 645 with a video's bar up and every section
+                  open (video-cue-still.spec.ts). Gone while both are empty, so it keeps no room at rest. */}
+                  <div className="space-y-2 px-3 pt-2 empty:hidden">
+                    <VideoCueStrip />
+                    <LiveZoomControls />
+                  </div>
                   {/* Resume where it stopped (alpha.20): "Resume at …" for a long file's first 30 s. */}
                   <ResumeOffers />
                   <MarkerJumps />

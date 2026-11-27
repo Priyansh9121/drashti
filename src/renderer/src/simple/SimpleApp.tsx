@@ -33,6 +33,7 @@ import { LayerBar } from '../operator/LayerBar';
 import { Columns, LeftColumn } from '../operator/Layout';
 import { LiveColumn } from '../operator/LiveColumn';
 import { LivePreview } from '../operator/LivePreview';
+import { LiveZoomControls } from '../operator/LiveZoom';
 import { leaveSimpleMode } from '../operator/mode-store';
 import { useDoubleClickSwitch } from '../operator/mode-switch';
 import { NextBack } from '../operator/NextBack';
@@ -406,6 +407,12 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
                 />
                 {/* The time bar for what plays (Session 54), under Next and Back: Play while paused (question 14). */}
                 <PlayingBars className="px-3 pt-2" />
+                {/* The live zoom's buttons while a picture is up (alpha.24, lead 2's cuestill): under Next, Back and the
+                time bars, as in Pro Mode, so they never move them as they come and go (they were between the picture
+                and Next and Back, 36 px). Gone while empty, so it keeps no room at rest. */}
+                <div className="px-3 pt-2 empty:hidden">
+                  <LiveZoomControls />
+                </div>
                 {/* Resume where it stopped (alpha.20; the owner's "Yes, all A" to Q60-39: Simple Mode has it too). */}
                 <ResumeOffers />
                 {/* Record (Session 56, the owner's item 19): sound or video, on air or off, under the time bar and above
