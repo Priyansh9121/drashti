@@ -397,11 +397,17 @@ async function cardTabCircuit(win: Page, backward = false) {
       if (!(el instanceof HTMLElement) || el === document.body) return null;
       const card = el.closest('[data-testid="what-is-this"]');
       const landmark = el.closest('header, nav, main, aside, footer, section[aria-label]');
+      // The middle shows either a playlist or standalone slides. Both are the same region in the required order.
+      const zone = el.closest('[data-zone]')?.getAttribute('data-zone');
+      const regions: Record<string, string> = { left: 'Playlists', middle: 'Slides', right: 'Live' };
       return {
         id: card ? `card: ${el.textContent.trim()}` : (el.dataset['helpcardsTab'] ?? 'unmarked'),
         region: card
           ? 'card'
-          : (landmark?.getAttribute('aria-label') ?? landmark?.tagName.toLowerCase() ?? 'none'),
+          : ((zone ? regions[zone] : undefined) ??
+            landmark?.getAttribute('aria-label') ??
+            landmark?.tagName.toLowerCase() ??
+            'none'),
       };
     });
     if (!at) continue;
