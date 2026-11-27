@@ -109,7 +109,8 @@ async function fits(win: Page, where: string) {
         // Also check the rendered compact words; hidden full wording must remain available to assistive tech.
         const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
         for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-          if (!node.textContent?.trim()) continue;
+          const nodeWords = node.textContent?.trim();
+          if (!nodeWords) continue;
           const parent = node.parentElement;
           if (!parent?.getClientRects().length) continue;
           let hidden = false;
@@ -131,7 +132,7 @@ async function fits(win: Page, where: string) {
             r.top < edge.top - 0.01 ||
             r.bottom > edge.bottom + 0.01
           )
-            faults.push(`visible words cut: ${node.textContent?.trim()}`);
+            faults.push(`visible words cut: ${nodeWords}`);
         }
         return faults;
       }),
@@ -300,7 +301,9 @@ for (const mode of ['pro', 'simple'] as const)
               : 'display not connected';
           await expect(win.getByTestId('screens-summary')).toContainText(words);
           await expect(win.getByTestId('screens-summary')).toHaveAccessibleName(new RegExp(words));
-          await expect.soft(win.getByTestId('screens-summary')).toHaveAttribute('title', new RegExp(words));
+          expect
+            .soft(await win.getByTestId('screens-summary').getAttribute('title'))
+            .toMatch(new RegExp(words));
           // The separate, existing top-of-window stopped-screen notice is outside this footer regression.
           // Close it as an operator may, leaving the stopped state and every position/fit assertion intact.
           if (fault.state === 'stopped') {
