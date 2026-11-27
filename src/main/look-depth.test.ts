@@ -248,29 +248,39 @@ describe('B · Depth: styles/look-depth.css', () => {
     }
   });
 
-  it('rounds the columns with no rounded clip: square columns clipped to their box, a ring of the ground over their corners', () => {
+  it('rounds the columns with no rounded clip: square columns clipped to their box, a ring of the ground under what they hold', () => {
     // The release lead's review, S1: a rounded overflow clip over a column's scrolling parts may cost a layer drawn
     // afresh at every frame; a square clip and a no-blur ring in the ground's colour round the corners instead.
-    // The columns' own rules (their ::after ring is the one rounded thing, over them).
+    // The re-review of 6e6d4fea2, SHOULD-1: the ring is drawn under what the column holds (its ::before, z-index -1,
+    // over its own background only), never over it: drawn over a playing video, a glide or a scroller it would be a
+    // layer of its own. The columns' own rules (their ::before ring is the one rounded thing).
     const columns = rules.filter(
-      (r) => r.selector.includes("[data-testid='column-middle']") && !r.selector.endsWith('::after'),
+      (r) => r.selector.includes("[data-testid='column-middle']") && !r.selector.endsWith('::before'),
     );
     for (const r of columns) {
       const rounded = r.decls['border-radius'];
       if (rounded !== undefined) expect(rounded, r.selector).toBe('0');
       if (r.decls['overflow'] !== undefined) expect(r.decls['overflow'], r.selector).toBe('clip');
     }
-    const mask = rules.find(
-      (r) => r.selector.endsWith('::after') && r.selector.includes("[data-testid='column-left']"),
+    const ring = rules.find(
+      (r) => r.selector.endsWith('::before') && r.selector.includes("[data-testid='column-left']"),
     );
-    expect(mask?.decls).toMatchObject({
+    expect(ring?.decls).toEqual({
       content: "''",
       position: 'absolute',
       inset: '0',
+      'z-index': '-1',
       'border-radius': 'var(--radius-panel)',
       'box-shadow': '0 0 0 var(--radius-panel) var(--depth-ground)',
       'pointer-events': 'none',
     });
+    // Each column its own stacking context, so the ring lies over its background and under all it holds.
+    const column = rules.find(
+      (r) => r.selector.includes("[data-testid='column-left']") && r.decls['isolation'] !== undefined,
+    );
+    expect(column?.decls).toMatchObject({ position: 'relative', isolation: 'isolate' });
+    // Nothing of a column's drawn over what it holds.
+    expect(rules.filter((r) => r.selector.includes('column-') && r.selector.endsWith('::after'))).toEqual([]);
   });
 
   it('LIVE is a red ring and a light red tint, never a glow: the live picture and the live row', () => {

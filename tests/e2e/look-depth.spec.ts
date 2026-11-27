@@ -30,8 +30,9 @@ function drawnNow(win: Page) {
       const el = document.querySelector(`[data-testid="${id}"]`);
       if (!el) return null;
       const s = getComputedStyle(el);
-      // Its corners rounded by a ring of the ground over them (no rounded clip: the review's S1).
-      const corners = getComputedStyle(el, '::after');
+      // Its corners rounded by a ring of the ground (no rounded clip: the review's S1), under what it holds (the
+      // re-review of 6e6d4fea2, SHOULD-1: over it, it would be a layer of its own over a playing video or a glide).
+      const corners = getComputedStyle(el, '::before');
       return [
         s.backgroundColor,
         s.borderLeftWidth,
@@ -41,6 +42,7 @@ function drawnNow(win: Page) {
         s.backgroundClip,
         corners.borderTopLeftRadius,
         corners.boxShadow,
+        corners.zIndex,
       ];
     };
     const header = st('[data-header]');
@@ -88,6 +90,7 @@ const depthOf = (a: Appearance, ground: string) => {
     'padding-box',
     '12px',
     `${ground} 0px 0px 0px 12px`,
+    '-1',
   ];
   return {
     look: 'depth',
@@ -163,6 +166,44 @@ function newWaysToDraw(win: Page) {
   });
 }
 
+/**
+ * What draws over a column's rounded corners: at each corner, a pixel and a half in, everything the column holds there
+ * (above it, under the point) with a background of its own. The ring of the ground lies under what the column holds
+ * (the re-review of 6e6d4fea2, SHOULD-1), so anything there with a background would show the corner square.
+ */
+function overCorners(win: Page) {
+  return win.evaluate(() => {
+    const found: string[] = [];
+    for (const id of ['column-left', 'column-middle', 'column-right']) {
+      const column = document.querySelector(`[data-testid="${id}"]`);
+      if (!(column instanceof HTMLElement)) continue;
+      const box = column.getBoundingClientRect();
+      const st = getComputedStyle(column);
+      const left = box.left + Number.parseFloat(st.borderLeftWidth) + 1.5;
+      const right = box.right - Number.parseFloat(st.borderRightWidth) - 1.5;
+      for (const [x, y] of [
+        [left, box.top + 1.5],
+        [right, box.top + 1.5],
+        [left, box.bottom - 1.5],
+        [right, box.bottom - 1.5],
+      ] as const) {
+        for (const el of document.elementsFromPoint(x, y)) {
+          if (el === column) break;
+          if (!column.contains(el)) continue;
+          const own = getComputedStyle(el);
+          const clear = /^rgba\(\d+, \d+, \d+, 0\)$|^transparent$/u.test(own.backgroundColor);
+          if (clear && own.backgroundImage === 'none') continue;
+          const what = el.getAttribute('data-testid') ?? el.tagName.toLowerCase();
+          found.push(
+            `${id} at ${String(Math.round(x))},${String(Math.round(y))}: ${what} ${own.backgroundColor} ${own.backgroundImage}`,
+          );
+        }
+      }
+    }
+    return found;
+  });
+}
+
 const turnComputer = (app: ElectronApplication, source: 'light' | 'dark') =>
   app.evaluate(({ nativeTheme }, s) => {
     nativeTheme.themeSource = s;
@@ -187,6 +228,7 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
     expect(pro.ground, `${a.name}: the ground`).not.toBe(rgb(a.colours.ink));
     expect(pro, `${a.name}: Pro Mode`).toEqual(depthOf(a, pro.ground));
     expect(await newWaysToDraw(win), `${a.name}: nothing live`).toEqual([]);
+    expect(await overCorners(win), `${a.name}: the columns' corners`).toEqual([]);
 
     // A slide live: the live picture's red frame with a light red ring round it, no blur; the live row tinted inside.
     const thumbs = win.getByTestId('slide-thumb');
@@ -234,6 +276,7 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
     splitter: CLEAR,
   });
   expect(await newWaysToDraw(win), 'Simple Mode').toEqual([]);
+  expect(await overCorners(win), "Simple Mode: the columns' corners").toEqual([]);
   await chooseMenuItem(app, 'switch-mode');
   await expect(win.getByTestId('simple-mode')).toHaveCount(0);
 
