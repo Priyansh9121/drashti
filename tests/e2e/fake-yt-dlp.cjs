@@ -9,7 +9,8 @@
 //                           the height asked for (an MP3: the --audio-quality asked for)
 // Like the one-file yt-dlp (and as yt-dlp starts Deno and FFmpeg), it starts a child process of its own,
 // which lives until it ends: a test can see that stopping it stops that too.
-// What it is told to do comes in DRASHTI_FAKE_YT_DLP_CONFIG (JSON): title, duration, heights, live
+// What it is told to do comes in DRASHTI_FAKE_YT_DLP_CONFIG (JSON): title, duration, heights, portrait (an upright
+// video, as a phone's or a Short: each format's width given, 9 by 16, 1080 for 1920, and the placeholder that shape), live
 // (yt-dlp's live_status), liveUrl (a live video's HLS stream, picture and sound together, as yt-dlp lists one: a
 // test's local stand-in on 127.0.0.1, alpha.20's stream links), failWith (a line for its error output, then it fails), steps, stepMs, lookMs (how
 // long a look takes before it answers: 0, at once, to begin with), pauseAt (bytes: a download not carrying on
@@ -24,6 +25,11 @@ if (args[0] === '--fake-child') {
   // The child: it does nothing until it is stopped.
   setInterval(() => undefined, 1000);
 } else main();
+
+/** An upright video's width for its height, 9 by 16 and even, as a phone's: 1080 for 1920, 480 for 854. */
+function uprightWidth(height) {
+  return Math.round((height * 9) / 16 / 2) * 2;
+}
 
 function main() {
   const config = JSON.parse(process.env.DRASHTI_FAKE_YT_DLP_CONFIG || '{}');
@@ -91,6 +97,7 @@ function main() {
     const formats = [
       ...heights.map((h) => ({
         format_id: String(h),
+        ...(config.portrait ? { width: uprightWidth(h) } : {}),
         height: h,
         // As YouTube offers them: H.264 up to 1080p, VP9 above.
         vcodec: h <= 1080 ? 'avc1.640028' : 'vp09.00.51.08',
@@ -156,7 +163,9 @@ function main() {
   const finish = () => {
     // An FFmpeg-made placeholder where yt-dlp's own merge (or MP3) would leave its file.
     const out = path.join(dir, `download.${mp3 ? 'mp3' : 'mp4'}`);
-    const size = `${String(Math.round((height * 16) / 9 / 2) * 2)}x${String(height)}`;
+    const size = config.portrait
+      ? `${String(uprightWidth(height))}x${String(height)}`
+      : `${String(Math.round((height * 16) / 9 / 2) * 2)}x${String(height)}`;
     const made = spawnSync(
       ffmpeg,
       mp3

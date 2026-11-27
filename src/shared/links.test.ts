@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  aboveTheUsual,
   checkLink,
   chosenHeight,
   downloadHostAllowed,
+  linkQualities,
   qualityChoice,
   qualityWords,
   type VideoDetails,
@@ -263,5 +265,65 @@ describe('the quality a Download takes: the window’s Quality (alpha.24)', () =
     expect(qualityWords({ type: 'mp4', height: 2160 })).toBe('2160p (4K)');
     expect(qualityWords({ type: 'mp3', height: null })).toBe('MP3');
     expect(qualityWords({ type: 'mp3', height: null, kbps: 192 })).toBe('MP3 at 192 kbps');
+  });
+});
+
+describe('an upright video’s Quality, by the short side of its picture (alpha.24, hunt S3-2)', () => {
+  // A phone's upright video: 1080 × 1920 is YouTube's 1080p, 2160 × 3840 its 4K.
+  const video: VideoDetails = {
+    title: 'Placeholder upright video',
+    duration: 30,
+    heights: [
+      { height: 3840, side: 2160, bytes: null },
+      { height: 1920, side: 1080, bytes: null },
+      { height: 1280, side: 720, bytes: null },
+      { height: 854, side: 480, bytes: null },
+    ],
+    soundBytes: null,
+  };
+
+  it('begins at its 1080p (1080 × 1920), and a setting of 1080p allows that, never its 4K', () => {
+    expect(chosenHeight(video, 1080, null)).toBe(1920);
+    expect(chosenHeight(video, 1080, 1280)).toBe(1280);
+    expect(chosenHeight(video, 1080, 3840)).toBe(1920);
+    expect(chosenHeight(video, 2160, 3840)).toBe(3840);
+    expect(qualityChoice(video, false, undefined)).toEqual({
+      ok: true,
+      choice: { type: 'mp4', height: 1920 },
+    });
+    expect(qualityChoice(video, false, 3840)).toEqual({ ok: true, choice: { type: 'mp4', height: 3840 } });
+    expect(linkQualities(video, false).initial).toBe(1920);
+  });
+
+  it('is named and judged by it, while the download keeps the real height', () => {
+    expect(linkQualities(video, false).options).toEqual([
+      { value: 3840, label: '2160p (4K)', bytes: null },
+      { value: 1920, label: '1080p', bytes: null },
+      { value: 1280, label: '720p', bytes: null },
+      { value: 854, label: '480p', bytes: null },
+    ]);
+    expect([3840, 1920, 1280, 854].map((h) => aboveTheUsual(video, h))).toEqual([true, false, false, false]);
+    expect(qualityWords({ type: 'mp4', height: 1920 }, video)).toBe('1080p');
+    expect(qualityWords({ type: 'mp4', height: 3840 }, video)).toBe('2160p (4K)');
+    // Without the video, or a height it does not list: the height, as before.
+    expect(qualityWords({ type: 'mp4', height: 1920 })).toBe('1920p');
+    expect(qualityWords({ type: 'mp4', height: 999 }, video)).toBe('999p');
+    expect(qualityWords({ type: 'mp3', height: null, kbps: 128 }, video)).toBe('MP3 at 128 kbps');
+  });
+
+  it('leaves a landscape video as it was: its height is its short side', () => {
+    const wide: VideoDetails = {
+      ...video,
+      heights: [2160, 1440, 1080, 720].map((height) => ({ height, bytes: null })),
+    };
+    expect([2160, 1440, 1080, 720].map((h) => aboveTheUsual(wide, h))).toEqual([true, true, false, false]);
+    expect(chosenHeight(wide, 1080, null)).toBe(1080);
+    expect(qualityWords({ type: 'mp4', height: 1440 }, wide)).toBe('1440p');
+    expect(linkQualities(wide, false).options.map((o) => o.label)).toEqual([
+      '2160p (4K)',
+      '1440p',
+      '1080p',
+      '720p',
+    ]);
   });
 });
