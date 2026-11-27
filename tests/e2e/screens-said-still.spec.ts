@@ -304,10 +304,17 @@ for (const mode of ['pro', 'simple'] as const)
       const access = win.getByTestId('access-offline-notice');
       await expect(access).toBeVisible({ timeout: 30_000 });
       await stageOffAndQuiet(win, mode);
+      // The line's place, a status region, is there before anything is said, empty.
+      await expect(footer(win).getByTestId('screens-said-place')).toHaveAttribute('role', 'status');
+      await expect(footer(win).getByTestId('screens-said-place').getByTestId('screens-said')).toHaveCount(0);
       await stageOnFromTheStatusBar(win);
       const line = noStageLine(win);
       const where = `${mode === 'pro' ? 'Pro' : 'Simple'} Mode at 1024 × 645, both lines`;
       await inTheStatusBar(win, line, where);
+      // Read out as it comes: its place is a status region, there before it came, holding it now.
+      const place = footer(win).getByTestId('screens-said-place');
+      await expect(place, where).toHaveAttribute('role', 'status');
+      await expect(place.getByTestId('screens-said'), where).toHaveCount(1);
       await expect(access, where).toBeVisible();
       // Both whole: nothing in the status bar cut short, over another or past its edge (fit.ts).
       await expect
@@ -357,3 +364,167 @@ for (const mode of ['pro', 'simple'] as const)
       await app.close();
     }
   });
+
+/**
+ * Everything in the status bar that does not fit at the window's size: fitFaults' own (cut, cut short, over another,
+ * past its region), and the bar's items needing more than its width, or one past its end (the version's or the
+ * access line's place, cut at the window's edge).
+ */
+const barFaults = async (win: Page): Promise<string[]> => [
+  ...(await fitFaults(win, [])).filter((f) => f.startsWith('the status bar')),
+  ...(await win.evaluate(() => {
+    const bar = document.querySelector<HTMLElement>('footer[aria-label="Status"]');
+    if (!bar) return ['no status bar'];
+    const out: string[] = [];
+    if (bar.scrollWidth > bar.clientWidth + 1)
+      out.push(`the status bar's items need ${String(bar.scrollWidth)} px of its ${String(bar.clientWidth)}`);
+    const edge = bar.getBoundingClientRect();
+    const end = edge.right - Number.parseFloat(getComputedStyle(bar).paddingRight);
+    for (const el of bar.querySelectorAll('[data-testid], button')) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (r.right > end + 0.5 || r.left < edge.left - 0.5)
+        out.push(
+          `${el.getAttribute('data-testid') ?? el.textContent.trim().slice(0, 30)} past the status bar's end (${r.right.toFixed(1)} > ${end.toFixed(1)})`,
+        );
+    }
+    return out;
+  })),
+];
+
+/** Audience and Stage turned as asked, from Pro Mode (Simple Mode only turns them on), then back in `mode`. */
+async function switchesTo(
+  win: Page,
+  mode: 'pro' | 'simple',
+  audience: boolean,
+  stage: boolean,
+): Promise<void> {
+  if (mode === 'simple') {
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
+    await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+  }
+  const now = await win.evaluate(() => (globalThis as PageGlobals).drashti.screenSwitches.get());
+  for (const [which, on] of [
+    ['audience', audience],
+    ['stage', stage],
+  ] as const) {
+    if (now[which] === on) continue;
+    const turned = await win.evaluate(
+      ([w, o]) => (globalThis as PageGlobals).drashti.screenSwitches.turn(w, o),
+      [which, on] as const,
+    );
+    expect(turned.ok).toBe(true);
+  }
+  if (mode === 'simple') {
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+    await expect(win.getByTestId('simple-mode')).toBeVisible();
+  }
+  await expect(win.getByTestId('switch-off-audience')).toHaveCount(audience ? 0 : 1);
+  await expect(win.getByTestId('switch-off-stage')).toHaveCount(stage ? 0 : 1);
+}
+
+/** One state of the sweep: what to do, then Audience, Stage and the line (none, Stage's, or a display's) after it. */
+interface Step {
+  act: 'switches' | 'dismiss' | 'stage on again';
+  audience: boolean;
+  stage: boolean;
+  line: 'none' | 'no-stage' | 'set';
+}
+
+/**
+ * With no display set to Stage: Stage's line only while Stage is on. It closes as Stage goes off (the release lead's
+ * call, 27 Nov 2026: it says Stage is on with no Stage screen, so it ends when that is no longer so; it had stayed,
+ * beside Stage off, and at 1024 × 645 with Audience off too the bar ran some 30 px past the window's edge).
+ */
+const NO_STAGE_STEPS: Step[] = [
+  { act: 'switches', audience: true, stage: false, line: 'none' },
+  { act: 'switches', audience: false, stage: false, line: 'none' },
+  { act: 'switches', audience: false, stage: true, line: 'no-stage' },
+  { act: 'switches', audience: true, stage: true, line: 'no-stage' },
+  { act: 'dismiss', audience: true, stage: true, line: 'none' },
+  { act: 'switches', audience: false, stage: true, line: 'none' },
+  { act: 'stage on again', audience: false, stage: true, line: 'no-stage' },
+  { act: 'switches', audience: false, stage: false, line: 'none' },
+  { act: 'switches', audience: true, stage: false, line: 'none' },
+];
+
+/** Two displays just plugged in (one the stage): their line stays as Audience and Stage go off and on. */
+const SET_STEPS: Step[] = [
+  { act: 'switches', audience: true, stage: false, line: 'set' },
+  { act: 'switches', audience: false, stage: false, line: 'set' },
+  { act: 'switches', audience: false, stage: true, line: 'set' },
+  { act: 'switches', audience: true, stage: true, line: 'set' },
+  { act: 'switches', audience: true, stage: false, line: 'set' },
+];
+
+/** The pretend displays, set by themselves (screens-set-themselves.spec.ts). */
+const AUTO = {
+  DRASHTI_TEST_AUTO_SCREENS: 'pretend',
+  DRASHTI_WINDOWED_OUTPUTS: '1',
+  DRASHTI_TEST_DISPLAY_CHANGES: '1',
+  DRASHTI_TEST_DISPLAY_SERIALS: 'PJ-A,PJ-B',
+};
+
+/** Each step in turn, at 1024 × 645: the line as it should be, and everything in the status bar fitting. */
+async function sweep(win: Page, mode: 'pro' | 'simple', steps: Step[], access: string): Promise<void> {
+  for (const step of steps) {
+    const where = `${mode === 'pro' ? 'Pro' : 'Simple'} Mode, ${access}, Audience ${step.audience ? 'on' : 'off'}, Stage ${step.stage ? 'on' : 'off'}, ${step.act}, the line ${step.line}`;
+    if (step.act === 'dismiss') await said(win).getByRole('button', { name: 'Dismiss' }).click();
+    else if (step.act === 'stage on again') {
+      // On again, Stage already on: said again.
+      const on = await win.evaluate(() =>
+        (globalThis as PageGlobals).drashti.screenSwitches.turn('stage', true),
+      );
+      expect(on.ok, where).toBe(true);
+    } else await switchesTo(win, mode, step.audience, step.stage);
+    if (step.line === 'none') await expect(said(win), where).toHaveCount(0);
+    else {
+      const line = win.locator(`[data-testid="screens-said"][data-kind="${step.line}"]`);
+      await expect(line, where).toBeVisible();
+      await inTheStatusBar(win, line, where);
+      // Its words in sight, whole, while Audience is on; with Audience off in a window under 1280 px wide they give
+      // way (its icon and buttons stay, the whole line in its tooltip and read out), so the bar's items all fit.
+      const short = line.getByTestId('screens-said-short');
+      if (step.audience) expect((await wordsWhole(short)).problems, where).toEqual([]);
+      else await expect(short, where).toBeHidden();
+      await expect(line.getByTestId('screens-said-text'), where).not.toBeEmpty();
+    }
+    await expect
+      .poll(() => barFaults(win), { message: `${where}: what does not fit in the status bar` })
+      .toEqual([]);
+  }
+}
+
+for (const mode of ['pro', 'simple'] as const)
+  for (const kind of ['no-stage', 'set'] as const)
+    test(`${mode === 'pro' ? 'Pro' : 'Simple'} Mode at 1024 × 645, ${kind === 'no-stage' ? 'Stage’s line' : 'two displays’ line'}: Audience on and off × Stage on and off × the line × the access line, the status bar’s items all fit, nothing cut at its end${kind === 'no-stage' ? '; Stage’s line closes as Stage goes off' : ''}`, async () => {
+      test.setTimeout(180_000);
+      const { app, access: list } = await launchApp({
+        ...STAGE_OFF,
+        ...QUICK,
+        ...(kind === 'set' ? AUTO : {}),
+      });
+      try {
+        const win = await operatorPage(app);
+        await operatorReady(win);
+        await slideUp(win);
+        await sizeOperatorWindow(app, win, CI_WINDOW);
+        if (kind === 'set') {
+          await app.evaluate((_electron, n) => {
+            (globalThis as { drashtiTestDisplays?: (n: number) => void }).drashtiTestDisplays?.(n);
+          }, 2);
+          await expect(said(win).getByTestId('screens-said-text')).toHaveText(
+            '“Extra display 1” shows the audience picture, and “Extra display 2” the stage.',
+          );
+          await expect(said(win).getByTestId('screens-said-short')).toHaveText('2 new screens set up');
+        }
+        const steps = kind === 'no-stage' ? NO_STAGE_STEPS : SET_STEPS;
+        await sweep(win, mode, steps, 'the version showing');
+        // The list stops answering: "No access list" in the version's place, and the same again.
+        stopAnswering(list);
+        await expect(win.getByTestId('access-offline-notice')).toBeVisible({ timeout: 30_000 });
+        await sweep(win, mode, steps, 'No access list showing');
+      } finally {
+        await app.close();
+      }
+    });
