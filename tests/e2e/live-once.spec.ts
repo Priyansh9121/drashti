@@ -99,6 +99,8 @@ test('with only a background or the picture-in-picture box up, the top bar still
     loop: false,
   } as const;
   const frame = win.getByTestId('live-preview');
+  // As Media names the picture: its file's name, with its ending.
+  const named = `${PICTURE}.png`;
 
   for (const mode of ['pro', 'simple'] as const) {
     await win.evaluate((m) => (globalThis as PageGlobals).drashti.app.setMode(m), mode);
@@ -125,7 +127,7 @@ test('with only a background or the picture-in-picture box up, the top bar still
     await dispatch(win, { type: 'setBackground', background: picture });
     await expect(frame, mode).toHaveClass(/border-live-edge/u);
     await expect(bar.badge, mode).toHaveText('Live');
-    await expect(bar.text, mode).toHaveText(`Live: Picture · ${PICTURE}`);
+    await expect(bar.text, mode).toHaveText(`Live: Picture · ${named}`);
     if (mode === 'pro') expect(await liveWordsSeen(win)).toEqual([true]);
     // A colour.
     await dispatch(win, { type: 'setBackground', background: { kind: 'color', color: '#1d4e89' } });
@@ -138,7 +140,7 @@ test('with only a background or the picture-in-picture box up, the top bar still
     // The picture-in-picture box alone (Session 50: something on the screens too).
     await dispatch(win, { type: 'showPip', source: { kind: 'media', mediaId: pictureMediaId } });
     await expect(bar.badge, mode).toHaveText('Live');
-    await expect(bar.text, mode).toHaveText(`Live: Picture in picture · ${PICTURE}`);
+    await expect(bar.text, mode).toHaveText(`Live: Picture in picture · ${named}`);
     await dispatch(win, { type: 'hidePip' });
     await expect(bar.badge, mode).toHaveText('Off');
     await expect(bar.text, mode).toHaveText('Nothing live');
@@ -157,7 +159,7 @@ test('with only a background or the picture-in-picture box up, the top bar still
   await expect(bar.text).toHaveText(`Live: ${KIRTAN} · slide 2 of 5`);
   await win.keyboard.press('F2');
   await expect(bar.badge).toHaveText('Live');
-  await expect(bar.text).toHaveText(`Live: ${KIRTAN} · slide 2 of 5 (cleared) · Picture · ${PICTURE}`);
+  await expect(bar.text).toHaveText(`Live: ${KIRTAN} · slide 2 of 5 (cleared) · Picture · ${named}`);
   // The background cleared too: Off, the cleared slide's place as before.
   await dispatch(win, { type: 'clearLayer', layer: 'background' });
   await expect(bar.badge).toHaveText('Off');
