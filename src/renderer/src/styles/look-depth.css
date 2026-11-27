@@ -166,8 +166,12 @@
   :root[data-window-look='depth'] :is([data-testid='column-middle'], [data-testid='column-right']) {
     overflow: clip;
   }
-  /* The open playlist lies on the middle's own panel, so its light shows. */
-  :root[data-window-look='depth'] [data-testid='centre-playlist'] {
+  /*
+   * The open playlist, and a presentation's slides when none is open, lie on the middle's own panel (the same colour), so
+   * its light shows, and nothing of theirs covers its rounded corners (the ring lies under them: Windows run 45939169984,
+   * look-depth.spec's corners, the slide grid at all four).
+   */
+  :root[data-window-look='depth'] :is([data-testid='centre-playlist'], [data-testid='slide-grid']) {
     background-color: transparent;
   }
 
