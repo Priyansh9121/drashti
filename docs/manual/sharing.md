@@ -25,7 +25,7 @@ Files come into Drashti by **Import…**, **Add files…**, a drop, **From a Lin
 
 **How:**
 
-1. Press **From a Link…** above the playlist (or in the library's **Import…**).
+1. Press **From a Link…** above the playlist (or in the library's **Import…**). Where the middle is narrow it shows its icon alone, a link, and narrower still **Add files…** does too; in Simple Mode **Add files…** keeps its words.
 2. Paste the link into its small window and wait for its name and details.
 3. Check or change **Name** and **Save in**. Press **Choose…** to choose the folder before the download starts.
 4. For a YouTube video, change **Quality** if you want: each height it offers, with about how big the file will be. From **Audio**: **Best**, **192 kbps** or **128 kbps**.

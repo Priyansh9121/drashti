@@ -93,6 +93,11 @@ export const WINDOW_KEYS: readonly WindowKey[] = [
     what: 'Switch to Simple Mode or Pro Mode, with the keyboard on the switch: Enter twice',
     keys: ['Enter'],
   },
+  {
+    window: 'The operator window, in Pro Mode and Simple Mode',
+    what: 'See the buttons’ keys while you hold it, with Help off; let go of it, then press the key',
+    keys: ['Alt'],
+  },
 
   {
     window: 'Lists: the library, playlists, Media, audio and lower thirds',
