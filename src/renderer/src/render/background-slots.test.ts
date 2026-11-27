@@ -21,6 +21,8 @@ const video = (mediaId: string, startedAt: number, extra: Partial<MediaLayer> = 
 });
 
 const run = (...events: Parameters<typeof slotsReducer>[1][]): Slots => events.reduce(slotsReducer, NO_SLOTS);
+const after = (slots: Slots, ...events: Parameters<typeof slotsReducer>[1][]): Slots =>
+  events.reduce(slotsReducer, slots);
 const onScreen = (s: Slots) => (s.shown?.state === 'ready' ? s.shown.key : null);
 
 describe('background slots', () => {
@@ -547,4 +549,65 @@ it('an unavailable edited cue owns no source decoder and retains the live pictur
   });
   expect(waiting.shown?.key).toBe(slotKey(old));
   expect(waiting.incoming).toBeNull();
+});
+
+describe('a cued video Go’d, then put up again going round before its Go moment came (a25 item 47, cuerace)', () => {
+  // BackgroundMedia.tsx starts a slot coming in at its Go moment by its cue's id (the slot's layer.cueId); the engine
+  // takes the loop as the same playback with new settings (its start and Go's moment kept), and no cue id.
+  const old = video('old', 1);
+  const background = {
+    ...video('cued', 2, { loop: false }),
+    media: 'video' as const,
+    cueId: 'cue',
+    seek: { at: 100, toMs: 0, paused: true },
+  };
+  const cue = { id: 'cue', label: 'Placeholder', background, playlist: null, required: [], ready: [] };
+  const go = { ...background, seek: { at: 500, toMs: 0 } };
+  const { cueId: _cueId, ...loop } = { ...go, loop: true };
+  const key = slotKey(background);
+  const prepared = run(
+    { type: 'layer', layer: old },
+    { type: 'ready', key: slotKey(old) },
+    { type: 'cue', cue },
+    { type: 'ready', key },
+  );
+  const next = {
+    ...video('next', 3),
+    media: 'video' as const,
+    cueId: 'next',
+    seek: { at: 600, toMs: 0, paused: true },
+  };
+
+  it('still starts at its Go moment, going round, and the next cue is prepared over it', () => {
+    const armed = after(
+      prepared,
+      { type: 'layer', layer: go },
+      { type: 'cue', cue: null },
+      { type: 'layer', layer: loop },
+    );
+    expect(armed.shown?.key, 'the picture before stays until Go’s moment').toBe(slotKey(old));
+    expect(armed.incoming).toMatchObject({
+      key,
+      state: 'ready',
+      layer: { cueId: 'cue', loop: true, seek: { at: 500, toMs: 0 } },
+    });
+    expect(armed.incoming?.cued).not.toBe(true);
+    const started = slotsReducer(armed, { type: 'activate', key, at: 500 });
+    expect(started.shown).toMatchObject({ key, state: 'ready', layer: { loop: true } });
+    expect(started.incoming).toBeNull();
+    const again = slotsReducer(started, { type: 'cue', cue: { ...cue, id: 'next', background: next } });
+    expect(again.incoming).toMatchObject({ key: slotKey(next), state: 'loading', cued: true });
+  });
+
+  it('the same where the page hears of Go and the loop together (only the loop)', () => {
+    const armed = after(prepared, { type: 'layer', layer: loop }, { type: 'cue', cue: null });
+    expect(armed.shown?.key).toBe(slotKey(old));
+    expect(armed.incoming).toMatchObject({ key, state: 'ready', layer: { cueId: 'cue', loop: true } });
+    expect(armed.incoming?.cued).not.toBe(true);
+  });
+
+  it('a background coming in with no cue keeps none when its settings change', () => {
+    const plain = run({ type: 'layer', layer: old }, { type: 'layer', layer: { ...old, fit: 'fit' } });
+    expect(plain.incoming?.layer).toEqual({ ...old, fit: 'fit' });
+  });
 });
