@@ -198,11 +198,15 @@ class StandInButton extends StandInElement {
   constructor(
     readonly name: string,
     readonly showControl = false,
+    readonly spaceNext = false,
   ) {
     super('BUTTON');
   }
   closest(selector: string): StandInButton | null {
-    return selector === '[data-show-control]' && this.showControl ? this : null;
+    return (selector === '[data-show-control]' && this.showControl) ||
+      (selector === '[data-space-next]' && this.spaceNext)
+      ? this
+      : null;
   }
 }
 
@@ -248,6 +252,19 @@ describe('Space on a focused button', () => {
     expect(ran).toEqual(['next']);
     expect(p.taken).toBe(true);
   });
+
+  it.each(['Sound on', 'Simple Mode', 'Pro Mode'])(
+    'stays Next on the keyboard-focused %s switch, taking both presses so it never switches',
+    (name) => {
+      const button = new StandInButton(name, false, true);
+      const ran: OperatorAction[] = [];
+      const onKey = keyListener('win32', PAGE_KEYMAP, (action) => ran.push(action), () => true);
+      const presses = [new Press(' ', { target: button }), new Press(' ', { target: button })];
+      for (const p of presses) onKey(p);
+      expect(ran).toEqual(['next', 'next']);
+      expect(presses.map((p) => p.taken)).toEqual([true, true]);
+    },
+  );
 
   it('stays Next on a button a click focused: Black-out, or a "?" clicked', () => {
     const { ran, onKey } = listen('darwin');

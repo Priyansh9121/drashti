@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
 import { launchApp, operatorPage, operatorReady, slidesOf } from './helpers';
@@ -108,6 +108,54 @@ test('Space presses a "?" the keyboard put the focus on, and stays Next on a cli
   await win.keyboard.press('Space');
   await expect(live(win)).toContainText(`${KIRTAN} · slide 4 of 5`);
   await expect(row).toHaveCount(1);
+  await app.close();
+});
+
+/** Reach a named button with the keyboard too (the mode switch has no test id). */
+async function tabToButton(win: Page, button: Locator): Promise<void> {
+  for (let i = 0; i < 150; i++) {
+    await win.keyboard.press('Tab');
+    if (await button.evaluate((el) => document.activeElement === el)) return;
+  }
+  throw new Error('The mode switch was not reached with Tab');
+}
+
+test('Space stays Next on a Tab-focused mute switch and never switches Simple/Pro Mode, even twice (lead 2’s item 1 exceptions)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1410, height: 900 });
+  await operatorReady(win);
+  await setUpPlaceholderShow(win);
+  await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
+  await slidesOf(win, KIRTAN).nth(1).click();
+  await expect(live(win)).toContainText(`${KIRTAN} · slide 2 of 5`);
+
+  const mute = win.getByTestId('sound-mute-audio');
+  await expect(mute).toHaveAttribute('aria-checked', 'true');
+  await letGo(win);
+  await tabTo(win, (id) => id === 'sound-mute-audio');
+  await expect(mute).toBeFocused();
+  await win.keyboard.press('Space');
+  await expect(live(win)).toContainText(`${KIRTAN} · slide 3 of 5`);
+  await expect(mute).toHaveAttribute('aria-checked', 'true');
+
+  const toSimple = win.getByRole('button', { name: 'Simple Mode', exact: true });
+  await tabToButton(win, toSimple);
+  await win.keyboard.press('Space');
+  await win.keyboard.press('Space');
+  await expect(live(win)).toContainText(`${KIRTAN} · slide 5 of 5`);
+  await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+  await expect(toSimple).toBeFocused();
+  // Enter twice still switches. On the way back Space twice must keep Simple Mode too.
+  await win.keyboard.press('Enter');
+  await win.keyboard.press('Enter');
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  const toPro = win.getByTestId('simple-leave');
+  await tabToButton(win, toPro);
+  await win.keyboard.press('Space');
+  await win.keyboard.press('Space');
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  await expect(toPro).toBeFocused();
   await app.close();
 });
 
