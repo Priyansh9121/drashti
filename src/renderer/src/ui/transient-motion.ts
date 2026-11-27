@@ -62,7 +62,14 @@ export function removeTransientCopies(): void {
   for (const host of document.querySelectorAll('[data-leaving-host]')) host.remove();
 }
 
-if (typeof window !== 'undefined' && interfaceBody()?.classList.contains('operator')) {
+if (
+  typeof window !== 'undefined' &&
+  typeof document !== 'undefined' &&
+  window.document === document &&
+  typeof MutationObserver === 'function' &&
+  typeof window.matchMedia === 'function' &&
+  interfaceBody()?.classList.contains('operator')
+) {
   new MutationObserver(removeTransientCopies).observe(document.documentElement, {
     attributes: true,
     attributeFilter: ['data-interface-motion'],
