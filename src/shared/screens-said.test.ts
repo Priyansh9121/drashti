@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NO_STAGE_SCREEN, SET_UP_STAGE } from './screen-switches';
-import { saidShort, saidTips } from './screens';
+import { saidShort } from './screens';
+import { saidTips } from './screens-said';
 
 /*
  * The screens' one line in the status bar (alpha.24, lead 2's screensaid; the release lead's rules): its words in sight
