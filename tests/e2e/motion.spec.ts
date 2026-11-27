@@ -1226,6 +1226,82 @@ test('a fold’s copy draws in the window’s appearance and look: Follow the co
   await app.close();
 });
 
+/**
+ * At the press that folds Show a Window: a frame later, the colour of the middle of the copy's probe canvas (as `r g b a`),
+ * or null when no copy is drawn. The copy's closed shadow root is kept by wrapping attachShadow, as copyLook does.
+ */
+const copiedCanvas = (win: Page) =>
+  win.evaluate(
+    () =>
+      new Promise<string | null>((resolve) => {
+        const w = window as unknown as { shadows?: ShadowRoot[] };
+        if (!w.shadows) {
+          w.shadows = [];
+          const attach = Object.getOwnPropertyDescriptor(Element.prototype, 'attachShadow')?.value as (
+            this: Element,
+            init: ShadowRootInit,
+          ) => ShadowRoot;
+          Element.prototype.attachShadow = function (this: Element, init: ShadowRootInit) {
+            const root = attach.call(this, init);
+            w.shadows?.push(root);
+            return root;
+          };
+        }
+        const before = w.shadows.length;
+        window.addEventListener(
+          'click',
+          () => {
+            requestAnimationFrame(() => {
+              const canvas = (w.shadows ?? [])
+                .slice(before)
+                .at(-1)
+                ?.querySelector<HTMLCanvasElement>('canvas[data-probe]');
+              const pixel = canvas?.getContext('2d')?.getImageData(4, 4, 1, 1).data;
+              resolve(pixel ? [...pixel].join(' ') : null);
+            });
+          },
+          { capture: true, once: true },
+        );
+      }),
+  );
+
+test('a fold’s copy shows what its canvases showed, never blank (alpha.24, lead 2’s item 12; the review of uimotion, a NIT)', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await expect(win.locator('html')).toHaveAttribute('data-opened', '');
+  const noChip = await chipless(win);
+  for (const motion of ['calm', 'lively'] as const) {
+    await interfaceMotion(win, motion);
+    await letTimePass(win, 900, 'the show has not changed for a moment, as a fold waits for');
+    await pressFold(win);
+    await expect(win.getByTestId(SECTION)).toBeVisible();
+    // A canvas in its insides, as a level meter or a picture is: a placeholder colour drawn on it.
+    await win.getByTestId(SECTION).evaluate((el) => {
+      const c = document.createElement('canvas');
+      c.width = 8;
+      c.height = 8;
+      c.dataset['probe'] = '';
+      const g = c.getContext('2d');
+      if (g) {
+        g.fillStyle = 'rgb(200, 30, 40)';
+        g.fillRect(0, 0, 8, 8);
+      }
+      el.append(c);
+    });
+    const drawn = !noChip && (await standing(win)) && !(await willScrollBack(win));
+    const seen = copiedCanvas(win);
+    await win.getByTestId(`group-${SECTION}-toggle`).click();
+    const pixel = await seen;
+    await settled(win);
+    console.log(`${motion}: the copy's canvas ${pixel ?? 'not drawn'}`);
+    expect(pixel, motion).toBe(drawn ? '200 30 40 255' : null);
+  }
+  await app.close();
+});
+
 test('without a graphics chip a fold moves nothing, in Calm or Lively (alpha.24; the show changing: ui/fold.test.ts)', async () => {
   test.setTimeout(120_000);
   // Without a chip (as CI's Windows always is): Calm and Lively alike.

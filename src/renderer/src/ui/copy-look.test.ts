@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { FRAME_DROPS, inCopy, LOOK_KEYS, sharedCorners } from './motion';
+import { describe, expect, it, vi } from 'vitest';
+import { copyCanvases, FRAME_DROPS, inCopy, LOOK_KEYS, sharedCorners } from './motion';
 
 /*
  * Lead 2's item 3 for alpha.24 (the release lead's yes): a leaving copy (ui/motion.ts, leave) draws in the window's look,
@@ -109,5 +109,37 @@ describe('a fold’s copy has the corners of the row it folds out of', () => {
       bottomRight: '3px 4px',
       bottomLeft: '',
     });
+  });
+});
+
+/*
+ * Lead 2's item 12 for alpha.24 (the release lead's review of uimotion, a NIT): a copy is made by cloneNode, which copies
+ * a canvas's size but not what is drawn on it, so a fold's copy showed level meters and pictures blank for its 0.2 s.
+ * Each copied canvas takes its original's picture, once, as it is.
+ */
+describe('a copy’s canvases show what their originals show', () => {
+  const original = (width = 8, height = 8) => ({ localName: 'canvas', width, height }) as unknown as Element;
+  const copied = (draw = vi.fn()) => ({ localName: 'canvas', getContext: () => ({ drawImage: draw }) });
+
+  it('draws each original canvas on its copy, at its place in both lists', () => {
+    const from = original();
+    const draw = vi.fn();
+    const other = { localName: 'div' } as unknown as Element;
+    expect(copyCanvases([other, from], [other, copied(draw) as unknown as Element])).toBe(1);
+    expect(draw).toHaveBeenCalledWith(from, 0, 0);
+  });
+
+  it('leaves alone what is not a canvas, an empty canvas, and one that cannot be read (a canvas a worker draws)', () => {
+    const draw = vi.fn();
+    const div = { localName: 'div' } as unknown as Element;
+    expect(copyCanvases([div], [copied(draw) as unknown as Element])).toBe(0);
+    expect(copyCanvases([original(0, 8)], [copied(draw) as unknown as Element])).toBe(0);
+    expect(draw).not.toHaveBeenCalled();
+    const refused = copied(
+      vi.fn(() => {
+        throw new DOMException('detached', 'InvalidStateError');
+      }),
+    );
+    expect(copyCanvases([original()], [refused as unknown as Element])).toBe(0);
   });
 });

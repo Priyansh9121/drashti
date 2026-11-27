@@ -530,6 +530,11 @@ function pageStyles(): CSSStyleSheet[] {
   return [sheet];
 }
 
+/** What a copy's canvas is given of its original (RED stand-in: nothing, as today): how many it drew. */
+export function copyCanvases(_originals: readonly Element[], _copies: readonly Element[]): number {
+  return 0;
+}
+
 /** Play `node`'s exit as a copy, where it is now. Call it just before React removes the node. */
 export function leave(node: Element | null, kind: Leaving, place?: LeavingPlace): void {
   if (!(node instanceof HTMLElement) || !node.isConnected || motionOff()) return;
