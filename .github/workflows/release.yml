@@ -102,6 +102,8 @@ jobs:
           MAC_SIGN_P12_BASE64: ${{ secrets.MAC_SIGN_P12_BASE64 }}
           MAC_SIGN_P12_PASSWORD: ${{ secrets.MAC_SIGN_P12_PASSWORD }}
         run: node scripts/mac-sign-keychain.mjs
+        # Bounded (the third signed dry run's cleanup hung 1 h 50 min): each security command has its own limit too.
+        timeout-minutes: 5
       - name: Package (signed when the certificates are given)
         shell: bash
         env:
@@ -111,6 +113,9 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: node scripts/package-release.mjs
+        # A codesign waiting on a keychain prompt nobody can answer would otherwise hold the job for hours (signed
+        # packaging takes minutes).
+        timeout-minutes: 45
       - name: Check the signatures (when signed)
         run: node scripts/verify-signing.mjs
       # The key goes as soon as the signatures are checked, before anything runs the packaged app or its bundled
@@ -118,6 +123,7 @@ jobs:
       - name: Delete the signing key
         if: always()
         run: node scripts/mac-sign-keychain.mjs --delete-key
+        timeout-minutes: 5
       - name: Each packaged app finds and runs its FFmpeg, yt-dlp, Deno, Whisper and video out
         run: node scripts/check-ffmpeg.mjs --packaged
       - name: Restart after a restore (packaged app)
@@ -140,6 +146,7 @@ jobs:
       - name: Delete signing keychain
         if: always()
         run: node scripts/mac-sign-keychain.mjs --cleanup
+        timeout-minutes: 5
 
   build-windows:
     name: Build (windows-latest)

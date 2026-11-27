@@ -109,6 +109,10 @@ const SEQUENCE = [
   'create-keychain',
   'set-keychain-settings',
   'unlock-keychain',
+  // The user's keychain search list read, then set with the new keychain first: codesign looks for the key only
+  // in keychains on that list, whatever its --keychain says (electron-builder's own recipe does the same).
+  'list-keychains',
+  'list-keychains',
   'import',
   'set-key-partition-list',
   'find-certificate',
@@ -121,10 +125,14 @@ afterEach(() => {
   for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
+const AT_IMPORT = SEQUENCE.indexOf('import');
+const LOGIN = '/Users/runner/Library/Keychains/login.keychain-db';
+
 interface Call {
   command: string;
   sub: string;
   args: string[];
+  options: { timeout?: number; killSignal?: string };
 }
 
 function runner(
@@ -136,6 +144,8 @@ function runner(
     stderr?: string;
     /** The import fails, as a wrong password does, unless its -P is exactly this. */
     acceptPassword?: string;
+    /** This subcommand never ends: spawnSync's timeout kills it. */
+    hangOn?: string;
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), 'drashti-sign-keychain-'));
@@ -153,10 +163,19 @@ function runner(
   };
   const calls: Call[] = [];
   const seen: { p12?: Buffer; p12Mode?: number } = {};
-  const spawn = (command: string, args: string[]): SpawnResult => {
+  const spawn = (command: string, args: string[], options: Call['options'] = {}): SpawnResult => {
     const own = command === '/usr/bin/sudo' ? args.slice(2) : args;
     const sub = own[0] ?? '';
-    calls.push({ command, sub, args: [...args] });
+    calls.push({ command, sub, args: [...args], options: { ...options } });
+    // As spawnSync reports a command it killed at its timeout.
+    if (sub === given.hangOn)
+      return {
+        status: null,
+        signal: 'SIGKILL',
+        error: Object.assign(new Error(`spawnSync ${command} ETIMEDOUT`), { code: 'ETIMEDOUT' }),
+        stdout: `placeholder output ${args.join(' ')}`,
+        stderr: `placeholder error ${args.join(' ')}`,
+      };
     // What a failing security might say: its arguments, and so the password (never to be printed).
     if (sub === given.failOn)
       return {
@@ -178,6 +197,7 @@ function runner(
     }
     if (sub === 'find-certificate')
       return { status: 0, stdout: '-----BEGIN CERTIFICATE-----\nplaceholder\n-----END CERTIFICATE-----\n' };
+    if (sub === 'list-keychains' && own.length === 3) return { status: 0, stdout: `    "${LOGIN}"\n` };
     if (sub === 'find-identity')
       return {
         status: 0,
@@ -244,10 +264,16 @@ describe('the signing keychain importer', () => {
     expect(existsSync(r.paths.p12)).toBe(false);
     // One random keychain password for create, unlock and the partition list; never the .p12's.
     const temporary = r.calls[0]?.args[2] ?? '';
+    const argsOf = (sub: string) => r.calls.filter((c) => c.sub === sub).map((c) => c.args);
     expect(temporary).toMatch(/^[0-9a-f]{64}$/u);
     expect(r.calls[0]?.args).toEqual(['create-keychain', '-p', temporary, r.paths.keychain]);
     expect(r.calls[2]?.args).toEqual(['unlock-keychain', '-p', temporary, r.paths.keychain]);
-    expect(r.calls[4]?.args).toEqual([
+    // On the search list ahead of the login keychain, which stays on it.
+    expect(argsOf('list-keychains')).toEqual([
+      ['list-keychains', '-d', 'user'],
+      ['list-keychains', '-d', 'user', '-s', r.paths.keychain, LOGIN],
+    ]);
+    expect(argsOf('set-key-partition-list')[0]).toEqual([
       'set-key-partition-list',
       '-S',
       'apple-tool:,apple:',
@@ -587,7 +613,10 @@ describe('a failed import', () => {
         importArgs(r.paths.p12, r.paths.keychain, `${PASSWORD}${ending}`),
         importArgs(r.paths.p12, r.paths.keychain, PASSWORD),
       ]);
-      expect(r.calls.map((c) => c.sub)).toEqual([...SEQUENCE.slice(0, 4), ...SEQUENCE.slice(3)]);
+      expect(r.calls.map((c) => c.sub)).toEqual([
+        ...SEQUENCE.slice(0, AT_IMPORT + 1),
+        ...SEQUENCE.slice(AT_IMPORT),
+      ]);
       expect(r.logs).toEqual([CLASSIC_LINE, LINE_BREAK, 'Temporary signing identity ready.']);
       expect(r.errors).toEqual([]);
       expect(readFileSync(r.envFile, 'utf8')).toBe(`MAC_SIGN_KEYCHAIN=${r.paths.keychain}\n`);
@@ -695,5 +724,82 @@ describe('no secret leaves the importer', () => {
     const line = describeP12(P12).line;
     expect(line).not.toMatch(/[0-9a-f]{8}/iu);
     expect(line).not.toContain(ENCODED.slice(0, 16));
+  });
+});
+
+// The third signed dry run (45907567743, attempt 3): after a good import, the always-run --cleanup hung for 1 h
+// 50 min (most likely the runner's trust removal waiting on an authorisation nobody can give), until cancelled.
+describe('the importer never hangs', () => {
+  it('bounds every security command, sudo too, and kills it outright at the end', () => {
+    const r = runner({ secrets: BOTH });
+    expect(r.run()).toBe(0);
+    expect(r.run('--delete-key')).toBe(0);
+    expect(r.run('--cleanup')).toBe(0);
+    for (const call of r.calls) {
+      expect(call.options.timeout, call.sub).toBeGreaterThan(0);
+      expect(call.options.timeout, call.sub).toBeLessThanOrEqual(60_000);
+      // SIGKILL: sudo may not pass a gentler signal on to the security it runs.
+      expect(call.options.killSignal, call.sub).toBe('SIGKILL');
+    }
+    // The import, --delete-key and --cleanup all ran their commands.
+    expect(r.calls.map((c) => c.sub)).toEqual([...SEQUENCE, 'delete-keychain', 'remove-trusted-cert']);
+    // The trust removal gets less: it is not needed on a runner that is thrown away.
+    const removal = r.calls.find((c) => c.sub === 'remove-trusted-cert');
+    expect(removal?.options.timeout).toBeLessThanOrEqual(20_000);
+  });
+
+  it('a command that does not end fails, naming it, and the import is not tried again', () => {
+    for (const hangOn of SEQUENCE) {
+      const r = runner({ secrets: { ...BOTH, MAC_SIGN_P12_PASSWORD: `${PASSWORD}\n` }, hangOn });
+      expect(r.run(), hangOn).toBe(1);
+      expect(r.errors).toEqual([`Signing keychain command timed out: security ${hangOn}`]);
+      expect(r.calls.at(-1)?.sub).toBe(hangOn);
+      expect(r.calls.filter((c) => c.sub === 'import').length).toBeLessThanOrEqual(1);
+      expect(r.printed()).not.toContain('placeholder');
+      expect(r.printed()).not.toContain(PASSWORD);
+      expect(existsSync(r.paths.p12)).toBe(false);
+      expect(readFileSync(r.envFile, 'utf8')).toBe('');
+      expect(r.run('--cleanup'), `${hangOn} cleanup`).toBe(0);
+      expect(existsSync(r.paths.dir)).toBe(false);
+    }
+  });
+
+  it('--cleanup deletes the keychain first, and a trust removal that fails or does not end is logged, not fatal', () => {
+    for (const how of [{ hangOn: 'remove-trusted-cert' }, { failOn: 'remove-trusted-cert' }]) {
+      const r = runner({ secrets: BOTH, ...how });
+      expect(r.run()).toBe(0);
+      r.calls.length = 0;
+      r.logs.length = 0;
+      expect(r.run('--cleanup'), JSON.stringify(how)).toBe(0);
+      expect(r.calls.map((c) => c.sub)).toEqual(['delete-keychain', 'remove-trusted-cert']);
+      expect(r.logs).toEqual([
+        "Signing: the runner's trust for the public certificate was not removed (it signs nothing, and a hosted runner is thrown away after the job).",
+      ]);
+      expect(r.errors).toEqual([]);
+      expect(existsSync(r.paths.keychain)).toBe(false);
+      expect(existsSync(r.paths.dir)).toBe(false);
+      expect(r.printed()).not.toContain('placeholder');
+    }
+  });
+
+  it('a keychain that will not delete in time fails the cleanup, naming the command', () => {
+    for (const mode of ['--delete-key', '--cleanup']) {
+      const r = runner({ hangOn: 'delete-keychain' });
+      mkdirSync(r.paths.dir);
+      writeFileSync(r.paths.keychain, 'placeholder keychain');
+      expect(r.run(mode), mode).toBe(1);
+      expect(r.errors).toEqual(['Signing keychain command timed out: security delete-keychain']);
+    }
+  });
+
+  it('puts the keychain on the search list once, ahead of the others, without listing it twice', () => {
+    const r = runner({ secrets: BOTH });
+    expect(r.run()).toBe(0);
+    const set = r.calls.find((c) => c.sub === 'list-keychains' && c.args.includes('-s'));
+    expect(set?.args).toEqual(['list-keychains', '-d', 'user', '-s', r.paths.keychain, LOGIN]);
+    // A failed read of the list stops the import before the .p12 is used.
+    const unread = runner({ secrets: BOTH, failOn: 'list-keychains' });
+    expect(unread.run()).toBe(1);
+    expect(unread.calls.some((c) => c.sub === 'import')).toBe(false);
   });
 });

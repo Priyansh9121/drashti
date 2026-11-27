@@ -16,11 +16,20 @@
 // Then (Session 18) it gives this computer's installers the names that never change
 // (build/downloads.json: Drashti-mac-apple-silicon.dmg and so on), so GitHub's
 // releases/latest/download/<name> link always gives the newest.
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PACKAGING_SECRETS, failureReport } from './packaging-failure.mjs';
 import { signingPlan } from './signing-plan.mjs';
 
 const temp = mkdtempSync(join(process.env.RUNNER_TEMP ?? tmpdir(), 'drashti-signing-'));
@@ -39,28 +48,59 @@ console.log(`Signing: ${how}.`);
 
 // electron-builder's own script, run by this Node: no shell anywhere (Session 30, SEC-1: on Windows a shell
 // read every argument again, and pnpm there is a .cmd that needs one).
+// Its output is passed on to the log as it comes, and its last part kept: if it fails, the run's page gets those
+// lines too (scripts/packaging-failure.mjs), which stay when a job's log is lost (the third signed dry run's was).
 const builder = createRequire(import.meta.url).resolve('electron-builder/cli.js');
-const result = spawnSync(process.execPath, [builder, '--publish', 'never', ...extra], {
+const child = spawn(process.execPath, [builder, '--publish', 'never', ...extra], {
   env,
-  stdio: 'inherit',
+  stdio: ['inherit', 'pipe', 'pipe'],
+});
+const kept = [];
+let keptBytes = 0;
+const keep = (chunk) => {
+  kept.push(chunk);
+  keptBytes += chunk.length;
+  while (keptBytes > 256 * 1024 && kept.length > 1) keptBytes -= kept.shift().length;
+};
+child.stdout.on('data', (chunk) => {
+  process.stdout.write(chunk);
+  keep(chunk);
+});
+child.stderr.on('data', (chunk) => {
+  process.stderr.write(chunk);
+  keep(chunk);
+});
+const status = await new Promise((resolve) => {
+  child.on('error', () => resolve(1));
+  child.on('close', (code) => resolve(code ?? 1));
 });
 rmSync(temp, { recursive: true, force: true });
 writeFileSync('release-signing.json', `${JSON.stringify(record)}\n`);
-if (result.status !== 0) process.exit(result.status ?? 1);
 
-// The names that never change, for this computer's installers.
-const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
-const { files } = JSON.parse(readFileSync(join('build', 'downloads.json'), 'utf8'));
-const out = join('release', version);
-let missing = 0;
-for (const f of files.filter((x) => x.platform === process.platform)) {
-  const built = join(out, f.built.replace('{version}', version));
-  if (!existsSync(built)) {
-    console.log(`Missing: ${built} (for ${f.for})`);
-    missing++;
-    continue;
+// exitCode, not exit(): a pipe's writes on macOS and Windows are asynchronous, and the last lines matter most.
+if (status !== 0) {
+  const report = failureReport(Buffer.concat(kept).toString('utf8'), {
+    status,
+    secrets: PACKAGING_SECRETS.map((name) => process.env[name]),
+  });
+  console.log(report.annotation);
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, report.summary);
+  process.exitCode = status;
+} else {
+  // The names that never change, for this computer's installers.
+  const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
+  const { files } = JSON.parse(readFileSync(join('build', 'downloads.json'), 'utf8'));
+  const out = join('release', version);
+  let missing = 0;
+  for (const f of files.filter((x) => x.platform === process.platform)) {
+    const built = join(out, f.built.replace('{version}', version));
+    if (!existsSync(built)) {
+      console.log(`Missing: ${built} (for ${f.for})`);
+      missing++;
+      continue;
+    }
+    renameSync(built, join(out, f.name));
+    console.log(`${f.name}  (for ${f.for})`);
   }
-  renameSync(built, join(out, f.name));
-  console.log(`${f.name}  (for ${f.for})`);
+  process.exitCode = missing === 0 ? 0 : 1;
 }
-process.exit(missing === 0 ? 0 : 1);

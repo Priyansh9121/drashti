@@ -111,6 +111,7 @@ jobs:
           MAC_SIGN_P12_BASE64: \${{ secrets.MAC_SIGN_P12_BASE64 }}
           MAC_SIGN_P12_PASSWORD: \${{ secrets.MAC_SIGN_P12_PASSWORD }}
         run: node scripts/mac-sign-keychain.mjs
+        timeout-minutes: 5
       - name: Package
         run: node scripts/package-release.mjs
       - name: Check the signatures (when signed)
@@ -118,11 +119,13 @@ jobs:
       - name: Delete the signing key
         if: always()
         run: node scripts/mac-sign-keychain.mjs --delete-key
+        timeout-minutes: 5
       - name: Each packaged app runs its programs
         run: node scripts/check-ffmpeg.mjs --packaged
       - name: Delete signing keychain
         if: always()
         run: node scripts/mac-sign-keychain.mjs --cleanup
+        timeout-minutes: 5
   build-windows:
     runs-on: windows-latest
     steps: []
@@ -153,7 +156,7 @@ jobs:
 
   it('deletes the signing key straight after the signature check, before the packaged programs run (signing review SHOULD 1)', () => {
     const early =
-      '      - name: Delete the signing key\n        if: always()\n        run: node scripts/mac-sign-keychain.mjs --delete-key\n';
+      '      - name: Delete the signing key\n        if: always()\n        run: node scripts/mac-sign-keychain.mjs --delete-key\n        timeout-minutes: 5\n';
     const check =
       '      - name: Each packaged app runs its programs\n        run: node scripts/check-ffmpeg.mjs --packaged\n';
     expect(signing).toContain(early);
@@ -168,6 +171,32 @@ jobs:
     expect(
       checkWorkflow(signing.replace(early, early.replace('        if: always()\n', '')), 'release.yml'),
     ).toEqual([]);
+  });
+
+  it('bounds each signing keychain step with timeout-minutes, 10 at most (the hung cleanup of 45907567743)', () => {
+    expect(checkWorkflow(signing, 'release.yml')).toEqual([]);
+    for (const step of [
+      'node scripts/mac-sign-keychain.mjs',
+      'node scripts/mac-sign-keychain.mjs --delete-key',
+      'node scripts/mac-sign-keychain.mjs --cleanup',
+    ]) {
+      const why = `release.yml: release signing: the step running ${step} needs timeout-minutes, 10 at most`;
+      const bounded = `        run: ${step}\n        timeout-minutes: 5\n`;
+      expect(signing).toContain(bounded);
+      expect(checkWorkflow(signing.replace(bounded, `        run: ${step}\n`), 'release.yml')).toEqual([why]);
+      expect(
+        checkWorkflow(
+          signing.replace(bounded, `        run: ${step}\n        timeout-minutes: 60\n`),
+          'release.yml',
+        ),
+      ).toEqual([why]);
+      expect(
+        checkWorkflow(
+          signing.replace(bounded, `        run: ${step}\n        timeout-minutes: 10\n`),
+          'release.yml',
+        ),
+      ).toEqual([]);
+    }
   });
 
   it('names an environment, and the Mac signing secrets, nowhere but release.yml’s build-mac (signing review SHOULD 6)', () => {
@@ -199,7 +228,7 @@ jobs:
       '        run: node scripts/package-release.mjs',
       '        env:\n          MAC_SIGN_P12_PASSWORD: ${{ secrets.MAC_SIGN_P12_PASSWORD }}\n        run: node scripts/package-release.mjs',
     );
-    expect(checkWorkflow(packaged, 'release.yml')).toEqual([`release.yml:18: ${secrets}`]);
+    expect(checkWorkflow(packaged, 'release.yml')).toEqual([`release.yml:19: ${secrets}`]);
     const jobEnv = signing.replace(
       '    runs-on: macos-latest',
       '    env:\n      MAC_SIGN_P12_BASE64: ${{ secrets.MAC_SIGN_P12_BASE64 }}\n    runs-on: macos-latest',
@@ -209,13 +238,13 @@ jobs:
       '    steps: []',
       '    env:\n      MAC_SIGN_P12_BASE64: ${{ secrets.MAC_SIGN_P12_BASE64 }}\n    steps: []',
     );
-    expect(checkWorkflow(windows, 'release.yml')).toEqual([`release.yml:31: ${secrets}`]);
+    expect(checkWorkflow(windows, 'release.yml')).toEqual([`release.yml:34: ${secrets}`]);
     expect(
       checkWorkflow(
         signing.replace('  build-windows:\n', '  build-windows:\n    environment: release\n'),
         'release.yml',
       ),
-    ).toEqual([`release.yml:29: ${env}`]);
+    ).toEqual([`release.yml:32: ${env}`]);
   });
 
   it('refuses a quoted environment key, and the whole secrets object outside build-mac’s import step (signing re-review)', () => {
@@ -246,12 +275,12 @@ jobs:
       '        run: node scripts/package-release.mjs',
       '        env:\n          ALL: ${{ toJSON(secrets) }}\n        run: node scripts/package-release.mjs',
     );
-    expect(checkWorkflow(packaged, 'release.yml')).toEqual([`release.yml:18: ${whole}`]);
+    expect(checkWorkflow(packaged, 'release.yml')).toEqual([`release.yml:19: ${whole}`]);
     const windows = signing.replace(
       '    steps: []',
       "    env:\n      ONE: ${{ secrets['MAC_CERT_P12'] }}\n    steps: []",
     );
-    expect(checkWorkflow(windows, 'release.yml')).toEqual([`release.yml:31: ${whole}`]);
+    expect(checkWorkflow(windows, 'release.yml')).toEqual([`release.yml:34: ${whole}`]);
     // A job named secrets, and needs: on it, are not the secrets object.
     expect(checkWorkflow(good.replace('  build:', '  secrets:'), 'ci.yml')).toEqual([]);
     expect(

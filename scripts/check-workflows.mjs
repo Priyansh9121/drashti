@@ -9,7 +9,8 @@
 //   - release signing's environment only on the guarded Mac job, never from a PR, with unconditional cleanup;
 //     since the signing review (QA24-SIGN-1), in every workflow: an environment only on release.yml's build-mac,
 //     the Mac signing secrets (MAC_SIGN_P12_*, or the whole secrets object) only in its import step, and its key
-//     deleted (--delete-key) in the step straight after verify-signing, before any step runs the packaged programs.
+//     deleted (--delete-key) in the step straight after verify-signing, before any step runs the packaged programs;
+//     each of its keychain steps with timeout-minutes, 10 at most.
 //
 //   node scripts/check-workflows.mjs            check .github/workflows/*.yml; exit 1 with what is wrong
 import { readdirSync, readFileSync } from 'node:fs';
@@ -145,6 +146,23 @@ export function checkWorkflow(text, name) {
       )
     )
       fail('the signing key must be deleted (--delete-key) in the step straight after verify-signing');
+    // Each keychain step bounded (the third signed dry run's cleanup hung 1 h 50 min): the script bounds each
+    // command too, and the step's limit catches anything else.
+    for (const step of [
+      'node scripts/mac-sign-keychain.mjs',
+      'node scripts/mac-sign-keychain.mjs --delete-key',
+      'node scripts/mac-sign-keychain.mjs --cleanup',
+    ]) {
+      // A missing step is the rules' above to name.
+      const span = macJob && stepLines(lines, macJob, `run: ${step}`);
+      if (!span) continue;
+      const limit = lines
+        .slice(span[0], span[1])
+        .map((l) => /^ {8}timeout-minutes:\s*(\d+)\s*$/u.exec(l)?.[1])
+        .find((m) => m !== undefined);
+      if (limit === undefined || Number(limit) < 1 || Number(limit) > 10)
+        fail(`the step running ${step} needs timeout-minutes, 10 at most`);
+    }
   }
   endCheckout();
   return problems;

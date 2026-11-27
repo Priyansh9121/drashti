@@ -66,19 +66,39 @@ export function importReason(failure, pfx) {
 /** A failed security command: its subcommand and a reason code, never its arguments or output. */
 export class SecurityCommandError extends SigningKeychainError {
   constructor(subcommand, failure) {
-    super(`Signing keychain command failed: security ${subcommand}`);
+    super(
+      failure === 'timeout'
+        ? `Signing keychain command timed out: security ${subcommand}`
+        : `Signing keychain command failed: security ${subcommand}`,
+    );
     this.subcommand = subcommand;
     this.failure = failure;
   }
 }
 
-/** Runs /usr/bin/security (through sudo -n as administrator); `spawn` is spawnSync but in tests. */
+/**
+ * Every security command's limit: each takes well under a second, but one waiting on an authorisation nobody on a
+ * runner can give never ends (the 27 Nov dry run's cleanup hung 1 h 50 min). The trust removal's is shorter: it is
+ * not needed on a hosted runner, which is thrown away after the job.
+ */
+export const COMMAND_TIMEOUT_MS = 60_000;
+export const TRUST_REMOVAL_TIMEOUT_MS = 20_000;
+
+/**
+ * Runs /usr/bin/security (through sudo -n as administrator), killed at its limit; `spawn` is spawnSync but in
+ * tests. SIGKILL: sudo may not pass a gentler signal on to the security it runs, and spawnSync waits for its child.
+ */
 export function securityRunner(spawn = spawnSync) {
-  return (args, administrator = false) => {
+  return (args, administrator = false, timeoutMs = COMMAND_TIMEOUT_MS) => {
     const command = administrator ? '/usr/bin/sudo' : '/usr/bin/security';
     const commandArgs = administrator ? ['-n', '/usr/bin/security', ...args] : args;
-    const result = spawn(command, commandArgs, { encoding: 'utf8' });
+    const result = spawn(command, commandArgs, {
+      encoding: 'utf8',
+      timeout: timeoutMs,
+      killSignal: 'SIGKILL',
+    });
     // The subcommand alone: the others can hold a password, and the output can repeat them.
+    if (result.error?.code === 'ETIMEDOUT') throw new SecurityCommandError(String(args[0]), 'timeout');
     if (result.status !== 0)
       throw new SecurityCommandError(
         String(args[0]),
@@ -226,8 +246,9 @@ const BOTH_TRIED =
  * once more without it. A failure names one fixed reason; nothing security said, and no password, is printed.
  */
 function importIdentity({ security, log }, p12, keychain, password, pfx) {
+  // A command that timed out keeps its own line, and is not tried again.
   const failed = (error, suffix) =>
-    error instanceof SecurityCommandError
+    error instanceof SecurityCommandError && error.failure !== 'timeout'
       ? new SigningKeychainError(
           `Signing keychain command failed: security import: ${importReason(error.failure, pfx)}${suffix}`,
         )
@@ -237,7 +258,7 @@ function importIdentity({ security, log }, p12, keychain, password, pfx) {
     return;
   } catch (error) {
     const trimmed = password.trim();
-    if (trimmed === password || trimmed === '') throw failed(error, '');
+    if (trimmed === password || trimmed === '' || error?.failure === 'timeout') throw failed(error, '');
   }
   try {
     security(importArgs(p12, keychain, password.trim()));
@@ -264,17 +285,22 @@ function keychainStep({ argv, env, platform, security, log }) {
     // mid-import goes first, whatever fails after.
     rmSync(p12, { force: true });
     const all = argv[0] === '--cleanup';
+    // The keychain, and with it the key, first: mandatory, and bounded like every command. A keychain that will
+    // not go stays named in the failure, and on disk for the last cleanup's second try. delete-keychain also
+    // takes it off the user's search list.
+    if (existsSync(keychain)) security(['delete-keychain', keychain]);
     // The trust only at the end: it is the public certificate's, signs nothing, and the checks after the
-    // signature check run as they did with it.
+    // signature check run as they did with it. Not set yet, refused or never ending: said, and the cleanup goes
+    // on, as the hosted runner is thrown away after the job.
     if (all && existsSync(cert)) {
       try {
-        security(['remove-trusted-cert', '-d', cert], true);
+        security(['remove-trusted-cert', '-d', cert], true, TRUST_REMOVAL_TIMEOUT_MS);
       } catch {
-        // Trust may not have been set yet. Deleting the keychain is still mandatory.
+        log(
+          "Signing: the runner's trust for the public certificate was not removed (it signs nothing, and a hosted runner is thrown away after the job).",
+        );
       }
     }
-    // A keychain that will not go stays named in the failure, and on disk for the last cleanup's second try.
-    if (existsSync(keychain)) security(['delete-keychain', keychain]);
     if (all) rmSync(dir, { recursive: true, force: true });
     return;
   }
@@ -314,6 +340,12 @@ function keychainStep({ argv, env, platform, security, log }) {
     security(['create-keychain', '-p', temporaryPassword, keychain]);
     security(['set-keychain-settings', '-lut', '21600', keychain]);
     security(['unlock-keychain', '-p', temporaryPassword, keychain]);
+    // On the user's search list, first, the others kept: codesign uses only keychains on it, whatever its
+    // --keychain says (electron-builder's own keychain recipe, macCodeSign.js createKeychain, and GitHub's do
+    // this; with CSC_KEYCHAIN electron-builder adds nothing). delete-keychain takes it off again.
+    const listed = security(['list-keychains', '-d', 'user']);
+    const others = [...listed.matchAll(/"([^"]+)"/gu)].map((m) => m[1]).filter((k) => k !== keychain);
+    security(['list-keychains', '-d', 'user', '-s', keychain, ...others]);
     importIdentity({ security, log }, p12, keychain, password, pfx);
     security(['set-key-partition-list', '-S', 'apple-tool:,apple:', '-s', '-k', temporaryPassword, keychain]);
     // electron-builder searches valid identities. Trust only the public certificate, only on this runner.
