@@ -29,8 +29,23 @@ const COLUMNS = {
   'the live column at its most': { left: 'Home', right: 'End' },
 } as const;
 
-/** The names given in this test (placeholder-show.ts) and the library's two seeded presentations: they may end in "…". */
-const NAMES = [PLAYLIST, WELCOME, KIRTAN, PICTURE, 'Language test slides', 'Sample kirtan (placeholder)'];
+/**
+ * The names given in this test (placeholder-show.ts), the words placeholder-show.ts writes on its slides (a slide's
+ * row shows its first line, the operator's words, as operator-fit.spec.ts's SLIDE_WORDS) and the library's two seeded
+ * presentations: they may end in "…".
+ */
+const NAMES = [
+  PLAYLIST,
+  WELCOME,
+  KIRTAN,
+  PICTURE,
+  'Placeholder welcome to the sabha',
+  'Placeholder chorus line',
+  'Placeholder first verse',
+  'Placeholder second verse',
+  'Language test slides',
+  'Sample kirtan (placeholder)',
+];
 
 /** Laid out, and what a size change starts (a container query) done: three frames, then every animation finished. */
 async function laidOut(win: Page): Promise<void> {
