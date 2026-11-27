@@ -36,11 +36,13 @@ function windowFixture() {
   const window = {
     webContents: contents,
     isDestroyed: () => false,
-    loadFile: async (file: string) => {
+    loadFile: (file: string) => {
       frame.url = pathToFileURL(file).href;
+      return Promise.resolve();
     },
-    loadURL: async (url: string) => {
+    loadURL: (url: string) => {
       frame.url = url;
+      return Promise.resolve();
     },
   } as unknown as BrowserWindow;
   const event = () => ({ sender: contents, senderFrame: frame }) as unknown as IpcMainInvokeEvent;
