@@ -2,7 +2,7 @@ import { useEffect, useReducer, useState } from 'react';
 import type { EngineState } from '../../../shared/engine/state';
 import { engineNow } from './clock';
 import { CuedStartKeeper } from './cued-start';
-import { afterCueStart, heldUntilStarted } from './cue-started';
+import { afterCueStart, heldUntilShown } from './cue-started';
 import { atGoMoment } from './go-moment';
 
 /**
@@ -12,7 +12,7 @@ import { atGoMoment } from './go-moment';
  * engine's own state, which `state` (Scene's prepared copy) was drawn from.
  */
 export function useCuedStart(state: EngineState, startFirst = false, raw: EngineState = state): EngineState {
-  const [keeper] = useState(() => new CuedStartKeeper(startFirst ? heldUntilStarted : undefined));
+  const [keeper] = useState(() => new CuedStartKeeper(startFirst ? heldUntilShown : undefined));
   const [, refresh] = useReducer((n: number) => n + 1, 0);
   const start = state.videoStart;
   const view = keeper.at(state, engineNow(), raw) ?? state;
@@ -23,10 +23,14 @@ export function useCuedStart(state: EngineState, startFirst = false, raw: Engine
     if (startFirst || !start || engineNow() >= start.at) return;
     return atGoMoment(start.at, () => refresh(), { checkNow: false });
   }, [start, startFirst]);
-  // LIVE: by the cue held, not by videoStart (which Main clears at Go): after its picture's start, or 250 ms past Go.
+  // LIVE: by the cue held, not by videoStart (which Main clears at Go): once LIVE's first moving frame is shown (golive:
+  // never over its first frames), or 250 ms past Go.
   useEffect(() => {
     if (heldId === null || heldAt === null) return;
-    return atGoMoment(heldAt, () => refresh(), { checkNow: true, afterStart: afterCueStart(heldId) });
+    return atGoMoment(heldAt, () => refresh(), {
+      checkNow: true,
+      afterStart: afterCueStart(heldId, 'shown'),
+    });
   }, [heldId, heldAt]);
   return view;
 }

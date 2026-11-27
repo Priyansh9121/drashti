@@ -60,6 +60,17 @@ describe('the ? with Help off and on', () => {
     expect(section).toContain('data-testid="what-is-this-messages"');
   });
 
+  it('says each ?’s name once: no title repeating it as its description (lead 2’s a25 list, item 37)', async () => {
+    const { asker, section } = await drawn('pro', true);
+    // Its name, from its label, as before...
+    expect(asker('live')).toContain('aria-label="What is this? LIVE"');
+    // ...and no title: a screen reader read the same words again as its description, on all 23 of them. Its tip is
+    // the window's own tooltip (ui/Tooltip.tsx), not linked to it, as an icon button's is.
+    expect(asker('live')).not.toContain('title=');
+    expect(asker('statusbar')).not.toContain('title=');
+    expect(section).not.toContain('title="What is this?');
+  });
+
   it('draws none in Simple Mode, Help on or off, as before', async () => {
     for (const on of [false, true]) {
       const { asker, section } = await drawn('simple', on);

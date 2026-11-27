@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { KEYMAP, keyText } from './keymap';
-import { editorKeys, KEY_WINDOWS, keysOn, WINDOW_KEYS } from './window-keys';
+import { editorKeys, HOLD_FOR_KEYS, KEY_WINDOWS, keysOn, WINDOW_KEYS } from './window-keys';
 
 /*
  * Every Drashti window's own keys (alpha.24: the manual's "Every other window’s keys", written from WINDOW_KEYS and
@@ -64,5 +64,14 @@ describe('every window’s own keys', () => {
     expect(shown('undo', 'darwin')).toBe('⌘Z');
     expect(shown('redo', 'darwin')).toBe('⇧⌘Z');
     expect(shown('redo', 'win32')).toBe('Ctrl+Y');
+  });
+
+  // The keys sheet names the key held to see the buttons' keys too (a25 item 24: the joined hands-on found it only here,
+  // in the Help switch's tooltip and in the manual): one entry, so the sheet and the manual say the same key.
+  it('holds the key held to see the buttons’ keys once, for the keys sheet and the manual alike', () => {
+    expect(WINDOW_KEYS).toContain(HOLD_FOR_KEYS);
+    expect(HOLD_FOR_KEYS.window).toBe('The operator window, in Pro Mode and Simple Mode');
+    expect(keysOn(HOLD_FOR_KEYS, 'darwin').map((k) => keyText(k, 'darwin'))).toEqual(['⌥']);
+    expect(keysOn(HOLD_FOR_KEYS, 'win32').map((k) => keyText(k, 'win32'))).toEqual(['Alt']);
   });
 });
