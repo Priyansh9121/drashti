@@ -5,7 +5,7 @@ import { useWhatIsThis } from '../help/WhatIsThis';
 import type { DataAttributes } from './cx';
 import { cx } from './cx';
 import type { FoldMove } from './fold';
-import { foldArrivalMs, pressFold } from './fold';
+import { pressFold, whenArrived } from './fold';
 import type { Icon } from './icons';
 import { ChevronRight } from './icons';
 import { openAsks } from './open-asks';
@@ -32,6 +32,9 @@ export function SectionTitle({ children, className }: { children: ReactNode; cla
     </h3>
   );
 }
+
+/** Insides not there to watch (never while opening): nothing arrives, so how they arrived is forgotten at once. */
+const NOTHING_ARRIVING = { getAnimations: () => [] };
 
 /**
  * A section under LIVE (alpha.22; the owner: "by default it should be collapsed, we can uncollapse it when we want"):
@@ -95,15 +98,14 @@ export function Panel({
   // The chevron turns only into the state its button's press set moving (the release lead's review, S3).
   const [turnedTo, setTurnedTo] = useState<boolean | null>(null);
   // Once the insides have arrived, how they arrived is forgotten: a change of motion later never plays it again
-  // (lead 2's hands-on pass, problem 4: Off, then Calm, faded an open section's insides in with no press).
+  // (lead 2's hands-on pass, problem 4: Off, then Calm, faded an open section's insides in with no press); since lead
+  // 2's item 8 as soon as their arrival ends or is stopped, not only 0.45 s on (ui/fold.ts, whenArrived).
+  const insides = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (opening === null) return;
-    const arrived = setTimeout(() => {
+    return whenArrived(insides.current ?? NOTHING_ARRIVING, () => {
       setOpening(null);
-    }, foldArrivalMs());
-    return () => {
-      clearTimeout(arrived);
-    };
+    });
   }, [opening]);
   const [open, setOpen] = usePersistentState<boolean>(
     remember ? `panel.${remember}.open` : null,
@@ -192,6 +194,7 @@ export function Panel({
       {help.card}
       {shown && (
         <div
+          ref={insides}
           id={`${id}-body`}
           data-fold={opening ?? undefined}
           data-lively={opening === 'lively' ? 'open' : undefined}
@@ -286,15 +289,14 @@ export function PanelGroup({
   // The chevron turns only into the state its button's press set moving (the release lead's review, S3).
   const [turnedTo, setTurnedTo] = useState<boolean | null>(null);
   // Once the insides have arrived, how they arrived is forgotten: a change of motion later never plays it again
-  // (lead 2's hands-on pass, problem 4: Off, then Calm, faded an open section's insides in with no press).
+  // (lead 2's hands-on pass, problem 4: Off, then Calm, faded an open section's insides in with no press); since lead
+  // 2's item 8 as soon as their arrival ends or is stopped, not only 0.45 s on (ui/fold.ts, whenArrived).
+  const insides = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (opening === null) return;
-    const arrived = setTimeout(() => {
+    return whenArrived(insides.current ?? NOTHING_ARRIVING, () => {
       setOpening(null);
-    }, foldArrivalMs());
-    return () => {
-      clearTimeout(arrived);
-    };
+    });
   }, [opening]);
   const [open, setOpen] = usePersistentState<boolean>(
     `group.${remember}.open`,
@@ -337,6 +339,7 @@ export function PanelGroup({
       {help.card}
       {open && (
         <div
+          ref={insides}
           id={`${id}-body`}
           data-fold={opening ?? undefined}
           data-lively={opening === 'lively' ? 'open' : undefined}

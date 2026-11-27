@@ -86,7 +86,7 @@ describe('the copy of what folds away', () => {
     expect(foldCopy('lively', false)).toBe('fold-lively');
   });
 
-  it('is never drawn where a show control moves or sits in the same column', () => {
+  it('is never drawn where it is held (copyHeld, below)', () => {
     expect(foldCopy('calm', true)).toBeNull();
     expect(foldCopy('lively', true)).toBeNull();
   });
@@ -154,8 +154,8 @@ describe('a section forgets how its insides arrived as soon as they have', () =>
     getAnimations: () => animations,
   });
   const arrival = () => {
-    let finish = () => {};
-    let cancel = () => {};
+    let finish: () => void = () => undefined;
+    let cancel: () => void = () => undefined;
     const finished = new Promise<void>((resolve, reject) => {
       finish = resolve;
       cancel = () => {
@@ -191,7 +191,7 @@ describe('a section forgets how its insides arrived as soon as they have', () =>
     whenArrived(body([]), done, 60_000);
     expect(done).toHaveBeenCalledTimes(1);
     const other = vi.fn();
-    whenArrived(body([{ finished: new Promise(() => {}) }]), other, 60_000);
+    whenArrived(body([{ finished: new Promise(() => undefined) }]), other, 60_000);
     expect(other).toHaveBeenCalledTimes(1);
   });
 

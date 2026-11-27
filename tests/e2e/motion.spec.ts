@@ -549,24 +549,18 @@ test('Lively: the tab’s underline and the chosen playlist glide, cards arrive 
   // A folded panel's insides arrive as it opens (every section under LIVE is folded at the start, alpha.22), unrolling
   // (alpha.24): Show a Window's. Audio's hold the music's show controls (alpha.24's review, S4), so they are there at
   // once (S2). Without a graphics chip (CI's Windows), simply there.
-  const unrolls = (id: string) =>
-    win
-      .getByTestId(`group-${id}-toggle`)
-      .locator('xpath=ancestor::section[1]')
-      .evaluate((section) => {
-        const body = section.querySelector<HTMLElement>('[id$="-body"]');
-        return body
-          ? `${body.dataset['lively'] ?? 'none'} ${getComputedStyle(body).animationName}`
-          : 'no body';
-      });
-  await win.getByTestId('group-show-a-window-toggle').click();
+  // Watch from the click itself: an arrival that has ended is now forgotten at once (item 8), so a later snapshot
+  // cannot say whether it played. Audio's show controls never arrive, and its unused marker goes at once too.
+  const windowOpened = await pressFold(win);
   await expect(win.getByTestId('show-a-window')).toBeVisible();
-  expect(await unrolls('show-a-window')).toBe(noChip ? 'none none' : 'open lively-open');
+  expect(windowOpened.arrivals).toEqual(noChip ? [] : ['lively-open 250']);
+  expect(await arrival(win)).toBe('none none none 0s');
   await letTimePass(win, 900, 'the show has not changed for a moment, as Lively waits for');
-  await win.getByTestId('group-audio-toggle').click();
+  const audioOpened = await pressFold(win, 'audio');
   await expect(win.getByTestId('music-panel')).toBeVisible();
   await expect(win.getByTestId('music-play')).toHaveAttribute('data-show-control', '');
-  expect(await unrolls('audio')).toBe(noChip ? 'none none' : 'open none');
+  expect(audioOpened.arrivals).toEqual([]);
+  expect(await arrival(win, 'audio')).toBe('none none none 0s');
 
   // A button answers a press; a show control never does.
   const transitions = (sel: string) =>
