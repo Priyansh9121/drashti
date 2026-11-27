@@ -1593,3 +1593,30 @@ it('waits for a served page file to close before shutdown completes', async () =
     await stopping;
   }
 });
+
+
+it.each([false, true])('SECNET-01: malformed feed frames close only their sender (paired=%s)', async (paired) => {
+  const { port, server: s } = await start();
+  s.engine(snapshot(1));
+  const peer = await feed(port);
+  peer.ws.send(JSON.stringify({ type: 'hello', token: REMOTE_TOKEN }));
+  await until(() => peer.messages.some((m) => m.type === 'welcome'));
+  try {
+    for (const frame of ['null', '[]', '1', 'true', '"scalar"', '{}', '{"type":"unknown"}', '{"type":"clock","t0":"bad"}']) {
+      const bad = await feed(port);
+      if (paired) {
+        bad.ws.send(JSON.stringify({ type: 'hello', token: STAGE_TOKEN }));
+        await until(() => bad.messages.some((m) => m.type === 'welcome'));
+      }
+      const sender = [...s['clients']].find((c) => c.ws !== [...s['clients']][0]?.ws);
+      if (!sender) throw new Error('No test sender');
+      // Invoke the registered wire callback synchronously: a thrown null access fails this assertion directly.
+      expect(() => sender.ws.emit('message', Buffer.from(frame), false), frame).not.toThrow();
+      await until(() => bad.ws.readyState === WebSocket.CLOSED);
+      expect(peer.ws.readyState).toBe(WebSocket.OPEN);
+    }
+    peer.ws.send(JSON.stringify({ type: 'clock', t0: 42 }));
+    await until(() => peer.messages.some((m) => m.type === 'clock' && m.t0 === 42));
+    expect((await call(port, '/remote')).status).toBe(200);
+  } finally { peer.ws.terminate(); }
+});

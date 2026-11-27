@@ -397,3 +397,33 @@ it('keeps a place for a paired node while new node feeds await pairing', async (
     for (const ws of opened) ws.terminate();
   }
 });
+
+
+it.each([false, true])('SECNET-01: node feed rejects malformed JSON without throwing (paired=%s)', async (paired) => {
+  const { port, server: s } = await start();
+  const token = 'test-made-up-validation-node-token';
+  s.setNodes([{ id: 'validation-node', name: 'Placeholder node', tokenHash: hashToken(token) }]);
+  const opened: WebSocket[] = [];
+  const open = () => new Promise<WebSocket>((resolve, reject) => {
+    const ws = new WebSocket(`wss://127.0.0.1:${port}/node/v1/feed`, { rejectUnauthorized: false });
+    opened.push(ws);
+    ws.once('open', () => resolve(ws));
+    ws.on('error', reject);
+  });
+  try {
+    for (const frame of ['null', '[]', '1', 'true', '"scalar"', '{}', '{"type":"unknown"}', '{"type":"health","health":null}', '{"type":"thumb","jpeg":3}']) {
+      const bad = await open();
+      const sender = [...s['clients']].at(-1);
+      if (!sender) throw new Error('No test node sender');
+      if (paired) {
+        sender.ws.emit('message', Buffer.from(JSON.stringify({ type: 'hello', token, version: VERSION, protocol: NODE_PROTOCOL, engine: ENGINE_STATE_VERSION })), false);
+      }
+      expect(() => sender.ws.emit('message', Buffer.from(frame), false), frame).not.toThrow();
+      await expect.poll(() => bad.readyState).toBe(WebSocket.CLOSED);
+    }
+    const good = await open();
+    const message = new Promise<ToNode>((resolve) => good.once('message', (data: Buffer) => resolve(JSON.parse(data.toString('utf8')) as ToNode)));
+    good.send(JSON.stringify({ type: 'hello', token, version: VERSION, protocol: NODE_PROTOCOL, engine: ENGINE_STATE_VERSION }));
+    expect(await message).toMatchObject({ type: 'welcome' });
+  } finally { for (const ws of opened) ws.terminate(); }
+});

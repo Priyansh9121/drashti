@@ -438,3 +438,21 @@ describe('downloading', () => {
     expect(existsSync(join(dir, 'bad.zip'))).toBe(false);
   });
 });
+
+
+it.each(['http://github.com/plain', 'https://127.0.0.1/private', 'https://10.0.0.1/private', 'https://attacker.example/manifest', 'https://user:pass@github.com/private'])('U01: refuses update redirect before connecting to %s', async (destination) => {
+  let followed = false;
+  const manifest = manifestFor('https://github.com/o/r/releases', '1.0.1', 'placeholder.exe', Buffer.from('placeholder'));
+  const h = service('https://github.com/o/r/releases', { packaged: true, fetch: (_url, init) => {
+    if ((init as RequestInit).redirect !== 'manual') {
+      followed = true; // Stand-in for fetch's default automatic following.
+      return Promise.resolve(new Response(JSON.stringify(manifest)));
+    }
+    return Promise.resolve(new Response(null, { status: 302, headers: { Location: destination } }));
+  } });
+  try {
+    await h.service.check();
+    expect(followed).toBe(false);
+    expect(h.service.view().phase).toBe('error');
+  } finally { h.service.close(); }
+});

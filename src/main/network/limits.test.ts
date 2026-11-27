@@ -91,3 +91,17 @@ describe('the pages’ files', () => {
     expect(typeof apiQuery('/x?q=%E0%A4%A')['q']).toBe('string');
   });
 });
+
+
+it('SECNET-L01: sweeps refilled idle buckets without refreshing an active abusive key', () => {
+  let t = 0;
+  const limit = new RateLimiter(2, 3, () => t);
+  for (let i = 0; i < 1001; i++) expect(limit.take(`closed-${i}`)).toBe(true);
+  t = 1000;
+  expect(limit.take('active', 3)).toBe(true);
+  expect(limit.take('active')).toBe(false);
+  expect(limit['buckets'].size).toBe(1);
+  t += 500;
+  expect(limit.take('active')).toBe(true);
+  expect(limit.take('active')).toBe(false);
+});
