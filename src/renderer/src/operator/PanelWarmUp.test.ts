@@ -1,7 +1,14 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { KIND_KEEP_MS, keeperMove, keeperShift, onWholePixels, PanelKindKeeper, PanelWarmUp } from './PanelWarmUp';
+import {
+  KIND_KEEP_MS,
+  keeperMove,
+  keeperShift,
+  onWholePixels,
+  PanelKindKeeper,
+  PanelWarmUp,
+} from './PanelWarmUp';
 
 /*
  * The Stream panel's pieces drawn unseen with the LIVE picture's warm-up (Session 60, X21's second part). A graphics
@@ -136,7 +143,8 @@ describe('the primary button’s kind, kept in use', () => {
     const moved = keeperMove(true);
     expect(still).toEqual({});
     expect(moved).toEqual({ transform: 'translateY(1px)' });
-    for (const step of [still, moved]) expect(Object.keys(step).some((k) => k.startsWith('background'))).toBe(false);
+    for (const step of [still, moved])
+      expect(Object.keys(step).some((k) => k.startsWith('background'))).toBe(false);
     expect(keeper()).not.toContain('background-position');
   });
 

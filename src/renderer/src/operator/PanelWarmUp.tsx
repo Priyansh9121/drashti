@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { buttonClass } from '../ui/Button';
 import { Loader, Mic, Radio, ScreenShare, Settings, X } from '../ui/icons';
 
@@ -207,6 +207,18 @@ export function PanelWarmUp() {
 export const KIND_KEEP_MS = 20_000;
 
 /**
+ * How the keeper's primary is placed at each step (a24-streamwarm): the whole button a pixel down every other step, so
+ * its tile is drawn again with the same kinds of drawing as at its first. Its background moved a pixel within its box
+ * instead (background-position 0 1px, as it was) is drawn as a repeated picture, two kinds of drawing of its own (the
+ * gradient into a picture first, then that picture under the rounded corners): CI's Mac made them at the keeper's
+ * first step, 20 s after the window opened (stream-panel-warm.spec.ts's trace, at a78d5197c), the stall it is there
+ * to keep away. A pixel down it stays under the cover.
+ */
+export function keeperMove(odd: boolean): CSSProperties {
+  return odd ? { transform: 'translateY(1px)' } : {};
+}
+
+/**
  * The keeper's shift onto whole device pixels: `box` is where it is drawn now (CSS px, its shift `now` in it), `ratio`
  * device px a CSS px. The LIVE heading can sit between device pixels, and a box between pixels is drawn another way.
  */
@@ -259,10 +271,10 @@ export function PanelKindKeeper() {
       data-chip-warm-up=""
       className="pointer-events-none absolute top-1 left-16 block h-4 w-8 will-change-transform"
     >
-      {/* Drawn again as its gradient moves a pixel under the cover (nothing on screen changes). */}
+      {/* Drawn again as it moves a pixel under the cover (nothing on screen changes): keeperMove. */}
       <span
         className="absolute inset-[2px] flex items-center justify-center overflow-hidden rounded-lg border border-primary-lo bg-linear-to-b from-primary-hi via-primary via-55% to-primary-lo text-on-primary shadow-[inset_0_1px_0_var(--depth-primary-top)]"
-        style={{ backgroundPosition: odd ? '0 1px' : '0 0' }}
+        style={keeperMove(odd)}
       >
         <Radio size={8} aria-hidden="true" />
       </span>
