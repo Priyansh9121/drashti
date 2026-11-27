@@ -36,9 +36,10 @@ const barBoxes = (win: Page) =>
       el.getAttribute('data-testid') ??
       el.getAttribute('aria-label') ??
       (el.hasAttribute('data-live-badge-room') ? 'LIVE’s badge room' : el.textContent.trim().slice(0, 30));
-    const parts = [...header.querySelectorAll('h1, button, [data-live-badge-room]')].filter(
-      (el) => el.getClientRects().length > 0,
-    );
+    // The ? buttons come and go by design. Compare every persistent control, including LIVE's held room.
+    const parts = [
+      ...header.querySelectorAll('h1, button:not([data-testid^="what-is-this-"]), [data-live-badge-room]'),
+    ].filter((el) => el.getClientRects().length > 0);
     const text = header.querySelector('[data-testid="live-text"]');
     return [
       ...parts.map((el) => `${name(el)}: ${at(el.getBoundingClientRect())}`),
