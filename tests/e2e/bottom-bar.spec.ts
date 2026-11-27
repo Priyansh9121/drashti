@@ -4,10 +4,12 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
+import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
 import { dropboxStandIn, fileLink } from './dropbox-stand-in';
 import type { PageGlobals } from './helpers';
 import { helpOn } from './help';
 import {
+  importAndGetIds,
   launchApp,
   openLibrary,
   openSection,
@@ -27,8 +29,13 @@ import { makeTestTone } from './test-media';
  * up instead of the picture (black until Part 6 brings wallpapers) and takes it off, as the Logo did; Simple
  * Mode's too. Audio lists its audio playlists directly, with no Music heading and no ? of its own; with none it
  * asks for one: Create playlist, Import sounds…, From a Link…, or sounds dropped there. Placeholder slides only.
+ *
+ * What is up, at a glance (alpha.24, the owner's calmer window): a layer's clear with nothing up is compact, its icon
+ * alone, its words and key in its tooltip; lit, its words and key as before, at once, nothing moving with it. The
+ * clears never move: each keeps its place.
  */
 
+/** Every button lit or on (Clear all, the clears, the Wallpaper and Black-out), each as its words and key. */
 const BAR = [
   'Clear all F1',
   'Slide F2',
@@ -40,6 +47,43 @@ const BAR = [
   'Black-out B',
 ];
 
+/** The bar with nothing up: the clears compact, their icons alone (alpha.24). */
+const AT_REST = ['Clear all F1', '', '', '', '', '', 'Wallpaper F12', 'Black-out B'];
+
+/** The bar's widths the clears are held to: Windows' smallest operator window, CI's, and 1280 × 720. */
+const SIZES = [
+  [1008, 645],
+  [1024, 645],
+  [1280, 720],
+] as const;
+
+/** Each layer's clear by its name, with its key. */
+const CLEARS = [
+  ['Clear slide', 'F2'],
+  ['Clear background', 'F3'],
+  ['Clear audio', 'F5'],
+  ['Clear messages', 'F6'],
+  ['Clear ticker', 'F7'],
+] as const;
+
+/** An announcement from a phone, on this computer's own network, approved into the ticker (as function-keys.spec's). */
+async function tickerUp(win: Page, text: string): Promise<void> {
+  const { port } = await networkOn(win);
+  const token = await pairToken(win, port, 'announcements', 'Placeholder poster');
+  const sent = await apiCall(port, '/api/v1/announcements', {
+    method: 'POST',
+    token,
+    body: { text, from: 'Placeholder poster', minutes: 10 },
+  });
+  expect(sent.status).toBe(202);
+  const id = (sent.json['announcement'] as { id: string }).id;
+  const approved = await win.evaluate(
+    (id) => (globalThis as PageGlobals).drashti.announcements.approve({ id, as: 'ticker' }),
+    id,
+  );
+  expect(approved.ok).toBe(true);
+}
+
 const state = (win: Page) =>
   win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
 
@@ -47,6 +91,78 @@ const state = (win: Page) =>
 const barButtons = (bar: Locator) => bar.locator('button:visible:not([aria-label^="What is this?"])');
 const barWords = (bar: Locator) =>
   barButtons(bar).evaluateAll((b) => b.map((x) => (x as HTMLElement).innerText.replace(/\s+/gu, ' ').trim()));
+
+interface BarWatch {
+  barWatch?: { found: string[]; stop: () => void };
+}
+
+/**
+ * From now until barStarted: everything that starts moving on a clear or beside one (anywhere in the bar of clears),
+ * however short: a Web Animation asked of anything in it, or a CSS transition or animation starting there. A clear
+ * changes at once, in the same frame as the screens, and nothing moves with it (a show control's state, Session 25).
+ */
+async function watchBar(win: Page): Promise<void> {
+  await win.evaluate(() => {
+    const BARS = '[data-testid="layer-bar"], [data-testid="simple-buttons"]';
+    const found: string[] = [];
+    const name = (el: Element) =>
+      el.getAttribute('data-testid') ?? el.getAttribute('aria-label') ?? el.tagName.toLowerCase();
+    const proto = Element.prototype;
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- called on each element below, with call()
+    const animate = proto.animate;
+    proto.animate = function (this: Element, frames, options) {
+      if (this.closest(BARS)) found.push(`${name(this)}: a Web Animation`);
+      return animate.call(this, frames, options);
+    };
+    const starts = (e: Event) => {
+      if (e.target instanceof Element && e.target.closest(BARS)) found.push(`${name(e.target)}: ${e.type}`);
+    };
+    document.addEventListener('transitionrun', starts, true);
+    document.addEventListener('animationstart', starts, true);
+    (globalThis as BarWatch).barWatch = {
+      found,
+      stop: () => {
+        proto.animate = animate;
+        document.removeEventListener('transitionrun', starts, true);
+        document.removeEventListener('animationstart', starts, true);
+      },
+    };
+  });
+}
+
+/** What started on or beside a clear since watchBar, two frames after the change was seen; the watch ends. */
+const barStarted = (win: Page) =>
+  win.evaluate(
+    () =>
+      new Promise<string[]>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const watch = (globalThis as BarWatch).barWatch;
+            watch?.stop();
+            resolve(watch?.found ?? []);
+          });
+        });
+      }),
+  );
+
+/** Where each of the bar's buttons is along it: its middle, in whole pixels. */
+const barMiddles = (bar: Locator) =>
+  barButtons(bar).evaluateAll((b) =>
+    b.map((x) => {
+      const r = x.getBoundingClientRect();
+      return Math.round(r.left + r.width / 2);
+    }),
+  );
+
+/** No button moved along the bar since `before` (a pixel's rounding allowed). */
+async function stayPut(bar: Locator, before: number[], where: string): Promise<void> {
+  const now = await barMiddles(bar);
+  expect(now.length, where).toBe(before.length);
+  expect(
+    now.filter((x, i) => Math.abs(x - (before[i] ?? Number.NaN)) > 1),
+    `${where}: no button moved (${JSON.stringify(before)} then ${JSON.stringify(now)})`,
+  ).toEqual([]);
+}
 
 /** Every one of the bar's buttons in one row, none cut, the bar not scrolling; its height. */
 async function oneRow(win: Page, where: string): Promise<number> {
@@ -69,9 +185,9 @@ async function oneRow(win: Page, where: string): Promise<number> {
   return (await bar.boundingBox())?.height ?? 0;
 }
 
-test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its buttons with their keys; F4 and F8 do nothing; a button with nothing up dimmed', async () => {
+test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its buttons with their keys; F4 and F8 do nothing; a button with nothing up dimmed, a clear compact, its words in its tooltip; every layer up, all eight words and keys whole in one row from 1008 px; the clears never move', async () => {
   test.setTimeout(150_000);
-  const { app } = await launchApp();
+  const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
   await operatorReady(win);
   await helpOn(win);
@@ -81,7 +197,7 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
     [1280, 720],
   ] as const) {
     await win.setViewportSize({ width, height });
-    await expect.poll(() => barWords(bar)).toEqual(BAR);
+    await expect.poll(() => barWords(bar)).toEqual(AT_REST);
     const tall = await oneRow(win, `${width} × ${height}`);
     // Smaller than before (Session 54's bar was 57 px tall with its buttons' keys under their words).
     expect(tall, `${width} × ${height}: the bar's height`).toBeLessThanOrEqual(44);
@@ -103,16 +219,48 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
     await expect(button(words), words).toBeEnabled();
     await expect(button(words), words).toHaveAttribute('data-dimmed', 'true');
   }
+  // Each button names its keys for a screen reader too (aria-keyshortcuts), as they act now: Black-out B and its "."
+  // while the single-letter keys are on (as they are to begin with).
+  const KEYS = [['Clear all', 'F1'], ...CLEARS, ['Wallpaper', 'F12'], ['Black-out', 'B .']] as const;
+  for (const [words, key] of KEYS)
+    await expect(button(words), words).toHaveAttribute('aria-keyshortcuts', key);
+  // Each layer's clear compact (alpha.24): its icon in sight, no words or key on it; its words and key in its tooltip,
+  // the mouse resting on it.
+  const tip = win.locator('[role="tooltip"]');
+  for (const [words, key] of CLEARS) {
+    const clear = button(words);
+    await expect(clear, words).toHaveAttribute('data-dimmed', 'true');
+    await expect(clear.locator('svg'), words).toBeVisible();
+    await expect(clear.locator('kbd'), words).toHaveCount(0);
+    await clear.hover();
+    await expect(tip, words).toContainText(words);
+    await expect(tip.locator('kbd'), words).toHaveText(key);
+    await win.mouse.move(0, 0);
+    await expect(tip, words).toHaveCount(0);
+  }
 
-  // A slide up: its clear lights up and Clear all can be pressed; the rest stay dimmed.
+  // A slide up: its clear lights up and Clear all can be pressed; the rest stay dimmed. It lights up at once and
+  // nothing starts moving on it or beside it (the window opened settled first: what arrives later moves).
   await setUpScreen(win);
   const audience = await outputPage(app);
   await openLibrary(win);
   await win.getByTestId('presentation-list').getByRole('button').first().click();
+  await expect(win.locator('html')).toHaveAttribute('data-opened', '');
+  await watchBar(win);
   await win.getByTestId('slide-thumb').first().click();
   await expect(button('Clear slide')).toHaveAttribute('data-lit', 'true');
+  expect(await barStarted(win), 'a slide up: nothing moves on or beside its clear').toEqual([]);
   await expect(button('Clear all')).toBeEnabled();
   await expect(button('Clear background')).toBeDisabled();
+  // Lit, its words and key back on it.
+  await expect.poll(() => barWords(bar)).toEqual(['Clear all F1', 'Slide F2', ...AT_REST.slice(2)]);
+  // Where each button is now, at each size (Clear all's words go bolder once it can be pressed, as before, which moves
+  // what follows it a pixel or two: so the places are held from here, with Clear all as it is).
+  const withSlide = new Map<number, number[]>();
+  for (const [width, height] of SIZES) {
+    await win.setViewportSize({ width, height });
+    withSlide.set(width, await barMiddles(bar));
+  }
 
   // F4 and F8 do nothing; F12 puts the wallpaper up over the slide (black: no wallpaper chosen yet), and off.
   const before = await state(win);
@@ -128,6 +276,41 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
   await button('Wallpaper is on').click();
   await expect(audience.locator('[data-layer="wallpaper"]')).toHaveCount(0);
   await expect(button('Wallpaper')).toHaveAttribute('data-dimmed', 'true');
+
+  // Every layer up too (the steps function-keys.spec takes): a background, a message, a sound going round and the
+  // ticker. Every clear lit with its words and key, all eight whole in one row from 1008 px, and no button moves.
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-bottom-bar-'));
+  const [soundId = ''] = await importAndGetIds(win, [
+    makeTestTone(join(dir, 'Placeholder tone.wav'), { seconds: 20, hz: 330 }),
+  ]);
+  expect(soundId).not.toBe('');
+  for (const command of [
+    { type: 'setBackground', background: { kind: 'color', color: '#1d4e89' } },
+    { type: 'showMessage', message: { id: 'placeholder-message', text: 'Placeholder message' } },
+    {
+      type: 'playAudio',
+      audio: { id: 'placeholder-tone', title: 'Placeholder tone', mediaId: soundId, volume: 1, loop: true },
+    },
+  ])
+    await win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c as never), command);
+  await tickerUp(win, 'Placeholder announcement');
+  for (const [width, height] of SIZES) {
+    await win.setViewportSize({ width, height });
+    await expect.poll(() => barWords(bar), { message: `${width} × ${height}, every layer up` }).toEqual(BAR);
+    await oneRow(win, `${width} × ${height}, every layer up`);
+    await stayPut(bar, withSlide.get(width) ?? [], `${width} × ${height}, every layer up`);
+  }
+  // Lit, each still names its keys for a screen reader.
+  for (const [words, key] of KEYS)
+    await expect(button(words), words).toHaveAttribute('aria-keyshortcuts', key);
+  // The slide taken off again: its clear back to its icon at once, nothing moving on it or beside it, and still no
+  // button moves.
+  await watchBar(win);
+  await button('Clear slide').click();
+  await expect(button('Clear slide')).toHaveAttribute('data-dimmed', 'true');
+  expect(await barStarted(win), 'the slide off: nothing moves on or beside its clear').toEqual([]);
+  await expect.poll(() => barWords(bar)).toEqual(['Clear all F1', '', ...BAR.slice(2)]);
+  await stayPut(bar, withSlide.get(1280) ?? [], 'the slide taken off, every other layer up');
   await app.close();
 });
 
@@ -142,6 +325,16 @@ test('Simple Mode’s buttons too: its Clear all dimmed with nothing up; the Wal
   expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'))).toMatchObject({
     ok: true,
   });
+  // Each of its buttons names its keys for a screen reader, as Pro Mode's do (aria-keyshortcuts).
+  for (const [id, key] of [
+    ['simple-clear-all', 'F1'],
+    ['simple-clear-slide', 'F2'],
+    ['simple-clear-background', 'F3'],
+    ['simple-clear-audio', 'F5'],
+    ['simple-wallpaper', 'F12'],
+    ['simple-blackout', 'B .'],
+  ] as const)
+    await expect(win.getByTestId(id), id).toHaveAttribute('aria-keyshortcuts', key);
   // Its Clear all dimmed with nothing up, as the bar of clears' is, and pressable once something is.
   const clearAll = win.getByTestId('simple-clear-all');
   await expect(clearAll).toBeDisabled();
