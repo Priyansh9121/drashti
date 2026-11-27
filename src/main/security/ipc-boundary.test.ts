@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bridgeFor } from '../../preload/page-groups';
 import { IPC } from '../../shared/ipc';
-import { gateChannels, handle, handleSync, lockChannels, tellRequests } from '../ipc/handle';
+import { gateChannels, handle, handleSync, lockChannels, setGiveWay, tellRequests } from '../ipc/handle';
 import { loadPage, rendererDir } from '../windows/renderer';
 
 type Request = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown;
@@ -59,6 +59,7 @@ afterEach(() => {
   callbacks.invoke.clear();
   callbacks.sync.clear();
   gateChannels(null);
+  setGiveWay(null);
   lockChannels(() => false, new Map());
   tellRequests(null);
 });
@@ -165,6 +166,29 @@ describe('alpha.24 IPC authority', () => {
     callback(event);
     expect(event.returnValue).toBeNull();
     expect(answer).not.toHaveBeenCalled();
+  });
+
+  it('rechecks the assigned document when a request resumes after an import wait', async () => {
+    const operator = windowFixture();
+    await loadPage(operator.window, 'index');
+    let release: ((done: () => void) => void) | undefined;
+    setGiveWay(
+      () =>
+        new Promise<() => void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const ran = vi.fn();
+    handle(IPC.access.quit, () => {
+      ran();
+      return null;
+    });
+    const waiting = Promise.resolve(request(IPC.access.quit, operator.event()));
+    operator.frame.url = pathToFileURL(join(rendererDir(), 'output.html')).href;
+    expect(release).toBeDefined();
+    release?.(() => undefined);
+    await expect(waiting).rejects.toThrow(/Refused/u);
+    expect(ran).not.toHaveBeenCalled();
   });
 
   it('never includes an untrusted URL credential in a refusal error', () => {
