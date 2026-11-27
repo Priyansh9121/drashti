@@ -283,6 +283,13 @@ describe('B · Depth: styles/look-depth.css', () => {
     expect(block(`${SCOPE} [data-testid='column-right'] [data-testid='live-preview']`)['margin-inline']).toBe(
       'calc(-1 * var(--depth-gap))',
     );
+    // Back, Next and the next picture's row and Oops's line with it, so they line up with the picture's edges as in a
+    // flat look (lead 2's lookcheck of a24-lookgap: they were 4 px inside them; look-depth.spec measures it).
+    expect(
+      block(
+        `${SCOPE} [data-testid='column-right'] :is(:has(> [data-testid='show-back']), :has(> [data-testid='show-oops']))`,
+      )['margin-inline'],
+    ).toBe('calc(-1 * var(--depth-gap))');
   });
 
   it('LIVE is a red ring and a light red tint, never a glow: the live picture and the live row', () => {

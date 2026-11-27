@@ -277,6 +277,15 @@
   :root[data-window-look='depth'] [data-testid='column-right'] [data-testid='live-preview'] {
     margin-inline: calc(-1 * var(--depth-gap));
   }
+  /*
+   * Back, Next and the next picture's row, and Oops's line, reach the gaps' room back with it, so Back and Oops start at
+   * the picture's left edge and the next picture ends at its right, as in a flat look (they were 4 px inside them).
+   */
+  :root[data-window-look='depth']
+    [data-testid='column-right']
+    :is(:has(> [data-testid='show-back']), :has(> [data-testid='show-oops'])) {
+    margin-inline: calc(-1 * var(--depth-gap));
+  }
   :root[data-window-look='depth'] [data-testid='live-preview'].border-live-edge {
     box-shadow:
       inset 0 1px 0 var(--depth-light),
