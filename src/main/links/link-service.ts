@@ -7,7 +7,7 @@ import { formatBytes } from '../../shared/format';
 import {
   aboveTheSetting,
   checkLink,
-  chosenHeight,
+  choiceBytes,
   DEFAULT_LINK_MAX_HEIGHT,
   heightLabel,
   isLinkHeight,
@@ -23,6 +23,7 @@ import {
   MAX_ZIP_BYTES,
   MAX_ZIP_FILES,
   NOT_TAKEN_REASON,
+  qualityChoice,
   takenKind,
   waitingKind,
   type YouTubeChoice,
@@ -522,16 +523,36 @@ export class LinkService {
     if (kind === null) return this.refuse('Paste a share link from YouTube or Dropbox.');
     if (typeof options !== 'object' || options === null)
       return this.refuse('Choose a name for the download.');
-    const values = options as { name?: unknown; captions?: unknown };
+    const values = options as { name?: unknown; captions?: unknown; quality?: unknown };
     if (values.name !== undefined && (typeof values.name !== 'string' || values.name.length > 2000))
       return this.refuse('Use a shorter name for the download.');
     if (values.captions !== undefined && typeof values.captions !== 'boolean')
       return this.refuse('Choose whether to download captions.');
+    // The window's Quality (alpha.24): a height or an MP3's bitrate, a whole number; checked against the video below.
+    const quality = values.quality;
+    if (
+      quality !== undefined &&
+      quality !== null &&
+      !(typeof quality === 'number' && Number.isInteger(quality) && quality >= 0 && quality <= 100_000)
+    )
+      return this.refuse('Choose a quality for the download.');
     const check = checkLink(kind, text);
     if (!check.ok) return this.refuse(check.message);
-    const automatic = { audio, intoOpenPlaylist, options: { name: values.name, captions: values.captions } };
+    const automatic = {
+      audio,
+      intoOpenPlaylist,
+      options: {
+        name: values.name,
+        captions: values.captions,
+        ...(typeof quality === 'number' ? { quality } : {}),
+      },
+    };
     // The window already checked this link: keep that result, or its queued check while on air.
     if (this.checked?.url === check.url && ['looking', 'looked'].includes(this.state.phase)) {
+      // A quality the checked video does not offer is refused at once, the window still open.
+      const video = this.state.look?.video;
+      const picked = video ? qualityChoice(video, audio, automatic.options.quality) : null;
+      if (picked && !picked.ok && automatic.options.quality !== undefined) return this.refuse(picked.message);
       this.automatic = automatic;
       if (this.state.look) {
         this.set({ phase: 'looking' });
@@ -671,15 +692,13 @@ export class LinkService {
     const automatic = this.automatic;
     if (!automatic) return;
     const video = this.state.look?.video;
-    const height = video ? chosenHeight(video, this.maxHeight, null) : null;
-    if (video && !automatic.audio && height === null) {
-      this.set({
-        phase: 'failed',
-        message: 'This video has no quality at or below 1080p. Paste another YouTube link.',
-      });
+    // The Quality chosen in the window (alpha.24), else the best up to 1080p (the best sound): in words when not offered.
+    const picked = video ? qualityChoice(video, automatic.audio, automatic.options.quality) : null;
+    if (picked && !picked.ok) {
+      this.set({ phase: 'failed', message: picked.message });
       return;
     }
-    const choice = video ? { type: automatic.audio ? 'mp3' : 'mp4', height } : null;
+    const choice = picked?.ok ? picked.choice : null;
     const stillChecking = () => this.automatic === automatic && this.state.phase === 'looking';
     try {
       const ready = await this.folderForPaste();
@@ -922,11 +941,17 @@ export class LinkService {
     raw: unknown,
   ): { ok: true; choice: YouTubeChoice; bytes: number | null } | { ok: false; message: string } {
     const c = (typeof raw === 'object' && raw !== null ? raw : {}) as Partial<YouTubeChoice>;
-    if (c.type === 'mp3') return { ok: true, choice: { type: 'mp3', height: null }, bytes: video.soundBytes };
+    if (c.type === 'mp3') {
+      // The best sound, or the bitrate chosen under Quality (alpha.24).
+      const sound = qualityChoice(video, true, c.kbps);
+      return sound.ok ? { ok: true, choice: sound.choice, bytes: choiceBytes(video, sound.choice) } : sound;
+    }
     if (c.type !== 'mp4') return { ok: false, message: 'Choose MP4 (the video) or MP3 (its sound only).' };
     const offered = video.heights.find((h) => h.height === c.height);
     if (!offered) return { ok: false, message: 'Choose one of the qualities this video offers.' };
-    if (offered.height > this.maxHeight) return { ok: false, message: aboveTheSetting(this.maxHeight) };
+    // A pasted link's Quality may be above 1080p (alpha.24: the operator chose it); the old setting caps the rest.
+    if (!this.automatic && offered.height > this.maxHeight)
+      return { ok: false, message: aboveTheSetting(this.maxHeight) };
     return {
       ok: true,
       choice: { type: 'mp4', height: offered.height },
@@ -973,7 +998,7 @@ export class LinkService {
     this.remember(this.part);
     this.downloadedBytes = 0;
     this.held = this.deps.onAir();
-    const choice = { type: picked.choice.type, height: picked.choice.height };
+    const choice: YouTubeChoice = { ...picked.choice };
     this.set({
       phase: this.held ? 'waiting' : 'downloading',
       folder,

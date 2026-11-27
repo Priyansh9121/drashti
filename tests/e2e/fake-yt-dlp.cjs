@@ -5,7 +5,8 @@
 //   a download              a part-file named as yt-dlp names them, written a little at a time with
 //                           progress printed through Drashti's --progress-template; a part-file left by a
 //                           run that was stopped is carried on from; then an FFmpeg-made placeholder video
-//                           (or sound) as download.mp4 (download.mp3), the part-file gone
+//                           (or sound) as download.mp4 (download.mp3), the part-file gone; the log notes
+//                           the height asked for (an MP3: the --audio-quality asked for)
 // Like the one-file yt-dlp (and as yt-dlp starts Deno and FFmpeg), it starts a child process of its own,
 // which lives until it ends: a test can see that stopping it stops that too.
 // What it is told to do comes in DRASHTI_FAKE_YT_DLP_CONFIG (JSON): title, duration, heights, live
@@ -190,7 +191,8 @@ function main() {
       return;
     }
     fs.rmSync(part, { force: true });
-    log(`done ${mp3 ? 'mp3' : 'mp4'} ${String(height)}`);
+    // An MP3 notes the quality it was asked for (0: the best; or a bitrate such as 128K), an MP4 its height.
+    log(mp3 ? `done mp3 ${String(value('--audio-quality'))}` : `done mp4 ${String(height)}`);
     end(0);
   };
   const step = () => {
