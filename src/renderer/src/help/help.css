@@ -1,0 +1,27 @@
+/*
+ * The buttons' keys on demand (alpha.24, help-store.ts): while the operator window's root says so (Help off, Alt not
+ * held), a key beside a button's words (ui/Kbd.tsx) is drawn see-through. It keeps its room, so a look with Alt, or
+ * Help turned on, moves no button and nothing on one (lead 2's hands-on pass and the release lead's review of
+ * cb5b4b753: clipped to 1 px, a key coming back slid the show controls and their words sideways); and it stays in the
+ * button's name. Not visibility or display (they take the key out of the name) and not a transparent colour (forced
+ * colours repaint it). Opacity alone, with no transition and nothing promoted, so no layer is made. A tooltip's key
+ * and a menu item's stay, and so does a key in a sentence (none is inside a button). Outside any layer, so it holds
+ * over the key's own utilities; a width query's `hidden` still hides it altogether.
+ */
+:root[data-keys-hidden] :is(button, [role='button']):not([role^='menuitem']) :is(kbd, [data-keys]) {
+  opacity: 0;
+}
+
+/*
+ * In forced colours (a contrast theme) the system paints every edge, ground and word its own, so Help's pressed look
+ * (an edge, a ground and a word colour) would match its look off: pressed, it takes the theme's highlight, as the
+ * chosen tab has its own mark there (app.css).
+ */
+@media (forced-colors: active) {
+  [data-testid='help-toggle'][aria-pressed='true'] {
+    forced-color-adjust: none;
+    background-color: Highlight;
+    border-color: Highlight;
+    color: HighlightText;
+  }
+}

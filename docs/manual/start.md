@@ -64,7 +64,7 @@ Drashti puts slides, pictures, videos and sound on the hall's screens. This manu
 
 ## The status bar
 
-**What it is.** The line along the very bottom. It says how many screens are showing, where the sound goes, what is coming in, any warning, and Drashti's version. **Audience off**, **Stage off**, **Audio muted** or **Video muted** show there while they are so.
+**What it is.** The line along the very bottom. It says how many screens are showing, where the sound goes, what is coming in, any warning, and Drashti's version. **Audience off**, **Stage off**, **Audio muted** or **Video muted** show there while they are so. **Help** there shows every **?** and the keys on the buttons (**Help and when something goes wrong › What is this?**).
 
 **When you would use it.** Whenever you want to know at a glance that all is well.
 
@@ -79,7 +79,7 @@ Drashti puts slides, pictures, videos and sound on the hall's screens. This manu
 
 ## Using this manual
 
-**What it is.** This manual, inside Drashti. It needs no internet. Each **?** on a panel's heading first shows its short help in that panel. **Open the manual** there opens this manual at that panel's chapter and feature.
+**What it is.** This manual, inside Drashti. It needs no internet. With **Help** on in the status bar, each **?** on a panel's heading first shows its short help in that panel. **Open the manual** there opens this manual at that panel's chapter and feature.
 
 **When you would use it.** Whenever you are not sure how something works.
 

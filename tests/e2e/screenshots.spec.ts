@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { BUILT_IN } from '../../src/shared/appearance/appearances';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../src/shared/lower-thirds';
 import type { PageGlobals } from './helpers';
+import { helpOn } from './help';
 import { device, networkOn, NETWORK_ENV, pairByQr, pairingCode, TABLET } from './devices';
 import {
   chooseMenuItem,
@@ -277,6 +278,7 @@ test('the operator window and its panels', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1920, height: 1080 });
+  await helpOn(win);
   await running(win);
   // The live column from its top (starting the timer and showing the message scrolled it): the previews.
   const live = win.getByRole('complementary', { name: 'Live' });

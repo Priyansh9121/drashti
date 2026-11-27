@@ -17,6 +17,7 @@ import {
   type PageGlobals,
   relaunchApp,
 } from './helpers';
+import { helpOn } from './help';
 
 /*
  * Motion in the interface (Session 26g, "Rising"): show controls, thumbnails and the live picture
@@ -164,6 +165,7 @@ test('dialogs, sheets, menus and notices arrive with their tokens, and leave uns
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
+  await helpOn(win);
   const animationOf = (sel: string) =>
     win
       .locator(sel)
@@ -301,6 +303,7 @@ async function interfaceMotion(win: Page, motion: 'calm' | 'lively' | 'off'): Pr
 
 /** Every kind of thing that would arrive or leave, each checked to move not at all. */
 async function nothingMoves(app: ElectronApplication, win: Page): Promise<void> {
+  await helpOn(win);
   await still(win, 'the window');
   await win.keyboard.press('Shift+Slash');
   await expect(win.getByTestId('keys-sheet')).toBeVisible();

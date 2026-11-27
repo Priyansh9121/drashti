@@ -6,6 +6,7 @@ import { PANEL_HELP } from '../../../shared/panel-help';
 import { useMode } from '../operator/mode-store';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
+import { useHelp } from './help-store';
 import { showManual } from './manual-store';
 
 /*
@@ -14,7 +15,8 @@ import { showManual } from './manual-store';
  * show's keys: it is a button, a paragraph, Open the manual and Got it). The words are in shared/panel-help.ts.
  * Open the manual (x37, Session 60: the owner's "Yes, A" to Q60-25; Read more, which opened Help › Guides, until
  * then) opens the Drashti Manual at the panel's chapter, its feature marked; Esc closes the manual, and the show's
- * keys work again at once.
+ * keys work again at once. Since alpha.24 (help-store.ts, the owner's "non-congusted UI") every ? is drawn only while
+ * the status bar's Help switch is on: off, there is none at all, so none is a Tab stop either.
  */
 
 /** Open the manual at the chapter a card names, at its feature (or the chapter's start, if the feature is gone). */
@@ -28,19 +30,26 @@ async function openManual(help: PanelHelp): Promise<void> {
   showManual({ chapter: help.chapter, passage });
 }
 
-/** The ? for a heading, and the words it opens under it (both null without a topic). */
+/** The ? for a heading, and the words it opens under it (both null without a topic, in Simple Mode or with Help off). */
 export function useWhatIsThis(
   topic: PanelHelpId | null,
   /** A smaller ? (the header's, where room is short). */
   { compact = false }: { compact?: boolean } = {},
 ): { button: ReactNode; card: ReactNode } {
-  const [open, setOpen] = useState(false);
+  // Open in the turning on of Help it was opened in (its count, help-store.ts): Help off and on again finds it shut.
+  const [openIn, setOpenIn] = useState<number | null>(null);
   const id = useId();
   const opener = useRef<HTMLButtonElement>(null);
   // Pro Mode's: Simple Mode (Pro Mode's window with less in it, Session 55, Part 18) has no ? of its own.
   const simple = useMode((s) => s.mode === 'simple');
-  if (topic === null || simple) return { button: null, card: null };
+  const on = useHelp((s) => s.on);
+  const round = useHelp((s) => s.round);
+  if (topic === null || simple || !on) return { button: null, card: null };
   const help = PANEL_HELP[topic];
+  const open = openIn === round;
+  const setOpen = (now: boolean) => {
+    setOpenIn(now ? round : null);
+  };
   const close = () => {
     setOpen(false);
     opener.current?.focus();

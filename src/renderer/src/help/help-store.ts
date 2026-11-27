@@ -1,0 +1,121 @@
+import { create } from 'zustand';
+import { readPersisted, writePersisted } from '../ui/persist';
+
+/*
+ * Help on demand (alpha.24, the owner's "we also want a really innovative and non-congusted UI"): one Help switch, in
+ * the status bar where its ? was (HelpSwitch.tsx), shows every "?" (WhatIsThis.tsx) and the keys beside the buttons'
+ * words (help.css); while it is off, no ? is drawn at all and the keys are hidden to the eye, kept for screen readers.
+ * Alt (Option ⌥ on a Mac) held down on its own shows the keys while it is held, Help on or off. The switch is off at a
+ * first start, so the window starts calm, and is remembered on this computer (ui/persist.ts: the window's own storage).
+ */
+
+/** Where the switch is remembered, on this computer. */
+const HELP_KEY = 'help.on';
+
+const isBoolean = (v: unknown): v is boolean => typeof v === 'boolean';
+
+export interface HelpState {
+  /** The switch: every ? and every button's key shown. */
+  on: boolean;
+  /** Alt (Option ⌥ on a Mac) held down on its own: the buttons' keys shown while it is. */
+  alt: boolean;
+  /** How many times it has been turned on in this window: a ? card left open does not come back open with it. */
+  round: number;
+}
+
+export const useHelp = create<HelpState>(() => ({
+  on: readPersisted(HELP_KEY, false, isBoolean),
+  alt: false,
+  round: 0,
+}));
+
+/** Turn Help on or off, and remember it on this computer. */
+export function setHelp(on: boolean): void {
+  writePersisted(HELP_KEY, on);
+  const was = useHelp.getState();
+  if (was.on !== on) useHelp.setState({ on, round: on ? was.round + 1 : was.round });
+}
+
+export function toggleHelp(): void {
+  setHelp(!useHelp.getState().on);
+}
+
+/** The buttons' keys are shown: Help on, or Alt held on its own. */
+export const keysShown = (s: HelpState): boolean => s.on || s.alt;
+
+/** What a key or pointer event says of the keys held (a KeyboardEvent's or a PointerEvent's own parts). */
+export interface AltEvent {
+  type: string;
+  key?: string;
+  altKey?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  shiftKey?: boolean;
+}
+
+/**
+ * Whether Alt is held on its own after `e`, `held` before it: from Alt's own press with no other key held, until it is
+ * let go or another key is pressed (Alt+1, the quick bar's, is a shortcut, not Alt on its own). A pointer moved or
+ * pressed without Alt says it was let go where this window could not see it; a pointer never starts it.
+ */
+export function altAfter(held: boolean, e: AltEvent): boolean {
+  if (e.type === 'keydown')
+    return e.key === 'Alt' && e.ctrlKey !== true && e.metaKey !== true && e.shiftKey !== true;
+  if (e.type === 'keyup') return e.key === 'Alt' ? false : held;
+  return held && e.altKey === true;
+}
+
+/**
+ * Alt held on its own this long is a look at the keys, not a tap of Alt: its letting go is taken (its default
+ * prevented). On Windows (and Linux) Electron shows the hidden menu bar and gives it the keyboard when Alt alone is let
+ * go and the page has not taken it, so after a look the next arrow key would go to the menu, not the show. A quarter of
+ * a second (the release lead's review, S2; 500 ms until then): a deliberate tap takes about 80 to 150 ms and still
+ * opens the menu bar, as the manual says, and a glance at a key is longer.
+ */
+export const LOOK_MS = 250;
+
+/**
+ * Follow Alt in `win` and keep its root saying when the buttons' keys are hidden (`data-keys-hidden`, help.css) until
+ * the returned stop, which leaves the keys shown as before alpha.24. The operator window's status bar starts it, in Pro
+ * and Simple Mode (before its first drawing, so no key shows and then goes); no other window does. `now` is the
+ * window's clock (a test's own).
+ */
+export function connectKeyHints(win: Window, now: () => number = () => performance.now()): () => void {
+  const root = win.document.documentElement;
+  // When Alt began to be held on its own (null while it is not).
+  let since: number | null = null;
+  const follow = (e: Event) => {
+    // A key's or a pointer's parts (a KeyboardEvent or a PointerEvent).
+    const parts: AltEvent = e;
+    const was = useHelp.getState().alt;
+    const alt = altAfter(was, parts);
+    if (alt && since === null) since = now();
+    const look =
+      was && parts.type === 'keyup' && parts.key === 'Alt' && since !== null && now() - since >= LOOK_MS;
+    if (look) e.preventDefault();
+    if (!alt) since = null;
+    if (alt !== was) useHelp.setState({ alt });
+  };
+  // The window losing the keyboard (Alt+Tab to another program): Alt's letting go goes there.
+  const letGo = () => {
+    since = null;
+    if (useHelp.getState().alt) useHelp.setState({ alt: false });
+  };
+  const say = (s: HelpState) => {
+    if (keysShown(s)) delete root.dataset['keysHidden'];
+    else root.dataset['keysHidden'] = '';
+  };
+  const stop = new AbortController();
+  // Before anything else sees them (a dialog's own keys stop there); only a look's letting go of Alt is taken.
+  for (const kind of ['keydown', 'keyup', 'pointerdown', 'pointermove'])
+    win.addEventListener(kind, follow, { capture: true, signal: stop.signal });
+  win.addEventListener('blur', letGo, { signal: stop.signal });
+  say(useHelp.getState());
+  const unsubscribe = useHelp.subscribe(say);
+  return () => {
+    stop.abort();
+    unsubscribe();
+    if (useHelp.getState().alt) useHelp.setState({ alt: false });
+    delete root.dataset['keysHidden'];
+  };
+}

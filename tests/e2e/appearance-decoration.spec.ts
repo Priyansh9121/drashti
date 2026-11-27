@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { BLACK, builtIn, WHITE } from '../../src/shared/appearance/appearances';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { chooseMenuItem, launchApp, openLibrary, operatorPage, operatorReady, slidesOf } from './helpers';
+import { helpOn } from './help';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -67,6 +68,7 @@ for (const id of ['dhaja', 'tiranga']) {
     const { app } = await launchApp();
     const win = await operatorPage(app);
     await operatorReady(win);
+    await helpOn(win);
     await chooseMenuItem(app, `appearance-${id}`);
     await expect(win.locator('html')).toHaveAttribute('data-appearance', id);
     await inAShow(win);
@@ -235,6 +237,7 @@ test('Black draws exactly as at 9ed5d00: header, chosen tab and row, headings, a
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await helpOn(win);
   await chooseMenuItem(app, `appearance-${BLACK.id}`);
   await expect(win.locator('html')).toHaveAttribute('data-appearance', BLACK.id);
   await inAShow(win);
@@ -264,6 +267,7 @@ test('White, softened to paper (Session 60, Q60-36 Q2 A), draws its new colours 
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await helpOn(win);
   await chooseMenuItem(app, `appearance-${WHITE.id}`);
   await expect(win.locator('html')).toHaveAttribute('data-appearance', WHITE.id);
   await inAShow(win);
