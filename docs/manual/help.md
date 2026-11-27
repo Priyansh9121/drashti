@@ -134,6 +134,8 @@ It works in both modes and on a node. A node hands its report to the Main it is 
 
 A picture that repeatedly fails to draw stops that screen the same way; it comes back as soon as it draws again. If a notice names a video taken off after repeated failures, see **LIVE, Back and Next › When a video cannot play**.
 
+Two screens with one name (two TVs of one model take their display's name) are told apart: the notice and **Screens** call the second "… (2)". Each one is restarted or stopped on its own.
+
 ![A stopped screen's notice at the top of the window](../screenshots/screen-stopped-notice.png)
 
 ## No sound in the hall

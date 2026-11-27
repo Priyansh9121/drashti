@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../ui/Button';
 import { Notice } from '../ui/Notice';
+import { screenLabels } from '../../../shared/screen-labels';
 import { stoppedSentence } from '../../../shared/screens-summary';
 import { connectScreens, useScreens } from './screens-store';
 
@@ -34,11 +35,12 @@ export function StoppedScreens() {
   }
   const shown = stopped.filter((id) => !closed.has(id));
   if (!snapshot || shown.length === 0) return null;
-  const screens = snapshot.groups.flatMap((g) => g.screens);
+  // Two of one name (two TVs of one model) told apart, "… (2)", as Screens says it (S1-1).
+  const names = screenLabels(snapshot.groups.flatMap((g) => g.screens));
   return (
     <div className="shrink-0 space-y-2 px-3 pt-2" data-testid="stopped-screens">
       {shown.map((id) => {
-        const name = screens.find((s) => s.id === id)?.name ?? 'A screen';
+        const name = names.get(id) ?? 'A screen';
         return (
           <Notice
             key={id}

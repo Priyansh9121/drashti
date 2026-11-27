@@ -24,6 +24,8 @@ export function StreamLinkNotice() {
     <Button
       variant="primary"
       size="sm"
+      // A show control (alpha.24, the bug hunt's S3-1): it changes the screens at once and never moves.
+      instant
       data-testid="stream-link-off"
       onClick={() => void dispatch({ type: 'clearLayer', layer: 'background' })}
     >

@@ -1,9 +1,9 @@
 import {
   YOUTUBE_ID,
-  heightLabel,
+  qualityWords,
   type LinkCaptionTrack,
   type VideoDetails,
-  type YouTubeType,
+  type YouTubeChoice,
 } from '../../shared/links';
 
 /*
@@ -67,18 +67,27 @@ export function lookArgs(p: YoutubeProgramPaths, link: string): string[] {
 
 /**
  * Download the video into `workDir` as download.mp4 (MP4: the height chosen at most, H.264 and AAC
- * where the video offers them at that height) or download.mp3 (the best sound). A stopped download
- * carries on from its part-file when the same command runs again.
+ * where the video offers them at that height) or download.mp3 (from the best sound: at yt-dlp's best
+ * MP3 quality, 0, or at the bitrate chosen, such as 128K: yt-dlp's --audio-quality takes either). A
+ * stopped download carries on from its part-file when the same command runs again.
  */
 export function downloadArgs(
   p: YoutubeProgramPaths,
   link: string,
-  choice: { type: YouTubeType; height: number | null },
+  choice: YouTubeChoice,
   workDir: string,
 ): string[] {
   const format =
     choice.type === 'mp3'
-      ? ['-f', 'ba/b', '-x', '--audio-format', 'mp3', '--audio-quality', '0']
+      ? [
+          '-f',
+          'ba/b',
+          '-x',
+          '--audio-format',
+          'mp3',
+          '--audio-quality',
+          choice.kbps ? `${String(choice.kbps)}K` : '0',
+        ]
       : [
           '-f',
           `bv*[height<=${String(choice.height)}]+ba/b[height<=${String(choice.height)}]`,
@@ -391,6 +400,6 @@ export function parseDetails(
   };
 }
 
-/** A choice in words, for the log and the status bar: "MP4, 1080p" or "MP3". */
-export const choiceWords = (choice: { type: YouTubeType; height: number | null }): string =>
-  choice.type === 'mp3' ? 'MP3' : `MP4, ${heightLabel(choice.height ?? 0)}`;
+/** A choice in words, for the log: "MP4, 1080p", "MP3" or "MP3 at 128 kbps". */
+export const choiceWords = (choice: YouTubeChoice): string =>
+  choice.type === 'mp3' ? qualityWords(choice) : `MP4, ${qualityWords(choice)}`;

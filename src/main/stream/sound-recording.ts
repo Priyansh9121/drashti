@@ -318,6 +318,15 @@ export class SoundRecording {
     return wait.done;
   }
 
+  /**
+   * The quit did not go ahead (bughunt S3-2: a source that would not stop in time): Drashti runs on, so the next quit
+   * finishes a recording made from now on before it goes on, as a first quit does. A wait still under way is left to
+   * end (a refusal comes after it).
+   */
+  cancelQuitting(): void {
+    if (this.quitWait?.over) this.quitWait = null;
+  }
+
   chunk(samples: Int16Array, endAt: number, startAt: number): void {
     const session = this.session;
     if (!session || session.finishing || endAt < session.startedAt) return;

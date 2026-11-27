@@ -19,7 +19,7 @@ import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import type { StreamStatus } from '../../src/shared/stream';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
-import { logText } from './log-lines';
+import { logLines, logText } from './log-lines';
 import { filesUnder, findSecrets } from './secrets';
 import {
   chooseMenuItem,
@@ -69,12 +69,9 @@ const live = (s: StreamStatus) => s.live.state;
 
 /** The stream's lines from Drashti's log (already without the key), to see why a wait failed. */
 function streamLog(userData: string): string {
-  const dir = join(userData, 'logs');
-  if (!existsSync(dir)) return '(no log)';
-  return readdirSync(dir)
-    .map((f) => readFileSync(join(dir, f), 'utf8'))
-    .join('\n')
-    .split('\n')
+  if (!existsSync(join(userData, 'logs'))) return '(no log)';
+  // Every file of the log, in the order written (log-lines.ts).
+  return logLines(userData)
     .filter((l) => /stream|encoder|Program|[Rr]ecording/u.test(l))
     .slice(-60)
     .join('\n');

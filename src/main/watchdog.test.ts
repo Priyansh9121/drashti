@@ -474,7 +474,7 @@ describe('a render error (Session 23)', () => {
     clock.advance(3000);
     dog.renderError(hall, 'output "Main Hall"', 'Error: boom');
     expect(kinds().at(-1)).toBe('gave-up');
-    dog.drawsAgain(hall, 'output "Main Hall"');
+    dog.drawsAgain(hall);
     // No retry left waiting, and nothing reloaded by it.
     clock.advance(RETRY_AGAIN_MS);
     expect(hall.reloads).toBe(1);
@@ -530,7 +530,7 @@ describe('what kept bringing a window down taken off', () => {
     contents.emit('render-process-gone', {}, { reason: 'crashed' });
     clock.advance(100);
     contents.emit('render-process-gone', {}, { reason: 'crashed' });
-    dog.tookOff(contents, 'operator', 'without the video it kept going down on');
+    dog.tookOff(contents, 'without the video it kept going down on');
     clock.advance(100);
     expect(contents.reloads).toBe(2);
     // The back-off's own reload no longer comes.
@@ -544,7 +544,7 @@ describe('what kept bringing a window down taken off', () => {
   it('given up on, it is tried at once, its crash count afresh: a crash loop after that gives up again only at its limit', () => {
     for (let i = 0; i < 4; i++) contents.emit('render-process-gone', {}, { reason: 'crashed' });
     expect(kinds()).toContain('gave-up');
-    dog.tookOff(contents, 'operator', 'without the video it kept going down on');
+    dog.tookOff(contents, 'without the video it kept going down on');
     clock.advance(100);
     expect(contents.reloads).toBe(1);
     // No retry left waiting from the give-up.
@@ -556,6 +556,117 @@ describe('what kept bringing a window down taken off', () => {
       clock.advance(1000);
     }
     expect(contents.reloads).toBe(4);
+  });
+});
+
+// S1-1 (the alpha.24 bug hunt): screens are named after their display, so two TVs of one model share a name, and a
+// screen removed and made again keeps its name. Each window is its own: its minute, its give-up, its own loader.
+describe('two windows of one name (S1-1)', () => {
+  const TWIN = 'output "Placeholder TV"';
+
+  it('the second failing within a minute of the first’s reload is reloaded, never given up on as the first failing again', () => {
+    const left = new FakeContents();
+    const right = new FakeContents();
+    dog.watch(left, TWIN);
+    dog.watch(right, TWIN);
+    dog.renderError(left, TWIN, 'Error: boom');
+    clock.advance(100);
+    expect(left.reloads).toBe(1);
+    clock.advance(30_000);
+    dog.renderError(right, TWIN, 'Error: boom');
+    clock.advance(100);
+    expect([left.reloads, right.reloads]).toEqual([1, 1]);
+    expect(kinds()).toEqual(['render-error', 'reloaded', 'render-error', 'reloaded']);
+  });
+
+  it('one given up on leaves the other as it was: the other’s next fault is reloaded, its own minute', () => {
+    const left = new FakeContents();
+    const right = new FakeContents();
+    dog.watch(left, TWIN);
+    dog.watch(right, TWIN);
+    dog.renderError(left, TWIN, 'Error: boom');
+    clock.advance(100);
+    clock.advance(2000);
+    dog.renderError(left, TWIN, 'Error: boom');
+    expect(kinds().at(-1)).toBe('gave-up');
+    // The left one is given up on; the right one fails for the first time.
+    dog.renderError(right, TWIN, 'Error: boom');
+    clock.advance(100);
+    expect([left.reloads, right.reloads]).toEqual([1, 1]);
+    expect(kinds().filter((k) => k === 'gave-up')).toHaveLength(1);
+  });
+
+  it('a load failure’s own loader is that window’s alone: the other of the same name is reloaded as itself', () => {
+    const left = new FakeContents();
+    const right = new FakeContents();
+    let leftLoads = 0;
+    dog.watch(left, TWIN);
+    dog.watch(right, TWIN);
+    dog.renderError(left, TWIN, 'its page failed to load (ERR_FILE_NOT_FOUND)', () => {
+      leftLoads++;
+    });
+    clock.advance(100);
+    expect([leftLoads, left.reloads]).toEqual([1, 0]);
+    clock.advance(61_000);
+    dog.renderError(right, TWIN, 'Error: boom');
+    clock.advance(100);
+    expect([leftLoads, right.reloads]).toEqual([1, 1]);
+  });
+
+  it('one closing leaves the other’s state alone: given up on, it stays so', () => {
+    const left = new FakeContents();
+    const right = new FakeContents();
+    dog.watch(left, TWIN);
+    dog.watch(right, TWIN);
+    dog.renderError(right, TWIN, 'Error: boom');
+    clock.advance(100);
+    clock.advance(2000);
+    dog.renderError(right, TWIN, 'Error: boom');
+    expect(kinds().at(-1)).toBe('gave-up');
+    const before = events.length;
+    left.destroyed = true;
+    left.emit('destroyed');
+    // Still given up on: its errors meanwhile say nothing more, and nothing reloads it before its retry.
+    dog.renderError(right, TWIN, 'Error: boom');
+    clock.advance(100);
+    expect(events).toHaveLength(before);
+    expect(right.reloads).toBe(1);
+  });
+
+  it('a window made again after one of the same name was reloaded starts afresh: its first fault is reloaded, never given up on', () => {
+    const old = new FakeContents();
+    dog.watch(old, TWIN);
+    dog.renderError(old, TWIN, 'Error: boom');
+    clock.advance(100);
+    old.destroyed = true;
+    old.emit('destroyed');
+    const made = new FakeContents();
+    dog.watch(made, TWIN);
+    clock.advance(5000);
+    dog.renderError(made, TWIN, 'Error: boom');
+    clock.advance(100);
+    expect(made.reloads).toBe(1);
+    expect(kinds()).not.toContain('gave-up');
+  });
+
+  it('every event comes with its window’s page, so two of one name are told apart', () => {
+    const seen: [string, unknown][] = [];
+    const told = new RendererWatchdog((e: WatchdogEvent, ...page: unknown[]) => {
+      seen.push([e.kind, page[0]]);
+    }, clock);
+    const left = new FakeContents();
+    const right = new FakeContents();
+    told.watch(left, TWIN);
+    told.watch(right, TWIN);
+    left.emit('render-process-gone', {}, { reason: 'crashed' });
+    told.renderError(right, TWIN, 'Error: boom');
+    clock.advance(100);
+    expect(seen).toEqual([
+      ['crashed', left],
+      ['render-error', right],
+      ['reloaded', left],
+      ['reloaded', right],
+    ]);
   });
 });
 

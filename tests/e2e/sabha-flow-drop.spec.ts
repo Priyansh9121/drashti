@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { FIRST_PDF_ONLY, FLOW_CHOSEN_IN_PRO, ONLY_A_PDF } from '../../src/shared/sabha-flow-drop';
+import { FIRST_PDF_ONLY, ONLY_A_PDF } from '../../src/shared/sabha-flow-drop';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 import type { PageGlobals } from './helpers';
@@ -20,22 +20,23 @@ import {
   seenAll,
   writeFlows,
 } from './sabha-flow';
+import { makeTestImage } from './test-media';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 /*
  * A PDF dropped on the Sabha flow panel (alpha.24, QA24-FLOWDROP-1; the owner: "also in sabha flow, pdf can be drag and
  * drop"). Dropped, it becomes the running order as Choose PDF… makes it (the same flow:choose and store, Main's dialog
- * never opened); anything else is refused in words, the window's own import never taking it; of several files the
- * first PDF is taken and the panel says so; with a flow there it asks "Replace the running order?" first, Cancel
- * keeping it and Now. The panel shows a drop state while files are over it, and the show keeps the keyboard. Simple
- * Mode's panel takes none: the running order is chosen in Pro Mode.
+ * never opened); of several files the first PDF is taken and the panel says so, the others left (never imported); with
+ * a flow there it asks "Replace the running order?" first, Cancel keeping it and Now. The panel shows a drop state while
+ * a PDF is over it, and the show keeps the keyboard. Files with no PDF among them go by, to the window's own import of
+ * files dropped anywhere on it, as before the panel took drops (bughunt S2-1); and so does everything dropped on Simple
+ * Mode's panel, whose running order is chosen in Pro Mode: into Simple Mode's playlist.
  *
  * The drop as helpers.ts dropFiles makes one (File objects behind a file input, so the preload tells their paths, then
  * dragenter, dragover and drop with them). Placeholder running orders only (sabha-flow-fixtures.ts).
  */
 
 const DROP_HERE = 'Drop the PDF to use it as the running order';
-const PRO_ONLY = 'The running order is chosen in Pro Mode';
 
 /** Drop these files on `target` as the system's drag and drop does, the panel's drop state seen while they are over it. */
 async function dropOn(win: Page, target: Locator, paths: string[], state: string): Promise<void> {
@@ -64,6 +65,38 @@ async function dropOn(win: Page, target: Locator, paths: string[], state: string
   await expect(overlay).toHaveCount(0);
 }
 
+/**
+ * Drop these files on `target` as the system's drag and drop does, the panel never showing its drop state: it lets
+ * them go by, to the window's own import (bughunt S2-1).
+ */
+async function dropPast(win: Page, target: Locator, paths: string[]): Promise<void> {
+  await win.evaluate(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.id = 'e2e-flow-drop-source';
+    input.style.display = 'none';
+    document.body.appendChild(input);
+  });
+  await win.setInputFiles('#e2e-flow-drop-source', paths);
+  const dataTransfer = await win.evaluateHandle(() => {
+    const input = document.getElementById('e2e-flow-drop-source') as HTMLInputElement;
+    const dt = new DataTransfer();
+    for (const file of Array.from(input.files ?? [])) dt.items.add(file);
+    input.remove();
+    return dt;
+  });
+  const overlay = win.getByTestId('flow-drop-overlay');
+  await target.dispatchEvent('dragenter', { dataTransfer });
+  await target.dispatchEvent('dragover', { dataTransfer });
+  await expect(overlay).toHaveCount(0);
+  await target.dispatchEvent('drop', { dataTransfer });
+  await expect(overlay).toHaveCount(0);
+}
+
+/** The open playlist's rows. */
+const playlistRows = (win: Page) => win.getByTestId('open-playlist').getByTestId('playlist-item');
+
 /** Placeholder files that are not running orders: words, and words in a file named as a PDF. */
 function notRunningOrders(): { notes: string; pretend: string } {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-flow-drop-'));
@@ -74,7 +107,7 @@ function notRunningOrders(): { notes: string; pretend: string } {
   return { notes, pretend };
 }
 
-test('a PDF dropped on the Sabha flow panel is the running order as Choose PDF… makes it; anything else refused in words; of several files the first PDF, said; with a flow there, Replace the running order? first; the show keeps the keyboard', async () => {
+test('a PDF dropped on the Sabha flow panel is the running order as Choose PDF… makes it; other files go by to the window’s import as before; of several files the first PDF, said; with a flow there, Replace the running order? first; the show keeps the keyboard', async () => {
   test.setTimeout(240_000);
   const pdfs = await writeFlows({ english: ENGLISH, gujarati: GUJARATI });
   const { notes, pretend } = notRunningOrders();
@@ -82,30 +115,43 @@ test('a PDF dropped on the Sabha flow panel is the running order as Choose PDF�
   const win = await operatorPage(app);
   await operatorReady(win);
   await sizeOperatorWindow(app, win, CI_WINDOW);
+  const pictures = mkdtempSync(join(tmpdir(), 'drashti-flow-drop-pictures-'));
+  const picture = await makeTestImage(win, join(pictures, 'Flowcheck picture.png'), { color: '#14532d' });
+  const second = await makeTestImage(win, join(pictures, 'Flowcheck second.png'), { color: '#1e3a8a' });
   // Main's file dialog stood in for, and counted: a drop never opens it.
   await answerDialog(app, null);
   const panel = await openPanel(win);
   const rows = panel.getByTestId('flow-row');
   const problem = panel.getByTestId('flow-problem');
   const note = panel.getByTestId('flow-note');
-  // The window's own import of files dropped elsewhere asks where they go: it never hears of a drop on the panel.
+  // The window's own import of files dropped anywhere on it: with no playlist open, it asks where they go.
   const whereTheyGo = win.getByTestId('drop-new-dialog');
-  // The show's own control has the keyboard throughout: a drop never takes it.
+  // The show's own control has the keyboard throughout: a drop of a PDF never takes it.
   const show = win.getByTestId('blackout-button');
+
+  // Not a PDF: the panel lets it go by and the window imports it, as anywhere on the window (alpha.23's way; bughunt
+  // S2-1). With no playlist open, the small window asks where it goes; Enter makes a playlist for it, opened.
+  await dropPast(win, panel, [picture]);
+  await expect(whereTheyGo).toBeVisible();
+  await win.keyboard.press('Enter');
+  await expect(whereTheyGo).toHaveCount(0);
+  await expect(playlistRows(win)).toHaveText([/Flowcheck picture/u]);
+  // With a playlist open, at its end.
+  await dropPast(win, panel, [second]);
+  await expect(playlistRows(win)).toHaveText([/Flowcheck picture/u, /Flowcheck second/u], {
+    timeout: 30_000,
+  });
+  await expect(problem).toHaveCount(0);
+  expect(await flowKept(win)).toBeNull();
+  await expect(whereTheyGo).toHaveCount(0);
   await show.focus();
   await expect(show).toBeFocused();
 
-  // Not a PDF: refused in words, nothing chosen.
-  await dropOn(win, panel, [notes], DROP_HERE);
-  await expect(problem).toHaveText(`“Flowcheck notes.txt” is not a PDF, so it was not used. ${ONLY_A_PDF}`);
-  expect(await flowKept(win)).toBeNull();
-  await expect(whereTheyGo).toHaveCount(0);
-  await expect(show).toBeFocused();
-
-  // Named as a PDF but not one inside: Main's own words, as Choose PDF… says them for such a file.
+  // Named as a PDF but not one inside: Main's own words, as Choose PDF… says them for such a file; never imported.
   await dropOn(win, panel, [pretend], DROP_HERE);
   await expect(problem).toHaveText('That file is not a PDF: choose the running order saved as a PDF.');
   expect(await flowKept(win)).toBeNull();
+  await expect(playlistRows(win)).toHaveCount(2);
   // Main takes only a full path to a PDF, whatever the window sends.
   expect(
     await win.evaluate(() => (globalThis as PageGlobals).drashti.flow.choose('Flowcheck English order.pdf')),
@@ -122,6 +168,7 @@ test('a PDF dropped on the Sabha flow panel is the running order as Choose PDF�
   await expect(note).toHaveCount(0);
   expect(await dialogsOpened(app)).toBe(0);
   await expect(whereTheyGo).toHaveCount(0);
+  await expect(playlistRows(win)).toHaveCount(2);
   await expect(show).toBeFocused();
 
   // The very flow Choose PDF… makes of the same file: Replace… with it, through Main's dialog.
@@ -164,7 +211,8 @@ test('a PDF dropped on the Sabha flow panel is the running order as Choose PDF�
   await expect(show).toBeFocused();
   await expectFits(panel, 'the Sabha flow panel saying what a drop left out, at 1024 × 645');
 
-  // Folded, its heading takes a drop too, and opens: a PDF among other files, the PDF taken, the others said.
+  // Folded, its heading takes a drop too, and opens: a PDF among other files, the PDF taken, the others said and left
+  // (the panel's drop, never also imported into the open playlist).
   await panel.getByTestId('sabha-flow-toggle').click();
   await expect(panel.getByTestId('sabha-flow-body')).toHaveCount(0);
   await show.focus();
@@ -176,10 +224,11 @@ test('a PDF dropped on the Sabha flow panel is the running order as Choose PDF�
   expect(await seenAll(rows)).toEqual(dropped);
   await expect(show).toBeFocused();
   await expect(whereTheyGo).toHaveCount(0);
+  await expect(playlistRows(win)).toHaveCount(2);
   await app.close();
 });
 
-test('Simple Mode’s Sabha flow takes no drop: it says the running order is chosen in Pro Mode, and keeps the flow', async () => {
+test('Simple Mode’s Sabha flow takes no drop: a PDF dropped on it goes into Simple Mode’s playlist, as anywhere on its window, and the flow stays (bughunt S2-1)', async () => {
   test.setTimeout(150_000);
   const pdfs = await writeFlows({ english: ENGLISH, gujarati: GUJARATI });
   const { app } = await launchApp();
@@ -200,8 +249,12 @@ test('Simple Mode’s Sabha flow takes no drop: it says the running order is cho
   const panel = win.getByTestId('sabha-flow');
   await expect(panel.getByTestId('flow-row')).toHaveCount(ENGLISH.items.length);
 
-  await dropOn(win, panel, [pdfs.gujarati], PRO_ONLY);
-  await expect(panel.getByTestId('flow-problem')).toHaveText(FLOW_CHOSEN_IN_PRO);
+  // The day's playlist Simple Mode came with, open and empty.
+  await expect(win.getByTestId('open-playlist')).toBeVisible();
+  await expect(playlistRows(win)).toHaveCount(0);
+  await dropPast(win, panel, [pdfs.gujarati]);
+  await expect(playlistRows(win)).toHaveText([/Flowcheck Gujarati order/u], { timeout: 60_000 });
+  await expect(panel.getByTestId('flow-problem')).toHaveCount(0);
   await expect(win.getByTestId('flow-replace-confirm')).toHaveCount(0);
   await expect(win.getByTestId('drop-new-dialog')).toHaveCount(0);
   expect(await flowKept(win)).toEqual({ fileName: ENGLISH.fileName, status: 'read' });
@@ -210,6 +263,6 @@ test('Simple Mode’s Sabha flow takes no drop: it says the running order is cho
     await win.evaluate((file) => (globalThis as PageGlobals).drashti.flow.choose(file), pdfs.gujarati),
   ).toMatchObject({ ok: false });
   expect(await flowKept(win)).toEqual({ fileName: ENGLISH.fileName, status: 'read' });
-  await expectFits(panel, 'Simple Mode’s Sabha flow saying it is chosen in Pro Mode, at 1024 × 645');
+  await expectFits(panel, 'Simple Mode’s Sabha flow after a drop, at 1024 × 645');
   await app.close();
 });

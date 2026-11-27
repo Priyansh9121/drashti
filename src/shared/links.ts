@@ -8,8 +8,9 @@
  * everything else stays in the folder, listed as not taken.
  *
  * YouTube (Session 25c): one video, as MP4 (video) or MP3 (sound only), at
- * the quality chosen, never above the admin's highest video quality (no
- * permission tick since alpha.16: the owner, 6 Nov 2026, the sanstha approves
+ * the best quality up to 1080p (the best sound), or since alpha.24 the
+ * Quality chosen in the window once the link is checked (no permission tick
+ * since alpha.16: the owner, 6 Nov 2026, the sanstha approves
  * Drashti). Drashti runs yt-dlp for it (and yt-dlp runs Deno for
  * YouTube's player JavaScript); Drashti never signs in to YouTube. A
  * downloaded file holds only the video: YouTube sends its ads apart.
@@ -219,6 +220,12 @@ export type YouTubeType = 'mp4' | 'mp3';
 export interface LinkDownloadOptions {
   name?: string;
   captions?: boolean;
+  /**
+   * A YouTube video's **Quality** (alpha.24, the owner: "in video/audio download, we can select quality"), chosen
+   * once the link is checked: a height the video offers for an MP4, or an MP3's bitrate in kbps (0: the best sound).
+   * None: the usual, the best up to 1080p (an MP3: the best sound).
+   */
+  quality?: number;
 }
 
 /** What a YouTube download is to be: asked for with each download. */
@@ -226,7 +233,104 @@ export interface YouTubeChoice {
   type: YouTubeType;
   /** The height (MP4 only; MP3 takes the best sound). */
   height: number | null;
+  /** An MP3's bitrate, when one was chosen under Quality (alpha.24); none: the best sound. */
+  kbps?: number;
 }
+
+/** The MP3 bitrates the window offers after the best sound (kbps; alpha.24). */
+export const MP3_BITRATES = [192, 128] as const;
+
+/** One of the window's Quality choices: a height (MP4) or a bitrate (MP3; 0: the best sound), in words, about how big. */
+export interface LinkQuality {
+  value: number;
+  label: string;
+  bytes: number | null;
+}
+
+/** About how big an MP3 at this bitrate is, for a video this long (null: its length is not known). */
+const mp3Bytes = (kbps: number, duration: number | null): number | null =>
+  duration === null ? null : Math.round((kbps * 1000 * duration) / 8);
+
+/**
+ * The window's Quality choices for a checked YouTube video (alpha.24), and the one chosen to begin with. An MP4: every
+ * height the video offers, tallest first, each with about how big its file is, the best up to 1080p to begin with (as
+ * a Download with no choice takes; the smallest when every one is taller). None when the video lists no heights: no
+ * choice is shown, and a Download says what it says today. An MP3: the best sound to begin with, then each bitrate.
+ */
+export function linkQualities(
+  video: VideoDetails,
+  audio: boolean,
+): { options: LinkQuality[]; initial: number | null } {
+  if (audio)
+    return {
+      options: [
+        { value: 0, label: 'Best', bytes: video.soundBytes },
+        ...MP3_BITRATES.map((kbps) => ({
+          value: kbps,
+          label: `${String(kbps)} kbps`,
+          bytes: mp3Bytes(kbps, video.duration),
+        })),
+      ],
+      initial: 0,
+    };
+  const options = video.heights.map((h) => ({
+    value: h.height,
+    label: heightLabel(h.height),
+    bytes: h.bytes,
+  }));
+  return {
+    options,
+    initial: chosenHeight(video, DEFAULT_LINK_MAX_HEIGHT, null) ?? options.at(-1)?.value ?? null,
+  };
+}
+
+/** A Download with no choice, when the video has no height at 1080p or below (as before alpha.24). */
+const NONE_UP_TO_1080 = 'This video has no quality at or below 1080p. Paste another YouTube link.';
+
+/**
+ * What a Download takes (alpha.24): the Quality chosen, while the video offers it (above 1080p too, as the operator
+ * chose it); with none chosen, the usual (the best up to 1080p, or the best sound). Anything else is refused in words.
+ */
+export function qualityChoice(
+  video: VideoDetails,
+  audio: boolean,
+  picked: number | null | undefined,
+): { ok: true; choice: YouTubeChoice } | { ok: false; message: string } {
+  if (audio) {
+    if (picked === undefined || picked === null || picked === 0)
+      return { ok: true, choice: { type: 'mp3', height: null } };
+    const kbps = MP3_BITRATES.find((offered) => offered === picked);
+    return kbps === undefined
+      ? {
+          ok: false,
+          message: `Choose Best, ${MP3_BITRATES.map((k) => `${String(k)} kbps`).join(' or ')} for the sound.`,
+        }
+      : { ok: true, choice: { type: 'mp3', height: null, kbps } };
+  }
+  if (picked === undefined || picked === null) {
+    const height = chosenHeight(video, DEFAULT_LINK_MAX_HEIGHT, null);
+    return height === null
+      ? { ok: false, message: NONE_UP_TO_1080 }
+      : { ok: true, choice: { type: 'mp4', height } };
+  }
+  return video.heights.some((h) => h.height === picked)
+    ? { ok: true, choice: { type: 'mp4', height: picked } }
+    : { ok: false, message: 'That quality is not offered by this video. Choose another under Quality.' };
+}
+
+/** About how big a download of this choice is: the MP4's height, the best sound's MP3, or an MP3 at its bitrate. */
+export function choiceBytes(video: VideoDetails, choice: YouTubeChoice): number | null {
+  if (choice.type === 'mp3') return choice.kbps ? mp3Bytes(choice.kbps, video.duration) : video.soundBytes;
+  return video.heights.find((h) => h.height === choice.height)?.bytes ?? null;
+}
+
+/** A choice in the status bar's words: "720p", "2160p (4K)", "MP3" or "MP3 at 128 kbps". */
+export const qualityWords = (choice: YouTubeChoice): string =>
+  choice.type === 'mp3'
+    ? choice.kbps
+      ? `MP3 at ${String(choice.kbps)} kbps`
+      : 'MP3'
+    : heightLabel(choice.height ?? 0);
 
 /**
  * The height an MP4 download asks for: the one picked, while the video offers it and the setting allows
@@ -298,8 +402,8 @@ export interface LinkView {
   maxHeight: LinkHeight;
   /** The import run of what was saved, once it started (its report). */
   runId: string | null;
-  /** A YouTube download's type and height, once it starts. */
-  choice: { type: YouTubeType; height: number | null } | null;
+  /** A YouTube download's type and height (an MP3's bitrate, when one was chosen), once it starts. */
+  choice: YouTubeChoice | null;
   /** A Dropbox folder's own playlist (Session 26c), made when its import ended; opened as it is made. */
   playlist: { id: string; name: string } | null;
   /** The relative path of each file in a folder imported into an existing playlist. */

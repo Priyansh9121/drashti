@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { TrackSlide } from '../../../shared/kirtans';
+import { keyText } from '../../../shared/keymap';
 import { parseLyrics } from '../../../shared/lyrics';
 import type { Lang, TranslitSource } from '../../../shared/model';
 import { LANG_NAMES } from '../../../shared/themes';
@@ -279,7 +280,8 @@ export function WordsEditor({ platform }: { platform: string }) {
   if (!open) return null;
   const byLanguage = mode === 'tracks' && tracks !== null;
   const readOnly = !byLanguage && legacyFonts.length > 0;
-  const saveKey = platform === 'darwin' ? '⌘↩' : 'Ctrl+Enter';
+  // Its key as this computer writes it: ⌘↩ on a Mac, Ctrl+Enter on Windows (alpha.24, keyplat R5).
+  const saveKey = keyText('Mod+Enter', platform);
   const title = open.mode === 'new' ? 'New presentation' : `Words of “${open.name}”`;
   const changed = hasChanges(state);
   const onKeyDown = (e: React.KeyboardEvent) => {
