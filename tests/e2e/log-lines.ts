@@ -60,3 +60,21 @@ export function logLines(userData: string): string[] {
 export function logText(userData: string): string {
   return logLines(userData).join('\n');
 }
+
+/**
+ * A start's first line in the log: the main process running (src/main/index.ts, phaseLine of start-phases.ts). Only a
+ * new file's header line, or the line saying a move of drashti.log failed, can come just before it.
+ */
+const START = /^\S+ \[info\] Start: the main process running at \d+ ms$/u;
+
+/**
+ * This start's lines: the Drashti last started on `userData` (running, or just quit), from its first line on, in the
+ * order written, across every file of the log as logLines reads them (so also across this computer's midnight, CI's
+ * 00:00 UTC). After Drashti is started again on the same data folder, only the new start's; before a start's first
+ * line, none. The specs' checks read the whole log (logLines, logText); this is for a reader of one start's lines.
+ */
+export function instanceLines(userData: string): string[] {
+  const lines = logLines(userData);
+  const start = lines.findLastIndex((line) => START.test(line));
+  return start < 0 ? [] : lines.slice(start);
+}

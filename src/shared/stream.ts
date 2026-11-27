@@ -172,6 +172,12 @@ export interface ProgramInputs {
   message: string | null;
 }
 
+/** Tests only (alpha.23, the stream-clock seam): a generated clip the stream's page plays on its own audio clock. */
+export interface StreamTestSound {
+  rate: number;
+  samples: Int16Array;
+}
+
 /** What the stream's page needs to know about itself. */
 export interface ProgramContext {
   layout: StreamLayout;

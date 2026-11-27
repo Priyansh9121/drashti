@@ -13,7 +13,8 @@ import {
   windowShowing,
 } from './helpers';
 import { plainText, type PlacedSound } from './caption-clips';
-import { framesVerdict, meter } from './route-c-frames';
+import { framesVerdict, meter, type SoundSeam } from './route-c-frames';
+import { firstSoundAt, latencyFromGraph, loudRuns, placeByGraph } from './route-c-placement';
 
 /*
  * Route C inside Drashti (alpha.23, cap-realc; a22-review-cap S4), with no stand-in engine (no DRASHTI_TEST_SPEECH):
@@ -22,9 +23,7 @@ import { framesVerdict, meter } from './route-c-frames';
  * and the hall, the stage and the stream drawing each settled phrase. What it hears is the stream's sound input:
  * Chromium's fake microphone playing one generated WAV file (DRASHTI_TEST_FAKE_SOUND_FILE, never in a packaged
  * Drashti), through the stream's own sound graph, its speech tap and its port to Main, as a mixer's feed is heard.
- * caption-ai-chain.spec.ts runs it with the generated test model. The same run with alpha.22's real packs and generated
- * speech (caption-ai-real.spec.ts) waits for the next release: on CI's Mac the fake microphone fell behind and lost
- * sound (cap-realc.md), so it comes with a seam that plays the clip on the stream page's own audio clock.
+ * caption-ai-chain.spec.ts runs it with the generated test model; caption-ai-real.spec.ts with alpha.22's real packs.
  */
 
 const OUTPUTS = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
@@ -37,8 +36,14 @@ export interface RouteCInApp {
   language: 'gu' | 'hi';
   /** The language's own model as Live Captions lists it. */
   model: string;
-  /** Launch switches beyond the fake microphone's (the generated model's known list). */
+  /** Launch switches beyond the sound's own (the generated model's known list). */
   env?: Record<string, string>;
+  /**
+   * How the generated sound reaches the stream's sound graph: Chromium's fake microphone playing the file
+   * (DRASHTI_TEST_FAKE_SOUND_FILE, the default), or the stream's page playing it on its own audio clock in place of
+   * its sound input (DRASHTI_TEST_STREAM_SOUND_FILE, alpha.23's stream-clock seam: it cannot drift against the graph).
+   */
+  seam?: SoundSeam;
   /** The pack as an admin brings it in: a zip as downloaded, or a folder. */
   pack: { kind: 'zip' | 'folder'; path: string };
   /** The fake microphone's file (absolute) and the sounds in it, each `leadMs` / `gapMs` apart. */
@@ -252,7 +257,9 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
     ...NO_PLACEHOLDERS,
     ...o.env,
     DRASHTI_TEST_FAKE_DEVICES: '1',
-    DRASHTI_TEST_FAKE_SOUND_FILE: o.wav,
+    ...((o.seam ?? 'fake-microphone') === 'stream-clock'
+      ? { DRASHTI_TEST_STREAM_SOUND_FILE: o.wav }
+      : { DRASHTI_TEST_FAKE_SOUND_FILE: o.wav }),
   });
   // The run's numbers (times, counts, frame meters and ids, never words), in the CI log and attached, as far as the
   // run got: written again as each part is known, so a failure keeps them (S3).
@@ -379,12 +386,36 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
     expect(helper.below, `${helper.args}: below the show`).toBe(true);
     expect((await packView())[0]?.inUse).toBe(true);
 
-    // Every sound heard: its phrase settled (the operator's review panel says so).
+    // Through the stream-clock seam each clip is placed where it played in the stream's graph (route-c-placement.ts:
+    // its level reports), as that graph's clock may run slower than real time (CI's Mac, run 45401342094); with the fake
+    // microphone, where the file holds it from soundAskedAt (the file began no earlier).
+    const onGraph = (o.seam ?? 'fake-microphone') === 'stream-clock';
+    const graphPlaced = async () =>
+      placeByGraph(
+        (await levels()).filter((l) => l.at >= soundAskedAt),
+        o.sounds.length,
+      );
+    // Every sound heard: its phrase settled (the operator's review panel says so). Through the stream-clock seam the
+    // wait is twice as long: a graph playing slower than real time takes longer to play the file (CI's Mac: 2.2x);
+    // the checks after it are measured against where each clip played, never loosened. The loud runs seen so far go
+    // into the run's numbers, so a timeout says whether a clip split or went missing (review S1).
     await expect
       .poll(
-        async () =>
-          (await reviewed()).some((r) => r.status === 'settled' && r.at >= soundAskedAt + last.speechStartMs),
-        { timeout: last.endMs + o.gapMs + 30_000 },
+        async () => {
+          if (onGraph)
+            summary['loudRuns'] = loudRuns((await levels()).filter((l) => l.at >= soundAskedAt)).map((r) => [
+              Math.round(r.first - soundAskedAt),
+              Math.round(r.last - soundAskedAt),
+            ]);
+          const lastStart = onGraph
+            ? (await graphPlaced())?.at(-1)?.startAt
+            : soundAskedAt + last.speechStartMs;
+          return (
+            lastStart !== undefined &&
+            (await reviewed()).some((r) => r.status === 'settled' && r.at >= lastStart)
+          );
+        },
+        { timeout: (onGraph ? 2 : 1) * last.endMs + o.gapMs + 30_000 },
       )
       .toBe(true);
     // The last one a moment to reach the places (each draws a settled phrase within the live limit, or fails).
@@ -409,6 +440,29 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
       if (r.status === 'settled' && !settled.has(r.phraseId))
         settled.set(r.phraseId, { at: r.at, text: r.text, endAt: r.endAt + mainOffset });
     const phrases = [...settled.values()];
+    // Each sound's window: where its voice began, where its sound began, where its voice ended.
+    const placed = onGraph ? await graphPlaced() : null;
+    if (onGraph) summary['placedOnGraph'] = placed;
+    const windows = o.sounds.map((sound, i) => {
+      const p = placed?.[i];
+      return p
+        ? { startAt: p.startAt, soundAt: p.startAt, endAt: p.endAt }
+        : {
+            startAt: soundAskedAt + sound.speechStartMs,
+            soundAt: soundAskedAt + sound.startMs,
+            endAt: soundAskedAt + sound.speechEndMs,
+          };
+    });
+    if (onGraph) {
+      await say();
+      expect(placed, 'every clip placed where it played in the stream’s graph').not.toBeNull();
+      // Nothing heard before the first clip played in the graph either (review MUST-2): a phrase settled between the
+      // file's first-clip time and the graph's would otherwise belong to no clip and go unchecked.
+      const firstAt = firstSoundAt(placed?.[0]?.startAt, soundAskedAt + first.speechStartMs);
+      const early = review.filter((r) => r.at < firstAt).length;
+      summary['heardBeforeFirstSound'] = early;
+      expect(early, 'nothing heard before the first clip played in the stream’s graph').toBe(0);
+    }
     // Every sound's numbers first (S3: kept even when one fails), then its checks.
     const report: Record<string, unknown>[] = [];
     const checks: {
@@ -419,11 +473,10 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
     }[] = [];
     for (const [i, sound] of o.sounds.entries()) {
       const next = o.sounds[i + 1];
-      // A phrase is this sound's when it settled after the sound began (the file at its earliest) and before the next.
-      const own = phrases.filter(
-        (p) =>
-          p.at >= soundAskedAt + sound.speechStartMs && (!next || p.at < soundAskedAt + next.speechStartMs),
-      );
+      const w = windows[i] ?? { startAt: 0, soundAt: 0, endAt: 0 };
+      const nextW = windows[i + 1];
+      // A phrase is this sound's when it settled after the sound began and before the next began.
+      const own = phrases.filter((p) => p.at >= w.startAt && (!nextW || p.at < nextW.startAt));
       const finalText = own.at(-1)?.text ?? '';
       const heard = own.length
         ? o.heard(sound, own.map((p) => p.text).join(' '))
@@ -433,34 +486,55 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
       for (const [name, drawn] of watched) {
         // The words of its settled phrase on that place (the first time they were drawn after the sound began).
         const at = own.length
-          ? ((await drawn()).find(
-              (d) => d.at >= soundAskedAt + sound.startMs && plainText(d.text) === plainText(finalText),
-            )?.at ?? null)
+          ? ((await drawn()).find((d) => d.at >= w.soundAt && plainText(d.text) === plainText(finalText))
+              ?.at ?? null)
           : null;
-        // From the end of the sound to its words on that place: the file began no earlier than soundAskedAt, so this
-        // is never less than the truth; soundOnAt gives the least it could be.
-        shown[name] = at === null ? null : at - (soundAskedAt + sound.speechEndMs);
-        row[`${name}Ms`] = at === null ? null : Math.round(at - (soundAskedAt + sound.speechEndMs));
-        row[`${name}AtLeastMs`] = at === null ? null : Math.round(at - (soundOnAt + sound.speechEndMs));
+        // From the end of the sound to its words on that place. With the fake microphone the file began no earlier
+        // than soundAskedAt, so this is never less than the truth (soundOnAt gives the least it could be); through
+        // the stream-clock seam, from the end of its sound in the graph with the meter's step added.
+        const latest = at === null ? null : onGraph ? latencyFromGraph(at, w) : at - w.endAt;
+        shown[name] = latest;
+        row[`${name}Ms`] = latest === null ? null : Math.round(latest);
+        if (!onGraph)
+          row[`${name}AtLeastMs`] = at === null ? null : Math.round(at - (soundOnAt + sound.speechEndMs));
       }
       // When the sound itself reached the stream's sound graph, against when the file holds it (the file at its
       // earliest): a fake microphone late or slow on a busy computer shows here, apart from the recogniser.
-      const heardLevels = loudSpan(
-        await levels(),
-        soundAskedAt + sound.startMs - 500,
-        next ? soundAskedAt + next.startMs - 500 : soundAskedAt + sound.endMs + o.gapMs,
-      );
+      // Through the stream-clock seam, the clip's own run in the graph (review S5), and how slow it played (S3).
+      const p = placed?.[i];
+      const heardLevels = p
+        ? { first: p.startAt, last: p.endAt }
+        : loudSpan(
+            await levels(),
+            soundAskedAt + sound.startMs - 500,
+            next ? soundAskedAt + next.startMs - 500 : soundAskedAt + sound.endMs + o.gapMs,
+          );
       row['arrivedLateMs'] = heardLevels
         ? Math.round(heardLevels.first - (soundAskedAt + sound.speechStartMs))
         : null;
       row['loudForMs'] = heardLevels ? Math.round(heardLevels.last - heardLevels.first) : null;
       row['voiceMs'] = Math.round(sound.speechEndMs - sound.speechStartMs);
+      if (p && sound.speechEndMs > sound.speechStartMs)
+        row['stretch'] = Number(
+          ((p.endAt - p.startAt) / (sound.speechEndMs - sound.speechStartMs)).toFixed(2),
+        );
+      // And, in the same run, the hall's latency as the file would place it from when the page's sound went on (for
+      // this seam the clip starts within a render of data-sound="on"), to compare the two measures clip by clip.
+      if (onGraph && row['hallMs'] !== null) {
+        const hallAt = (await watched[0][1]()).find(
+          (d) => d.at >= w.soundAt && plainText(d.text) === plainText(finalText),
+        )?.at;
+        row['hallByFileMs'] =
+          hallAt === undefined ? null : Math.round(hallAt - (soundOnAt + sound.speechEndMs));
+      }
       // The recogniser's own view: how late it put the speech's end against the file (a late sound input shows here
       // too), and how long after that end the phrase settled (its pause, its decoding and the way to the screens).
       const lastOwn = own.at(-1);
-      row['endLateMs'] = lastOwn ? Math.round(lastOwn.endAt - (soundAskedAt + sound.speechEndMs)) : null;
+      row['endLateMs'] = lastOwn
+        ? Math.round(lastOwn.endAt - (p ? p.endAt : soundAskedAt + sound.speechEndMs))
+        : null;
       row['settledAfterEndMs'] = lastOwn ? Math.round(lastOwn.at - lastOwn.endAt) : null;
-      // What was heard, only when it was wrong: generated placeholders only, never real speech.
+      // What was heard, only when it was wrong: generated placeholder sentences (cap-winci's), never real speech.
       if (!heard.ok) row['heard'] = own.map((p) => p.text).join(' ');
       report.push(row);
       checks.push({ sound: sound.id, phrases: own.length, heardOk: heard.ok, shown });
@@ -509,18 +583,20 @@ export async function routeCInTheApp(o: RouteCInApp): Promise<void> {
     // QR-1 A): worse only when every sound's window is worse than both controls (Q59-1).
     const all = await frames();
     const controls = [meter(all, controlFrom, controlTo), meter(all, offAt + 500, afterTo)];
-    const trials = o.sounds.map((sound) => {
-      const own = phrases.filter((p) => p.at >= soundAskedAt + sound.speechStartMs);
+    const trials = o.sounds.map((sound, i) => {
+      const startAt = windows[i]?.startAt ?? soundAskedAt + sound.speechStartMs;
+      const own = phrases.filter((p) => p.at >= startAt);
       const settledAt = own[0]?.at ?? soundAskedAt + sound.endMs + o.gapMs;
-      return meter(all, soundAskedAt + sound.speechStartMs, settledAt + 500, controls[0]?.period);
+      return meter(all, startAt, settledAt + 500, controls[0]?.period);
     });
     summary['controls'] = controls;
     summary['trials'] = trials;
-    summary['framesWorse'] = framesVerdict(process.platform, trials, controls).worse;
+    summary['seam'] = o.seam ?? 'fake-microphone';
+    summary['framesWorse'] = framesVerdict(process.platform, trials, controls, o.seam).worse;
     await say();
     for (const c of controls) expect(c.frames, 'a control window drew').toBeGreaterThan(30);
-    // The owner (QA23-REALC-2): "Mac: log frames only (Rec.)": recorded above, judged everywhere but the Mac.
-    const verdict = framesVerdict(process.platform, trials, controls);
+    // QA23-REALC-2: the fake-microphone chain logs Mac frames only; the stream-clock real spec judges them too.
+    const verdict = framesVerdict(process.platform, trials, controls, o.seam);
     expect(
       verdict.judged && verdict.worse,
       'the stream’s frames while Route C heard the sounds, no worse than with captions off',

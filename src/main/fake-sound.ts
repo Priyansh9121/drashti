@@ -4,9 +4,8 @@ import { posix, win32 } from 'node:path';
  * Chromium's fake camera and microphone, for the tests only (never a packaged Drashti: switches.ts honours no
  * DRASHTI_TEST_* there). DRASHTI_TEST_FAKE_DEVICES=1 puts a moving test pattern and a beep in place of real devices.
  * With DRASHTI_TEST_FAKE_SOUND_FILE too (alpha.23, cap-realc), the fake microphone plays that WAV file once instead of
- * its beep: generated sound for caption AI's own recogniser (Route C), heard through the stream's own sound graph,
- * its speech tap and its port to Main, as a mixer's feed is. Every one of Chromium's fake media switches is named here
- * alone.
+ * its beep: generated speech for caption AI's real recogniser, heard through the stream's own sound graph, its speech
+ * tap and its port to Main, as a mixer's feed is. Every one of Chromium's fake media switches is named here alone.
  */
 
 /** Chromium's fake camera and microphone. */
@@ -62,12 +61,13 @@ export function fakeMediaSwitchesOn(has: (name: string) => boolean): string[] {
 
 /**
  * The packaged self-test's part (DRASHTI_SELFTEST=ffmpeg, scripts/check-ffmpeg.mjs --packaged, started asking for the
- * fake devices and the fake microphone's file): passed only when none of Chromium's fake media switches is on and
- * the audio service keeps its sandbox.
+ * fake devices, the fake microphone's file and the stream-clock seam's clip): passed only when none of Chromium's fake
+ * media switches is on, the audio service keeps its sandbox, and the stream's page has no test clip to play.
  */
 export function fakeMediaSelfTest(
   has: (name: string) => boolean,
   disabledFeatures: string,
+  streamTestSound = false,
 ): {
   passed: boolean;
   on: string[];
@@ -76,6 +76,7 @@ export function fakeMediaSelfTest(
   const on = [
     ...fakeMediaSwitchesOn(has),
     ...(disabledFeatures.split(',').includes(AUDIO_SANDBOX) ? [`disable-features=${AUDIO_SANDBOX}`] : []),
+    ...(streamTestSound ? ['DRASHTI_TEST_STREAM_SOUND_FILE'] : []),
   ];
   return on.length === 0
     ? { passed: true, on, detail: 'none: Chromium’s fake camera and microphone are off' }

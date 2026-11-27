@@ -34,17 +34,22 @@ export function meter(frames: readonly number[], from: number, to: number, perio
 const worseThan = (t: FrameWindow, c: FrameWindow): boolean =>
   t.p95 - c.p95 > 1 || t.longest - c.longest > 1 || t.over15 > c.over15;
 
+/** How the generated sound reaches the stream's sound graph: Chromium's fake microphone, or the stream-clock seam. */
+export type SoundSeam = 'fake-microphone' | 'stream-clock';
+
 /**
  * Whether Route C's windows were worse (every one worse than every captions-off window), and whether that is judged
- * here: everywhere but the Mac (the owner's "Mac: log frames only").
+ * here: everywhere but the Mac with the fake microphone (the owner's "Mac: log frames only"). Through the stream-clock
+ * seam (alpha.23) the sound plays on the graph's own clock, so the Mac is judged again.
  */
 export function framesVerdict(
   platform: NodeJS.Platform,
   trials: readonly FrameWindow[],
   controls: readonly FrameWindow[],
+  seam: SoundSeam = 'fake-microphone',
 ): { judged: boolean; worse: boolean } {
   return {
-    judged: platform !== 'darwin',
+    judged: platform !== 'darwin' || seam === 'stream-clock',
     worse: trials.every((t) => controls.every((c) => worseThan(t, c))),
   };
 }
