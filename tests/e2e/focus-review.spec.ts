@@ -34,7 +34,7 @@ for (const finish of ['Enter', 'Escape'])
       await operatorReady(win);
       await sizeOperatorWindow(app, win, CI_WINDOW);
       await makePlaylist(win);
-      const region = win.getByTestId('playlists');
+      const region = win.getByRole('region', { name: 'Playlists', exact: true });
       await region.getByTestId('playlist-node').filter({ hasText: NAME }).click();
       await region.getByRole('button', { name: `Rename playlist “${NAME}”` }).focus();
       await win.keyboard.press('Enter');
