@@ -366,7 +366,7 @@ If you start Drashti from inside another Electron app's process (for example an 
 
 ## Running a show
 
-**The top bar’s LIVE** names anything up on the audience screens, the stream or the hall’s sound, including a lower third, a message, the ticker, audio or the audience’s timer. Once everything is cleared, **Off** sits beside **Cleared: …**. Turning **Help** on or off keeps the top bar’s buttons in place.
+**The top bar’s LIVE** names anything up on the audience screens, the stream or the hall’s sound, including a lower third, a message, the ticker, audio, the audience’s timer or live captions. Once everything is cleared, **Off** sits beside **Cleared: …**. Turning **Help** on or off keeps the top bar’s buttons in place.
 
 This section moved to [docs/running-a-show.md](docs/running-a-show.md) (26 Nov 2026), word for word: how each part of a show works, and why, from the screens, the stage and Simple Mode to playlists, the slide editor, backgrounds, music and sound, the opening and the shortcuts.
 

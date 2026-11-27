@@ -349,5 +349,4 @@ describe('LIVE’s line in the top bar, LIVE said once (alpha.24, livesay)', () 
     expect(captionsFor(stageOnly, 'stage')).not.toBeNull();
     expect(liveCaptionsShown(stageOnly)).toBe(false);
   });
-
 });

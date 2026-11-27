@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { ScreenStatus } from '../../../shared/screens';
+import { captionsFor, type CaptionsShown } from '../../../shared/captions';
 import { screensSummary } from '../../../shared/screens-summary';
 import { useEngine } from '../engine/engine-store';
 import { loadMedia, useLibrary, useMedia } from '../library/library-store';
@@ -57,12 +58,19 @@ export interface LiveLineFacts {
   media: readonly MediaSummary[];
   /** The name of the timer up for the audience, when one is and this window knows it (topbar). */
   timer?: string | undefined;
+  /** A public live caption band is up; stage-only speech never counts. No recognised words enter this line. */
+  captions?: boolean;
 }
 
 /** LIVE's line: its LIVE badge (or Off) and its words. */
 export interface LiveLine {
   onAir: boolean;
   text: string;
+}
+
+/** The stream's public caption band counts like a stream-only lower third; stage-only translation-wait words do not. */
+export function liveCaptionsShown(captions: CaptionsShown | null | undefined): boolean {
+  return captionsFor(captions, 'stream') !== null;
 }
 
 /** A background up, in words: its kind and its name (a file's as Media names it, when this window knows it). */
@@ -145,11 +153,20 @@ function somethingLive(layers: Layers): boolean {
  * A timer up alone first (Session 50), then the presentation's slide the show is at (said cleared once it is), then a
  * playlist's picture, video, sound or video input row (Session 56). Since uitop (alpha.24) its badge is the only LIVE
  * said in words; since topbar (alpha.24, the a25 list's item 4) it is LIVE whenever anything is on the audience
- * screens, the stream or the hall's sound (somethingLive). What is up that the line does not name, it names after it:
+ * screens, the stream or the hall's sound (somethingLive, plus a public caption band). What is up that the line does
+ * not name, it names after it:
  * anything up alone, or under the show's place cleared. With everything cleared it says Off and "Cleared: <the place>",
  * never "Live:" beside Off (item 32). Never LIVE for the wallpaper shown with nothing up, nor Black-out alone.
  */
-export function liveLine({ live, layers, presentation, item, media, timer }: LiveLineFacts): LiveLine {
+export function liveLine({
+  live,
+  layers,
+  presentation,
+  item,
+  media,
+  timer,
+  captions = false,
+}: LiveLineFacts): LiveLine {
   const slideShown = layers?.slide !== null;
   // A timer up alone in the slide's place (Session 50): named instead of the slide the show is at.
   const timerAlone = layers?.slide?.timer?.name ?? null;
@@ -166,14 +183,18 @@ export function liveLine({ live, layers, presentation, item, media, timer }: Liv
     place = item?.label ?? 'playlist item';
     cleared = !itemUp;
   }
-  const up = layers ? somethingLive(layers) : false;
+  const up = (layers ? somethingLive(layers) : false) || captions;
   const onAir =
     up ||
     timerAlone !== null ||
     Boolean(live?.presentationId && slideShown) ||
     Boolean(live?.playlist && !live.presentationId && itemUp);
   // What is up that the line does not name (a slide up without a place in a presentation: "Slide").
-  const more = () => (layers ? upWords(layers, media, timer) : null) ?? 'Slide';
+  const more = () => {
+    const words = layers ? upWords(layers, media, timer) : null;
+    if (captions) return words === null ? 'Captions' : `${words}, Captions`;
+    return words ?? 'Slide';
+  };
   if (place === null) return { onAir, text: up ? `Live: ${more()}` : 'Nothing live' };
   if (!cleared) return { onAir, text: `Live: ${place}` };
   return { onAir, text: onAir ? `Live: ${place} (cleared) · ${more()}` : `Cleared: ${place}` };
@@ -210,6 +231,8 @@ export function LiveStatus() {
     const id = s.state?.layers.timer?.timerId;
     return id === undefined ? undefined : s.state?.timers.find((t) => t.id === id)?.name;
   });
+  // Only band presence is needed here; the line uses a generic label while speech changes.
+  const captions = useEngine((s) => liveCaptionsShown(s.state?.captions));
   useEffect(() => {
     if (fileUp && !mediaLoaded) void loadMedia();
   }, [fileUp, mediaLoaded]);
@@ -220,6 +243,7 @@ export function LiveStatus() {
     item,
     media,
     timer,
+    captions,
   });
   // LIVE's badge and Off's in one room, the wider one's (topbar): the other is held there unseen and unread, after the
   // one shown, so what is live starts at the same place whichever is said and nothing beside it moves.

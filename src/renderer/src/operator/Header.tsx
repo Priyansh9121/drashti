@@ -21,6 +21,7 @@ import { LiveStatus } from './StatusLine';
 import { ScreenSwitchButtons } from './ScreenSwitches';
 import {
   COLOURS_AT_ONCE,
+  COMPACT_HEADER_GAP,
   COUNT_IF_NARROW,
   HELP_ROOM,
   HIDDEN_IF_NARROWER,
@@ -131,7 +132,10 @@ export function Header({
   return (
     <>
       <header
-        className="flex h-12 shrink-0 items-center gap-4 border-b border-line bg-header px-4 text-on-header"
+        className={cx(
+          'flex h-12 shrink-0 items-center gap-4 border-b border-line bg-header px-4 text-on-header',
+          crowded && COMPACT_HEADER_GAP,
+        )}
         data-header=""
         data-testid="app-header"
       >
