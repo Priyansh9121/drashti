@@ -129,8 +129,9 @@ export function UpdatesDialog() {
                   />
                 ) : (
                   <Notice tone="info">
-                    This copy of Drashti is not signed, so the Mac cannot install the update by itself. After
-                    the sabha, quit Drashti, open the downloaded file and drag Drashti into Applications.
+                    This copy of Drashti is not signed with an Apple Developer ID, so the Mac cannot install
+                    the update by itself. After the sabha, quit Drashti, open the downloaded file and drag
+                    Drashti into Applications.
                     <Button
                       size="sm"
                       icon={FolderOpen}

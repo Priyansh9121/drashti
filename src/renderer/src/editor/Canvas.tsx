@@ -6,6 +6,7 @@ import type { EditDoc, EditSlide } from '../../../shared/slide-edit';
 import { legacyFontOf } from '../../../shared/slide-edit';
 import { editingCanvas } from '../../../shared/document-page';
 import { useMedia } from '../library/library-store';
+import { shortcutKey } from '../operator/useKeymap';
 import { MediaStill } from '../render/MediaStill';
 import { darkensBehind, ElementView, SlideBackdropView } from '../render/SlideView';
 import { renderEditedSlide } from '../../../shared/slide-design';
@@ -750,6 +751,8 @@ export function Canvas({
       return;
     }
     const mod = platform === 'darwin' ? e.metaKey : e.ctrlKey;
+    // The letter of a Cmd (Ctrl) key: with a Gujarati or Hindi layout, the Latin one in its place (hunt S3-3).
+    const letter = shortcutKey(e).toLowerCase();
     const now = useEditor.getState();
     if (!now.doc) return;
     const step = e.shiftKey ? 10 : 1;
@@ -785,7 +788,7 @@ export function Canvas({
       deleteSelectedObjects();
       return;
     }
-    if (mod && e.key.toLowerCase() === 'a') {
+    if (mod && letter === 'a') {
       e.preventDefault();
       // A visible member selects its whole group, including hidden members.
       select(visible.map((x) => x.id));
@@ -794,8 +797,7 @@ export function Canvas({
     // ⌘B, ⌘I and ⌘U (Ctrl on Windows): the text boxes selected, bold, italic or underlined, and back (Session 55,
     // Part 17a, as the Words group's buttons; while typing, the words selected: TextBoxEditor's keys).
     const toggle = { b: 'bold', i: 'italic', u: 'underline' } as const;
-    const which =
-      mod && !e.altKey && !e.shiftKey ? toggle[e.key.toLowerCase() as keyof typeof toggle] : undefined;
+    const which = mod && !e.altKey && !e.shiftKey ? toggle[letter as keyof typeof toggle] : undefined;
     if (which) {
       const boxes = elements.filter(
         (el): el is TextElement =>
@@ -823,13 +825,13 @@ export function Canvas({
       );
       return;
     }
-    if (mod && e.key.toLowerCase() === 'd' && selection.length > 0) {
+    if (mod && letter === 'd' && selection.length > 0) {
       e.preventDefault();
       duplicateSelectedObjects();
       return;
     }
     // Paste in place (Mod+Shift+V): exactly where they were. (Mod+V comes as the window's paste.)
-    if (mod && e.shiftKey && e.key.toLowerCase() === 'v') {
+    if (mod && e.shiftKey && letter === 'v') {
       e.preventDefault();
       pastedInPlaceAt.current = e.timeStamp;
       pasteSelectedObjects(true);

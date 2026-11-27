@@ -1012,6 +1012,32 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     ]);
   });
 
+  it('an upright video (a phone’s, a Short) begins at its 1080p, 1080 × 1920, named by its short side; the old 1080p setting allows it (hunt S3-2)', async () => {
+    const h = await youtube({ heights: [640, 854, 1280, 1920], portrait: true });
+    await looked(h);
+    expect(h.service.view().look?.video?.heights.map((x) => [x.height, x.side])).toEqual([
+      [1920, 1080],
+      [1280, 720],
+      [854, 480],
+      [640, 360],
+    ]);
+    expect(h.logs.join('\n')).toContain('Links: looked at a YouTube video link (up to 1080p)');
+    // A Download with no choice: its 1080p, yt-dlp asked for its real height.
+    expect(h.service.start(LINK, false, false).ok).toBe(true);
+    await untilShown(h, () => h.service.view().phase === 'done', 60_000);
+    expect(h.service.view().choice).toEqual({ type: 'mp4', height: 1920 });
+    expect(readFileSync(h.fakeLog, 'utf8')).toMatch(/^done mp4 1920$/mu);
+    expect(h.logs.join('\n')).toMatch(/a YouTube video download starts \(MP4, 1080p, about [\d.]+ [KMG]B\)/u);
+    // The checked Download with a choice (links.download), under the old setting's 1080p: its 1080p is allowed.
+    await looked(h);
+    expect(h.service.view().maxHeight).toBe(1080);
+    const r = h.service.download({ type: 'mp4', height: 1920 });
+    expect(r.ok ? '' : r.message).toBe('');
+    await untilShown(h, () => h.service.view().phase === 'done', 60_000);
+    expect(h.service.view().choice).toEqual({ type: 'mp4', height: 1920 });
+    expect(files(h.folder)).toEqual(['Placeholder video (2).mp4', 'Placeholder video.mp4']);
+  });
+
   it('refuses in words a quality the video does not offer, keeping the check; nothing starts until one it offers', async () => {
     const h = await youtube({ heights: [360, 720] });
     await looked(h);

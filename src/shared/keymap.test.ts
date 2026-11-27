@@ -8,6 +8,7 @@ import {
   KEYMAP,
   keyMatches,
   keyText,
+  latinKey,
   PAGE_KEYMAP,
   shortcutText,
   SIMPLE_KEYMAP,
@@ -341,6 +342,37 @@ describe('the keys with a keyboard layout of another script (Gujarati, Hindi)', 
     // A Mac's Option+B types "∫" and Option+F "ƒ": never Black-out or Search.
     expect(actionFor(at('∫', 'KeyB', { altKey: true }), 'darwin')).toBeNull();
     expect(actionFor(at('ƒ', 'KeyF', { altKey: true, metaKey: true }), 'darwin')).toBeNull();
+  });
+});
+
+// The windows' own keys outside the keymap (alpha.24, hunt S3-3: the slide editor's Save, Find, Undo and Redo, the
+// Access List's Find) read a press through the same key: another script's letter, digit or stop as the Latin one in its
+// place on the keyboard, and nothing else changed.
+describe('latinKey: the key a press names, as the keymap reads it', () => {
+  it('names another script’s letter, mark, digit or stop by its place on the keyboard', () => {
+    expect(latinKey({ key: 'સ', code: 'KeyS' })).toBe('S');
+    expect(latinKey({ key: 'ફ', code: 'KeyF' })).toBe('F');
+    expect(latinKey({ key: 'ॆ', code: 'KeyZ' })).toBe('Z');
+    expect(latinKey({ key: 'य', code: 'KeyY' })).toBe('Y');
+    expect(latinKey({ key: '૦', code: 'Digit0' })).toBe('0');
+    expect(latinKey({ key: '।', code: 'Period' })).toBe('.');
+  });
+
+  it('leaves a Latin letter (accented or not), a symbol, a named key, a key with no letter’s place and a press without its place as they are', () => {
+    for (const [key, code] of [
+      ['s', 'KeyS'],
+      ['S', 'KeyS'],
+      ['z', 'KeyY'],
+      ['é', 'Digit2'],
+      ['ß', 'Minus'],
+      ['ẞ', 'Minus'],
+      ['∫', 'KeyB'],
+      ['ƒ', 'KeyF'],
+      ['Enter', 'Enter'],
+      ['ृ', 'BracketLeft'],
+    ] as const)
+      expect(latinKey({ key, code }), `${key} at ${code}`).toBe(key);
+    expect(latinKey({ key: 'સ' })).toBe('સ');
   });
 });
 

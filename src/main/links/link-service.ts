@@ -24,6 +24,7 @@ import {
   MAX_ZIP_FILES,
   NOT_TAKEN_REASON,
   qualityChoice,
+  sideOf,
   takenKind,
   waitingKind,
   type YouTubeChoice,
@@ -644,10 +645,11 @@ export class LinkService {
   private ytLooked(m: Extract<FromWorker, { type: 'yt-looked' }>): void {
     this.endWorker();
     if (!this.checked || this.state.phase !== 'looking') return;
-    const tallest = m.details.heights[0]?.height;
+    // The best it offers, named as its Quality names it (an upright 1080 × 1920: "up to 1080p", hunt S3-2).
+    const best = m.details.heights[0];
     this.deps.log(
       'info',
-      `Links: looked at a YouTube video link (${tallest === undefined ? 'sound only' : `up to ${heightLabel(tallest)}`})`,
+      `Links: looked at a YouTube video link (${best === undefined ? 'sound only' : `up to ${heightLabel(sideOf(best))}`})`,
     );
     this.set({
       phase: this.automatic ? 'looking' : 'looked',
@@ -949,8 +951,9 @@ export class LinkService {
     if (c.type !== 'mp4') return { ok: false, message: 'Choose MP4 (the video) or MP3 (its sound only).' };
     const offered = video.heights.find((h) => h.height === c.height);
     if (!offered) return { ok: false, message: 'Choose one of the qualities this video offers.' };
-    // A pasted link's Quality may be above 1080p (alpha.24: the operator chose it); the old setting caps the rest.
-    if (!this.automatic && offered.height > this.maxHeight)
+    // A pasted link's Quality may be above 1080p (alpha.24: the operator chose it); the old setting caps the rest, by
+    // the short side of the picture (hunt S3-2: an upright 1080 × 1920 is 1080p).
+    if (!this.automatic && sideOf(offered) > this.maxHeight)
       return { ok: false, message: aboveTheSetting(this.maxHeight) };
     return {
       ok: true,
@@ -1017,7 +1020,7 @@ export class LinkService {
     });
     this.deps.log(
       'info',
-      `Links: a YouTube video download starts (${choiceWords(choice)}${picked.bytes !== null ? `, about ${formatBytes(picked.bytes)}` : ''})`,
+      `Links: a YouTube video download starts (${choiceWords(choice, video)}${picked.bytes !== null ? `, about ${formatBytes(picked.bytes)}` : ''})`,
     );
     if (this.held) this.deps.log('info', 'Links: the download waits while the stream is on air or recording');
     const worker = this.startWorker('download');

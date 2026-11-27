@@ -16,7 +16,7 @@ import {
 import type { NodeDisplays, ScalingMode, ScreenConfig } from '../../../shared/screens';
 import { SCALING_MODES, SCALING_WORDS } from '../../../shared/screens';
 import { connectDrawingMode, useDrawingMode } from '../operator/drawing-mode';
-import { isTyping } from '../operator/useKeymap';
+import { isTyping, shortcutKey } from '../operator/useKeymap';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Select, TextInput } from '../ui/Field';
@@ -400,7 +400,8 @@ export function AdjustPicture({
   });
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (isTyping(e.target) || !(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return;
+      // With a Gujarati or Hindi layout, the Z key's place (hunt S3-3): else the Edit menu's Undo would act elsewhere.
+      if (isTyping(e.target) || !(e.metaKey || e.ctrlKey) || shortcutKey(e).toLowerCase() !== 'z') return;
       e.preventDefault();
       if (e.shiftKey) steps.current.redo();
       else steps.current.undo();

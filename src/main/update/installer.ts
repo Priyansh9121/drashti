@@ -214,7 +214,7 @@ export function macInstaller(isSigned: () => boolean, updater: SquirrelUpdater):
         return {
           ok: false,
           message:
-            'This copy of Drashti is not signed, so a Mac cannot install the update by itself: quit Drashti, open the downloaded file and drag Drashti into Applications.',
+            'This copy of Drashti is not signed with an Apple Developer ID, so a Mac cannot install the update by itself: quit Drashti, open the downloaded file and drag Drashti into Applications.',
         };
       // Squirrel.Mac reads a feed: one that points at the checked file, on this computer only.
       feed?.close();
