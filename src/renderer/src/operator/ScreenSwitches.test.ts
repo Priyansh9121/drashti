@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SWITCH_STILL, switchButton, switchLook } from './ScreenSwitches';
+import { SWITCH_STILL, switchButton, switchLook, switchTip } from './ScreenSwitches';
 
 /*
  * The top bar's Audience and Stage (alpha.22, a22-review-stage S6): until the main process has said which are on,
@@ -37,5 +37,22 @@ describe('the top bar’s Audience and Stage', () => {
       ]),
     );
     expect(classes.every((c) => c.endsWith('!'))).toBe(true);
+  });
+
+  it('say their name first in their tooltips, as every top bar button does (topbar, a25 list item 39): then what pressing does, on and off', () => {
+    expect(switchTip('audience', true)).toBe(
+      'Audience: turn off the hall’s screens on this computer (key and fill too). Their displays go back to the computer; the show carries on.',
+    );
+    expect(switchTip('stage', true)).toBe(
+      'Stage: turn off the stage screens on this computer. They show the audience picture instead; the show carries on.',
+    );
+    expect(switchTip('audience', false)).toBe(
+      'Audience: turn on the hall’s screens on this computer (key and fill too) again, where they were.',
+    );
+    expect(switchTip('stage', false)).toBe(
+      'Stage: turn on the stage screens on this computer again, where they were.',
+    );
+    for (const which of ['audience', 'stage'] as const)
+      for (const on of [true, false]) expect(switchTip(which, on)).toMatch(/^(Audience|Stage): /u);
   });
 });

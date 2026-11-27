@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  COLOURS_AT_ONCE,
   COUNT_IF_NARROW,
+  HELP_ROOM,
   HIDDEN_IF_NARROWER,
   iconClass,
   MAY_SHOW_ICON_ALONE,
@@ -143,5 +145,18 @@ describe('the top bar’s words', () => {
           before,
         );
       }
+  });
+});
+
+describe('the top bar holding still (topbar, alpha.24)', () => {
+  it('the ? beside Stream, Phones and Announcements keep their room while Help is off, so turning Help on or off moves nothing in the bar (a25 list item 6), in the compact room the bar’s widths above count', () => {
+    expect(HELP_ROOM).toEqual({ compact: true, keepRoom: true });
+  });
+
+  it('the Announcements button’s colours change at once as one comes to wait (a25 list item 30): it eases no colour, only what any button may ease, its opacity and its move, and over the motion rules too', () => {
+    expect(COLOURS_AT_ONCE.endsWith('!')).toBe(true);
+    const eased = /^\[transition-property:([a-z,-]+)\]!$/u.exec(COLOURS_AT_ONCE)?.[1]?.split(',') ?? [];
+    expect(eased).toEqual(['opacity', 'transform', 'translate']);
+    for (const p of eased) expect(p, p).not.toMatch(/color|shadow|filter|all/u);
   });
 });
