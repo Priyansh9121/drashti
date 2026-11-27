@@ -41,6 +41,25 @@ describe('the chain’s stream-frames verdict', () => {
   it('the Mac (the owner: "Mac: log frames only"): the same figures, worked out and recorded, never judged', () => {
     expect(framesVerdict('darwin', flaky.trials, flaky.controls)).toEqual({ judged: false, worse: true });
     expect(framesVerdict('darwin', clean.trials, clean.controls)).toEqual({ judged: false, worse: false });
+    expect(framesVerdict('darwin', flaky.trials, flaky.controls, 'fake-microphone')).toEqual({
+      judged: false,
+      worse: true,
+    });
+  });
+
+  it('the Mac judged again only through the stream-clock seam (alpha.23), never with the fake microphone', () => {
+    expect(framesVerdict('darwin', flaky.trials, flaky.controls, 'stream-clock')).toEqual({
+      judged: true,
+      worse: true,
+    });
+    expect(framesVerdict('darwin', clean.trials, clean.controls, 'stream-clock')).toEqual({
+      judged: true,
+      worse: false,
+    });
+    expect(framesVerdict('win32', flaky.trials, flaky.controls, 'stream-clock')).toEqual({
+      judged: true,
+      worse: true,
+    });
   });
 
   it('the meter reads a window as before: the gaps’ 95th percentile, the longest, those over 1.5 periods', () => {

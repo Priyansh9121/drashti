@@ -39,6 +39,7 @@ import {
   relaunchApp,
   setUpScreen,
 } from './helpers';
+import { logText } from './log-lines';
 import { freePort, rtmpListener, setUpStream, testFfmpeg } from './stream-helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
@@ -292,15 +293,6 @@ const underTheTopBar = (win: Page) =>
     const column = document.querySelector('[data-testid="column-left"]')?.getBoundingClientRect();
     return header && column ? Math.abs(column.top - header.bottom) : Number.POSITIVE_INFINITY;
   });
-
-/** Drashti's own log, everything it has written (drashti.log, and since alpha.21 each earlier day's drashti-YYYY-MM-DD.log and its parts). */
-function logOf(userData: string): string {
-  const dir = join(userData, 'logs');
-  return readdirSync(dir)
-    .filter((f) => /^drashti(?:-\d{4}-\d{2}-\d{2})?(?:\.\d+)?\.log$/u.test(f))
-    .map((f) => readFileSync(join(dir, f), 'utf8'))
-    .join('\n');
-}
 
 /**
  * Three checks have reached the stand-in since `from`, which says nothing: two in a row have had no answer, and the
@@ -704,7 +696,7 @@ test('the network coming back: the list asked at once, a check waiting on the ol
     await expect(line).toHaveCount(0, { timeout: 15_000 });
     expect(Date.now() - back).toBeLessThan(15_000);
     // Said in Drashti's own log: the network back, the waiting check given up, and the list asked again.
-    const log = logOf(userData);
+    const log = logText(userData);
     expect(log).toContain('Access: the network came back');
     expect(log).toMatch(/Access: check \d+: no answer \(network: Given up/u);
   } finally {
@@ -858,14 +850,14 @@ test('a test Drashti whose first check gets no answer says so in the test’s ou
           ) as unknown as string,
         ]);
       // Its own log says each check, what came of it and how long it took, and nothing it sent.
-      expect(logOf(userData)).toMatch(
+      expect(logText(userData)).toMatch(
         /Access: check 1: no answer \(http: The list answered HTTP 503\.; \d+ ms\)/u,
       );
       // The list answers: Try Again lets it in, and the log says so too.
       answerAgain(list);
       await lock.getByTestId('access-retry').click();
       await operatorReady(await operatorPage(app));
-      expect(logOf(userData)).toMatch(/Access: check \d+: let in \(\d+ ms\)/u);
+      expect(logText(userData)).toMatch(/Access: check \d+: let in \(\d+ ms\)/u);
       // Said once, for the first check only.
       expect(said.filter((l) => l.startsWith('Access at start: '))).toHaveLength(1);
     } finally {

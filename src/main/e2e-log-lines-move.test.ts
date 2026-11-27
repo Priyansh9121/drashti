@@ -3,7 +3,7 @@ import type * as Fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { logLines, logText } from '../../tests/e2e/log-lines';
+import { instanceLines, logLines, logText } from '../../tests/e2e/log-lines';
 import { log, startLogFile } from './log';
 
 /*
@@ -65,6 +65,31 @@ describe('the end-to-end tests’ reader of Drashti’s log, as Drashti moves a 
     expect(text.match(/placeholder line just before midnight/gu) ?? []).toHaveLength(1);
     expect(text.match(/placeholder line a second later/gu) ?? []).toHaveLength(1);
     expect(text.match(/placeholder line of the 25th/gu) ?? []).toHaveLength(1);
+  });
+
+  it('this start’s lines: its first line, written before midnight, is found when the next line moves drashti.log to its day between the listing and the read', () => {
+    const userData = fresh();
+    let now = at(23, 23, 59, 59, 800);
+    startLogFile(join(userData, 'logs'), { now: () => now });
+    log.info('Start: the main process running at 120 ms');
+    log.warn('placeholder line just before midnight');
+    let moved = false;
+    moves.afterNextListing = () => {
+      now = at(24, 0, 0, 0, 503);
+      log.info('placeholder line just after midnight');
+      moved = true;
+    };
+    let lines: string[];
+    try {
+      lines = instanceLines(userData);
+    } finally {
+      moves.afterNextListing = null;
+    }
+    expect(
+      lines.map((line) => /placeholder line [\w ]+/u.exec(line)?.[0]).filter((said) => said !== undefined),
+    ).toEqual(['placeholder line just before midnight', 'placeholder line just after midnight']);
+    expect(lines[0]).toMatch(/^\S+ \[info\] Start: the main process running at 120 ms$/u);
+    expect(moved).toBe(true);
   });
 
   it('never gives a part of the log: files that move during every read, a few times over, are said, not read', () => {
