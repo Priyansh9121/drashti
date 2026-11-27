@@ -556,3 +556,66 @@ describe('comfortable appearances (Session 60, the owner’s Q60-30 and Q60-36)'
     expect(order.every((f, i) => i === 0 || seen.indexOf(f) >= seen.indexOf(order[i - 1] ?? f))).toBe(true);
   });
 });
+
+
+/** Source-derived consumer pairs: an opaque token check alone missed these two rendered regressions. */
+const searchResults = readFileSync(join(renderer, 'library', 'SearchResults.tsx'), 'utf8');
+const layerBar = readFileSync(join(renderer, 'operator', 'LayerBar.tsx'), 'utf8');
+const markedClasses = /<mark\b[^>]*className="([^"]+)"/u.exec(searchResults)?.[1] ?? '';
+const coverOnClasses = /^const ON = '([^']+)'/mu.exec(layerBar)?.[1] ?? '';
+
+type Srgb = readonly number[];
+
+/** Source-over in sRGB without quantizing channels before the contrast comparison. */
+function classPaint(classes: string, prefix: string, colours: Colours, under: Srgb): number[] {
+  const found = new RegExp(`(?:^|\\s)${prefix}-([a-z-]+)(?:/(\\d+))?(?:\\s|$)`, 'u').exec(classes);
+  if (!found) throw new Error(`No ${prefix} paint in ${classes}`);
+  const token = found[1] ?? '';
+  const hex = token === 'white' ? '#ffffff' : colours[token as keyof Colours];
+  if (!hex) throw new Error(`Unknown ${prefix} paint in ${classes}`);
+  const alpha = found[2] === undefined ? 1 : Number(found[2]) / 100;
+  return [1, 3, 5].map((at, i) => parseInt(hex.slice(at, at + 2), 16) * alpha + (under[i] ?? 0) * (1 - alpha));
+}
+
+function srgbRatio(a: Srgb, b: Srgb): number {
+  const light = (rgb: Srgb) =>
+    rgb.reduce((sum, channel, i) => {
+      const s = channel / 255;
+      const linear = s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      return sum + linear * ([0.2126, 0.7152, 0.0722][i] ?? 0);
+    }, 0);
+  const [hi = 0, lo = 0] = [light(a), light(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+const srgb = (hex: string) => [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
+
+describe('search words and lit covers as their shared consumers draw them, in every old and new appearance', () => {
+  it.each(BUILT_IN.map((a) => [a.name, a] as const))(
+    '%s: marked search words read at 4.5:1 on idle, hovered and selected left-zone hits',
+    (_name, a) => {
+      const c = { ...a.colours, ...a.zones.left };
+      for (const surface of ['panel', 'panel-2', 'panel-3'] as const) {
+        const fill = classPaint(markedClasses, 'bg', c, srgb(c[surface]));
+        const words = classPaint(markedClasses, 'text', c, fill);
+        expect(srgbRatio(words, fill), `${a.name}: marked words on left ${surface}`).toBeGreaterThanOrEqual(4.5);
+      }
+    },
+  );
+
+  it.each(BUILT_IN.map((a) => [a.name, a] as const))(
+    '%s: lit Black-out and Wallpaper have a 3:1 edge and 4.5:1 words in the shared Pro/Simple bar',
+    (_name, a) => {
+      const c = { ...a.colours, ...a.zones.bar };
+      const ground = srgb(c.panel);
+      const fill = classPaint(coverOnClasses, 'bg', c, ground);
+      const edge = classPaint(coverOnClasses, 'border', c, fill);
+      const words = classPaint(coverOnClasses, 'text', c, fill);
+      const drawn = `${a.name}: edge ${edge.join(',')}, fill ${fill.join(',')} on ${c.panel}`;
+      expect(srgbRatio(edge, ground), drawn).toBeGreaterThanOrEqual(3);
+      expect(srgbRatio(words, fill), `${drawn}, white words on red`).toBeGreaterThanOrEqual(4.5);
+      expect(fill).toEqual(srgb(c.live));
+      expect(words).toEqual([255, 255, 255]);
+    },
+  );
+});
