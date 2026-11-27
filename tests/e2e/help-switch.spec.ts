@@ -8,12 +8,13 @@ import {
   chooseMenuItem,
   holdStill,
   launchApp,
+  openAllSections,
   openSection,
   operatorPage,
   operatorReady,
   relaunchApp,
 } from './helpers';
-import { CI_WINDOW } from './window-size';
+import { CI_WINDOW, liveColumnToTop } from './window-size';
 
 /*
  * Help on demand (alpha.24, the owner's "we also want a really innovative and non-congusted UI"): the status bar's Help
@@ -85,28 +86,45 @@ async function settledButtons(win: Page, size: { width: number; height: number }
       message: `the page at ${String(size.width)} × ${String(size.height)}`,
     })
     .toEqual([size.width, size.height]);
+  return stillFor(() => keyedButtons(win), `at ${String(size.width)} × ${String(size.height)}`);
+}
+
+/** What `read` reads once it has read the same for half a second (the layout settled); it waits, it compares nothing. */
+async function stillFor(read: () => Promise<string[]>, where: string): Promise<string[]> {
   let last = '';
   let since = 0;
-  let read: string[] = [];
+  let got: string[] = [];
   await expect
     .poll(
       async () => {
-        read = await keyedButtons(win);
-        const now = JSON.stringify(read);
+        got = await read();
+        const now = JSON.stringify(got);
         if (now !== last) {
           last = now;
           since = Date.now();
         }
         return Date.now() - since >= 500;
       },
-      {
-        message: `every box still for half a second at ${String(size.width)} × ${String(size.height)}`,
-        intervals: [100],
-      },
+      { message: `every box still for half a second ${where}`, intervals: [100] },
     )
     .toBe(true);
-  return read;
+  return got;
 }
+
+/** Under LIVE: every section's heading toggle and the timers' Show, where each is and how big. */
+const liveParts = (win: Page) =>
+  win.evaluate(() =>
+    [
+      ...document.querySelectorAll(
+        '[data-testid="live-column"] [data-testid="timer-show"], [data-testid="live-column"] [data-testid^="group-"][data-testid$="-toggle"]',
+      ),
+    ]
+      .filter((el) => el.getClientRects().length > 0)
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        return `${el.getAttribute('data-testid') ?? ''}: ${r.left.toFixed(1)}, ${r.top.toFixed(1)}, ${r.width.toFixed(1)} × ${r.height.toFixed(1)}`;
+      }),
+  );
 
 /** Every ? in the window. */
 const asks = (win: Page) => win.locator('[data-what-is-this]');
@@ -337,6 +355,68 @@ test('in forced colours (a contrast theme), Help pressed and not pressed look di
   await help.dispatchEvent('click');
   await expect(help).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(ground, { message: 'Help on draws a ground of its own' }).not.toBe(off);
+  // And one that is not the status bar's own (the system paints both its Canvas without help.css's highlight: the
+  // release lead's re-review, SHOULD-R1, as a see-through Canvas and an opaque one already differ).
+  const bar = () =>
+    win.locator('footer[aria-label="Status"]').evaluate((f) => getComputedStyle(f).backgroundColor);
+  expect(await ground(), 'Help on, against the status bar’s ground').not.toBe(await bar());
   await win.emulateMedia({ forcedColors: 'none' });
+  await app.close();
+});
+
+test('turning Help on or off moves nothing under LIVE: the timers’ Show and every section stay put, at 1024 × 645 and 1410 × 900, in Pro and Simple Mode', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // A timer, so the Timers section has its Show for the audience; every section open (Pro Mode's).
+  await win.evaluate(async () => {
+    const made = await (globalThis as PageGlobals).drashti.timers.create({
+      name: 'Placeholder timer',
+      kind: 'countdown',
+      durationMs: 300_000,
+      targetTime: null,
+      allowsOverrun: false,
+    });
+    if (!made.ok) throw new Error(made.message);
+  });
+  await openAllSections(win);
+  await expect(win.getByTestId('timers').getByTestId('timer-show')).toHaveCount(1);
+  const help = win.getByTestId('help-toggle');
+  const live = win.getByRole('complementary', { name: 'Live' });
+  for (const mode of ['pro', 'simple'] as const) {
+    if (mode === 'simple') {
+      await chooseMenuItem(app, 'switch-mode');
+      await expect(win.getByTestId('simple-mode')).toBeVisible();
+    }
+    for (const size of [CI_WINDOW, { width: 1410, height: 900 }]) {
+      const where = `${mode === 'pro' ? 'Pro' : 'Simple'} Mode at ${String(size.width)} × ${String(size.height)}`;
+      await win.setViewportSize(size);
+      await expect
+        .poll(() => win.evaluate(() => [window.innerWidth, window.innerHeight]))
+        .toEqual([size.width, size.height]);
+      await liveColumnToTop(live);
+      await expect(help).toHaveAttribute('aria-pressed', 'false');
+      const atRest = await stillFor(() => liveParts(win), `under LIVE, ${where}`);
+      expect(atRest.length, `${where}: the sections measured`).toBeGreaterThanOrEqual(
+        mode === 'pro' ? 13 : 1,
+      );
+      // Help on: the ? come (the Timers heading's among them), and nothing under LIVE moves.
+      await help.dispatchEvent('click');
+      await expect(help).toHaveAttribute('aria-pressed', 'true');
+      if (mode === 'pro') await expect(win.getByTestId('what-is-this-timers')).toBeVisible();
+      expect(await stillFor(() => liveParts(win), `with Help on, ${where}`), `${where}: Help on`).toEqual(
+        atRest,
+      );
+      // Help off again: they go, and nothing moves.
+      await help.dispatchEvent('click');
+      await expect(help).toHaveAttribute('aria-pressed', 'false');
+      await expect(win.locator('[data-what-is-this]')).toHaveCount(0);
+      expect(
+        await stillFor(() => liveParts(win), `with Help off again, ${where}`),
+        `${where}: Help off`,
+      ).toEqual(atRest);
+    }
+  }
   await app.close();
 });

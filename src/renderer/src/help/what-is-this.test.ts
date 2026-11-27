@@ -34,8 +34,22 @@ describe('the ? with Help off and on', () => {
     const { asker, section } = await drawn('pro', false);
     expect(asker('live')).toBe('');
     expect(asker('statusbar')).toBe('');
-    expect(section).not.toContain('data-what-is-this');
+    expect(section).not.toContain('data-what-is-this=');
+    expect(section).not.toContain('<button type="button" aria-label="What is this?');
     expect(section).toContain('Messages');
+  });
+
+  it('holds the ?’s room in a panel’s heading while Help is off: an empty box of its size, no button, hidden from screen readers', async () => {
+    const off = (await drawn('pro', false)).section;
+    expect(off).toMatch(
+      /<span aria-hidden="true" data-what-is-this-room="" class="inline-block shrink-0 h-6 w-6"><\/span>/u,
+    );
+    // With Help on, the ? itself in that place, and no empty box.
+    const on = (await drawn('pro', true)).section;
+    expect(on).toContain('data-testid="what-is-this-messages"');
+    expect(on).not.toContain('data-what-is-this-room');
+    // The heading's other ? (a place's own, not a panel's) holds no room.
+    expect((await drawn('pro', false)).asker('live')).toBe('');
   });
 
   it('draws each ? as before with Help on', async () => {
@@ -50,6 +64,7 @@ describe('the ? with Help off and on', () => {
     for (const on of [false, true]) {
       const { asker, section } = await drawn('simple', on);
       expect(asker('live')).toBe('');
+      // Neither a ? nor its room: Simple Mode has no ? of its own.
       expect(section).not.toContain('data-what-is-this');
     }
   });

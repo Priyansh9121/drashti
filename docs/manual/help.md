@@ -10,7 +10,7 @@
 
 **How:**
 
-1. Choose **Help** in the menu bar (on Windows, press Alt first to show the menu bar).
+1. Choose **Help** in the menu bar (on Windows, tap **Alt** first to show the menu bar: held, it shows the buttons' keys instead).
 2. Choose what you need.
 3. Press **Esc** to close a window opened from it.
 

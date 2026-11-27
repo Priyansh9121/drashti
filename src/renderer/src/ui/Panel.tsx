@@ -107,7 +107,8 @@ export function Panel({
     return () => cancelAnimationFrame(frame);
   }, [asks, openAsked, setOpen]);
   const shown = !collapsible || open;
-  const help = useWhatIsThis(topic ?? null);
+  // The ?'s room held with Help off, so its heading never wraps differently as Help comes and goes (help/WhatIsThis).
+  const help = useWhatIsThis(topic ?? null, { keepRoom: true });
   const heading = (
     <span className="flex min-w-0 items-center gap-1.5">
       {IconShape && <IconShape size={14} aria-hidden="true" className="shrink-0 text-heading" />}
@@ -245,7 +246,8 @@ export function PanelGroup({
   children: ReactNode;
 } & DataAttributes) {
   const id = useId();
-  const help = useWhatIsThis(topic ?? null);
+  // The ?'s room held with Help off, so its heading never wraps differently as Help comes and goes (help/WhatIsThis).
+  const help = useWhatIsThis(topic ?? null, { keepRoom: true });
   // Opened by its button, its insides arrive: Calm's fade or Lively's unroll (alpha.24, ui/fold.ts; data-fold).
   const [opening, setOpening] = useState<FoldMove | null>(null);
   // The chevron turns only into the state its button's press set moving (the release lead's review, S3).
