@@ -19,17 +19,20 @@ async function crashGpu(app: ElectronApplication): Promise<void> {
   await app.evaluate(
     ({ app: electronApp, BrowserWindow }) =>
       new Promise<void>((resolve) => {
-        const gone = (_e: unknown, details: { type: string }) => {
-          if (details.type !== 'GPU') return;
-          electronApp.removeListener('child-process-gone', gone);
-          resolve();
-        };
-        electronApp.on('child-process-gone', gone);
-        const w = new BrowserWindow({ show: false });
-        void w.webContents.loadURL('chrome://gpucrash').catch(() => undefined);
-        setTimeout(() => {
-          if (!w.isDestroyed()) w.destroy();
-        }, 5000);
+        // On Main's own turn: no Node timer made inside the call (src/main/e2e-main-evaluate.test.ts).
+        setImmediate(() => {
+          const gone = (_e: unknown, details: { type: string }) => {
+            if (details.type !== 'GPU') return;
+            electronApp.removeListener('child-process-gone', gone);
+            resolve();
+          };
+          electronApp.on('child-process-gone', gone);
+          const w = new BrowserWindow({ show: false });
+          void w.webContents.loadURL('chrome://gpucrash').catch(() => undefined);
+          setTimeout(() => {
+            if (!w.isDestroyed()) w.destroy();
+          }, 5000);
+        });
       }),
   );
 }
