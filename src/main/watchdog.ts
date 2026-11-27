@@ -184,8 +184,9 @@ export class RendererWatchdog {
     this.renderReloading.add(target);
     this.timers.setTimeout(() => {
       this.renderReloading.delete(target);
-      this.renderReloads.set(target, this.timers.now());
+      // Gone meanwhile: nothing kept of it (its 'destroyed' has forgotten it already).
       if (target.isDestroyed()) return;
+      this.renderReloads.set(target, this.timers.now());
       this.loadAgain(target);
       this.record(target, name, 'reloaded');
     }, 100);
