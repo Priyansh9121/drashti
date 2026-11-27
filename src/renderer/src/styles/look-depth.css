@@ -44,13 +44,13 @@
     --depth-ground: #030304;
     --elev-light: #ffffff17;
     --state-live-tint: #d42a311c;
-    --state-live-ring: #d42a313d;
+    --state-live-ring: #d42a314b;
   }
   :root[data-window-look='depth'][data-base='light'] {
     --depth-ground: #d6d9dd;
     --elev-light: #ffffff;
     --state-live-tint: #d42a3114;
-    --state-live-ring: #d42a3129;
+    --state-live-ring: #d42a314b;
   }
 
   /*
@@ -302,5 +302,24 @@
   }
   :root[data-window-look='depth'] [data-testid='live-rest'] > div > * > header [aria-expanded='true'] {
     color: var(--color-fg);
+  }
+  /*
+   * A pill on a dark section's row (the alpha.25 list's item 10): the row is a 3 % lift of its column, so the column's
+   * pill (panel-3) all but went on it (1.06:1 at rest, 1.00:1 pressed). On the row it is a 3 % lift of panel-3 at rest
+   * (1.14:1 off the row, the side column's own step: REC's words at 4.5:1 on it cap it there), pressed it sinks to the
+   * zone's ink (1.18:1 under the row), and pointed at it goes toward the row (panel-3), as it cannot go brighter; a
+   * ghost, clear at rest, takes the pill's rest when pointed at.
+   */
+  :root[data-window-look='depth'][data-base='dark'] [data-testid='live-rest'] > div > * {
+    --state-fill: color-mix(in srgb, var(--color-fg) 3%, var(--color-panel-3));
+    --state-hover: var(--color-panel-3);
+    --state-press: var(--color-ink);
+  }
+  :root[data-window-look='depth'][data-base='dark']
+    [data-testid='live-rest']
+    > div
+    > *
+    [data-variant='ghost']:not([data-show-control], :disabled):hover:not(:active) {
+    background-color: var(--state-fill);
   }
 }

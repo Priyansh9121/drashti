@@ -383,8 +383,12 @@ describe('B · Depth: styles/look-depth.css', () => {
           const ratio = contrastRatio(a.colours[word], bg);
           if (ratio < 4.5) low.push(`a section's row, ${place} (${bg}): ${word} ${ratio.toFixed(2)}:1`);
         }
-      expect(contrastRatio(pill['rest'] ?? '', row), 'a pill off its section’s row').toBeGreaterThanOrEqual(1.1);
-      expect(contrastRatio(pill['press'] ?? '', row), 'a pressed pill off its row').toBeGreaterThanOrEqual(1.1);
+      expect(contrastRatio(pill['rest'] ?? '', row), 'a pill off its section’s row').toBeGreaterThanOrEqual(
+        1.1,
+      );
+      expect(contrastRatio(pill['press'] ?? '', row), 'a pressed pill off its row').toBeGreaterThanOrEqual(
+        1.1,
+      );
       expect(pill['hover'], 'on a row: hover').not.toBe(pill['rest']);
       expect(pill['press'], 'on a row: press').not.toBe(pill['rest']);
       expect(pill['press'], 'on a row: press').not.toBe(pill['hover']);
