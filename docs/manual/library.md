@@ -48,6 +48,8 @@ The library holds everything on this computer that can go on the screens: presen
 
 ![Skip for now's three steps, with Import… first](../screenshots/start-here.png)
 
+Folder imports skip file links that point outside the chosen folder and name each skipped link in the import report. Links within the folder still import; to import an outside file, choose that file itself.
+
 ## New… from words
 
 **What it is.** A presentation made from words you paste or type. A blank line starts a new slide.

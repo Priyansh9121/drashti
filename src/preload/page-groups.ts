@@ -1,4 +1,5 @@
 import type { DrashtiBridge } from '../shared/bridge';
+import { bridgeMethodAllowed } from '../shared/ipc-policy';
 
 /*
  * Which of the bridge's groups each window's page gets (Sessions 31–36, ARCH-7): only those its own code
@@ -178,5 +179,19 @@ export function pageOf(href: string): BridgePage | null {
 export function bridgeFor<T extends object>(bridge: T, page: BridgePage | null): Partial<T> {
   if (page === null) return {};
   const groups = new Set<string>(PAGE_GROUPS[page]);
-  return Object.fromEntries(Object.entries(bridge).filter(([group]) => groups.has(group))) as Partial<T>;
+  const narrow = (value: unknown, path: string): unknown => {
+    if (value === null || typeof value !== 'object') return value;
+    return Object.fromEntries(
+      Object.entries(value).flatMap(([name, method]) => {
+        const key = `${path}.${name}`;
+        if (method !== null && typeof method === 'object') return [[name, narrow(method, key)]];
+        return bridgeMethodAllowed(page, key) ? [[name, method]] : [];
+      }),
+    );
+  };
+  return Object.fromEntries(
+    Object.entries(bridge)
+      .filter(([group]) => groups.has(group))
+      .map(([group, value]) => [group, narrow(value, group)]),
+  ) as Partial<T>;
 }
