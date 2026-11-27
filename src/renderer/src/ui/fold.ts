@@ -77,6 +77,36 @@ export function foldCopy(move: FoldMove, showControlNear: boolean): 'fold' | 'fo
   return move === 'lively' ? 'fold-lively' : 'fold';
 }
 
+/** What holds back the copy of what folds away (lead 2's item 8). */
+export interface CopyHolds {
+  /** A show control among what moves as the insides go: the sections after it in the column. */
+  movingShowControl: boolean;
+  /** A show control higher in the column (or in the LIVE block), outside what moves. */
+  showControlAbove: boolean;
+  /** The LIVE block shares the column's scrolling part (a short window: it scrolls with the sections). */
+  liveBlockInScroller: boolean;
+  /** The column will scroll back as the insides go. */
+  scrollsBack: boolean;
+}
+
+/** Whether the copy is held (RED stand-in: today's rule, a show control anywhere in the column). */
+export function copyHeld(h: CopyHolds): boolean {
+  return h.movingShowControl || h.showControlAbove || h.liveBlockInScroller || h.scrollsBack;
+}
+
+/** The insides as the browser has them: their own animations. */
+export interface ArrivingBody {
+  getAnimations(): readonly { finished: Promise<unknown>; animationName?: string }[];
+}
+
+/** Call `done` once the insides have arrived (RED stand-in: today's timer alone). Returns a stop. */
+export function whenArrived(_body: ArrivingBody, done: () => void, latest = foldArrivalMs()): () => void {
+  const timer = setTimeout(done, latest);
+  return () => {
+    clearTimeout(timer);
+  };
+}
+
 /** Where the parts were in the window (their tops), and where their scrolling part was scrolled to. */
 export interface PartsAt {
   tops: readonly number[];

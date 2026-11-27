@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { clipInside, foldCopy, foldMove, glides, glidesIn, scrollsBack } from './fold';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { clipInside, copyHeld, foldCopy, foldMove, glides, glidesIn, scrollsBack, whenArrived } from './fold';
 import { hostless, livelyWith } from './motion';
 
 /*
@@ -135,5 +135,100 @@ describe('the copy draws in the window’s appearance', () => {
     expect(hostless('.a, .b')).toBe('.a, .b');
     expect(hostless(':is(.a, .b) > .c')).toBe(':is(.a, .b) > .c');
     expect(hostless(':where(.hostile), .host')).toBe(':where(.hostile), .host');
+  });
+});
+
+/*
+ * Lead 2's item 8 for alpha.24 (the release lead's review of uimotion, NOTE-4 and NOTE-5). First: a change of motion
+ * within 0.45 s of a heading's press played the insides' arrival again (Off, then Calm; Calm, then Lively), because the
+ * section forgot how its insides arrived only on a timer. It now forgets as soon as their own arrival ends or is stopped,
+ * the timer kept as the latest.
+ */
+describe('a section forgets how its insides arrived as soon as they have', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** The insides as the browser has them: their own animations (a CSS animation has a name; a transition has none). */
+  const body = (animations: { finished: Promise<unknown>; animationName?: string }[]) => ({
+    getAnimations: () => animations,
+  });
+  const arrival = () => {
+    let finish = () => {};
+    let cancel = () => {};
+    const finished = new Promise<void>((resolve, reject) => {
+      finish = resolve;
+      cancel = () => {
+        reject(new DOMException('cancelled', 'AbortError'));
+      };
+    });
+    return { animation: { finished, animationName: 'fade-in' }, finish, cancel };
+  };
+  const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+  it('when their arrival ends', async () => {
+    const a = arrival();
+    const done = vi.fn();
+    whenArrived(body([a.animation]), done, 60_000);
+    await flush();
+    expect(done).not.toHaveBeenCalled();
+    a.finish();
+    await flush();
+    expect(done).toHaveBeenCalledTimes(1);
+  });
+
+  it('when their arrival is stopped (a change of motion: Off, reduced motion, Calm from Lively), so it never plays again', async () => {
+    const a = arrival();
+    const done = vi.fn();
+    whenArrived(body([a.animation]), done, 60_000);
+    a.cancel();
+    await flush();
+    expect(done).toHaveBeenCalledTimes(1);
+  });
+
+  it('at once when nothing arrives (a show control in them, Off): transitions are not their arrival', () => {
+    const done = vi.fn();
+    whenArrived(body([]), done, 60_000);
+    expect(done).toHaveBeenCalledTimes(1);
+    const other = vi.fn();
+    whenArrived(body([{ finished: new Promise(() => {}) }]), other, 60_000);
+    expect(other).toHaveBeenCalledTimes(1);
+  });
+
+  it('at the latest after the time given (a hidden window), and never once stopped', () => {
+    vi.useFakeTimers();
+    const done = vi.fn();
+    whenArrived(body([arrival().animation]), done, 450);
+    vi.advanceTimersByTime(449);
+    expect(done).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(done).toHaveBeenCalledTimes(1);
+    const stopped = vi.fn();
+    const stop = whenArrived(body([arrival().animation]), stopped, 450);
+    stop();
+    vi.advanceTimersByTime(1000);
+    expect(stopped).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * Second: the copy of what folds away was held by a show control anywhere in the column, the glides only by one among
+ * what moves. A show control higher in the column never moves as a section under it folds (the column scrolling back
+ * aside), so the copy is held as the glides are: by a show control among what moves, by the LIVE block sharing the
+ * column's scrolling part (a short window), or by the column scrolling back.
+ */
+describe('what holds the copy of what folds away', () => {
+  const NONE = { movingShowControl: false, showControlAbove: false, liveBlockInScroller: false, scrollsBack: false };
+
+  it('a show control among what moves, the LIVE block in the same scrolling part, or the column scrolling back', () => {
+    expect(copyHeld(NONE)).toBe(false);
+    expect(copyHeld({ ...NONE, movingShowControl: true })).toBe(true);
+    expect(copyHeld({ ...NONE, liveBlockInScroller: true })).toBe(true);
+    expect(copyHeld({ ...NONE, scrollsBack: true })).toBe(true);
+  });
+
+  it('never a show control higher in the column alone, which stays where it is', () => {
+    expect(copyHeld({ ...NONE, showControlAbove: true })).toBe(false);
+    expect(copyHeld({ ...NONE, showControlAbove: true, movingShowControl: true })).toBe(true);
   });
 });

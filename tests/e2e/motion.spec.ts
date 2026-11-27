@@ -928,6 +928,73 @@ test('a section under LIVE: Calm fades its insides in and a copy of them out, ev
   await app.close();
 });
 
+/**
+ * Press a section's heading and change the interface motion at once to each of `motions` in turn, from inside the page
+ * (no round trip between): how long that took from the press, and the CSS animations running in the column two frames
+ * after the last.
+ */
+const switchAtOnce = (win: Page, id: string, motions: readonly string[]) =>
+  win.evaluate(
+    async ({ section, ms }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const frame = () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => {
+            resolve();
+          });
+        });
+      const started = performance.now();
+      document.querySelector<HTMLElement>(`[data-testid="group-${section}-toggle"]`)?.click();
+      for (const m of ms) {
+        await d.appearance.setMotion(m as 'calm' | 'lively' | 'off');
+        while (document.documentElement.dataset['interfaceMotion'] !== m) await frame();
+      }
+      await frame();
+      await frame();
+      return {
+        took: Math.round(performance.now() - started),
+        running: document
+          .getAnimations()
+          .flatMap((a) =>
+            a instanceof CSSAnimation &&
+            (a.effect as KeyframeEffect | null)?.target?.closest('[data-testid="live-rest"]')
+              ? [a.animationName]
+              : [],
+          ),
+      };
+    },
+    { section: id, ms: motions },
+  );
+
+test('a change of motion just after a section opens never plays its arrival again: Calm, Off and back; Lively, Calm and back (alpha.24, lead 2’s item 8; the review of uimotion, NOTE-4)', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await expect(win.locator('html')).toHaveAttribute('data-opened', '');
+  // Without a chip nothing arrives at all; the same is expected either way.
+  await chipless(win);
+  const toggle = win.getByTestId(`group-${SECTION}-toggle`);
+  for (const [motion, then] of [
+    ['calm', ['off', 'calm']],
+    ['lively', ['calm', 'lively']],
+  ] as const) {
+    await interfaceMotion(win, motion);
+    await letTimePass(win, 900, 'the show has not changed for a moment, as a fold waits for');
+    const { took, running } = await switchAtOnce(win, SECTION, then);
+    // Within the 0.45 s the section once kept its arrival for (foldArrivalMs), the case that replayed.
+    console.log(`${motion}, then ${then.join(', then ')}: ${String(took)} ms after the press`);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(running, `${motion}, then ${then.join(', then ')}`).toEqual([]);
+    await settled(win);
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await settled(win);
+  }
+  await app.close();
+});
+
 test('a show control near a fold: insides holding one are there at once, nothing glides past one, and no copy covers one (alpha.24, the release lead’s review: MUST-2, S2, S4)', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp();
@@ -955,8 +1022,7 @@ test('a show control near a fold: insides holding one are there at once, nothing
     });
     if (!timer.ok) throw new Error(timer.message);
   }, DEFAULT_LOWER_THIRD_LOOK);
-  // Said in the log (which branch ran); every step here expects the same either way.
-  await chipless(win);
+  const noChip = await chipless(win);
   await letTimePass(win, 900, 'the show has not changed for a moment, as a fold waits for');
   for (const motion of ['calm', 'lively'] as const) {
     await interfaceMotion(win, motion);
@@ -976,10 +1042,33 @@ test('a show control near a fold: insides holding one are there at once, nothing
     pressed = await pressFold(win, 'timers');
     expect(pressed.copies, motion).toEqual([]);
     expect(pressed.glides, motion).toEqual([]);
-    // Show a Window (under Lower Thirds) opened and folded: no copy while a show control shares the column.
+    // Show a Window (under Lower Thirds) opened and folded: Lower Thirds' Show, higher in the column, stays where it is,
+    // so the copy is drawn as for any fold (where the LIVE block stands and the column does not scroll back: lead 2's
+    // item 8, the copy held as the glides are), and it lies over no show control (the review's MUST-2).
     await pressFold(win);
+    const drawn = !noChip && (await standing(win)) && !(await willScrollBack(win));
+    const show = win.getByTestId('lower-third-show').first();
+    const showAt = await show.boundingBox();
+    const insides = await win
+      .getByTestId(`group-${SECTION}-toggle`)
+      .locator('xpath=ancestor::section[1]')
+      .evaluate((section) => {
+        const r = section.querySelector('[id$="-body"]')?.getBoundingClientRect();
+        return r ? { top: r.top, bottom: r.bottom, left: r.left, right: r.right } : null;
+      });
     pressed = await pressFold(win);
-    expect(pressed.copies, motion).toEqual([]);
+    expect(pressed.copies, motion).toEqual(drawn ? [motion === 'lively' ? 'fold-lively' : 'fold'] : []);
+    expect(await show.boundingBox(), `${motion}: Lower Thirds' Show stays where it is`).toEqual(showAt);
+    const under = await win.evaluate((box) => {
+      if (!box) return ['no insides'];
+      return [...document.querySelectorAll('[data-show-control]')].flatMap((c) => {
+        const r = c.getBoundingClientRect();
+        const over =
+          r.width > 0 && r.top < box.bottom && r.bottom > box.top && r.left < box.right && r.right > box.left;
+        return over ? [c.getAttribute('data-testid') ?? c.tagName] : [];
+      });
+    }, insides);
+    expect(under, `${motion}: no show control where the copy lies`).toEqual([]);
     // Lower Thirds folded again for the next round.
     await pressFold(win, 'lower-thirds');
   }
