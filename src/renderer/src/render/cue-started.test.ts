@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   afterCueStart,
+  cueShown,
   cueStarted,
   heldUntilStarted,
   isCueStarted,
@@ -51,5 +52,30 @@ describe("the operator preview's word that a cued picture started at Go", () => 
     expect(heldUntilStarted('cue-d', 1000, 1249)).toBe(true);
     afterCueStart('cue-d').gaveUp?.();
     expect(heldUntilStarted('cue-d', 1000, 1249), 'the clock 1 ms short at the fallback').toBe(false);
+  });
+
+  // golive (a24-goearly.md, joined run 2's Mac M6, video-cue-crossfade:306): released at LIVE's rate, the operator
+  // window's own Go work (LIVE's scene keeper, the Screens previews) ran for about 100 ms from +17 ms, right over LIVE's
+  // first moving frames: no rendering step until +118, so their frame callbacks never came, and LIVE's video frames
+  // were shown at 33 ms steps. That work waits for LIVE's first moving frame shown; LIVE's own picture, for its rate.
+  it("lets the operator window's Go work run once LIVE's first moving frame is shown, not at its rate", () => {
+    const work = vi.fn();
+    afterCueStart('cue-g', 'shown').whenStarted(work);
+    cueStarted('cue-g');
+    expect(work, 'not at its rate').not.toHaveBeenCalled();
+    cueShown('cue-g');
+    expect(work, 'once its first moving frame is shown').toHaveBeenCalledTimes(1);
+    expect(afterCueStart('cue-g', 'shown').fallbackMs, 'no longer than today: 250 ms past Go').toBe(250);
+    const later = vi.fn();
+    afterCueStart('cue-g', 'shown').whenStarted(later);
+    expect(later, 'at once once it has been').toHaveBeenCalledTimes(1);
+  });
+
+  it("holds LIVE's scene past its rate until its first moving frame is shown, 250 ms past Go at the latest", () => {
+    cueStarted('cue-h');
+    expect(heldUntilStarted('cue-h', 1000, 1100, 'shown'), 'its rate set, nothing moved yet').toBe(true);
+    expect(heldUntilStarted('cue-h', 1000, 1250, 'shown'), '250 ms past Go').toBe(false);
+    cueShown('cue-h');
+    expect(heldUntilStarted('cue-h', 1000, 1100, 'shown')).toBe(false);
   });
 });
