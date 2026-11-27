@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { formatBytes } from '../../shared/format';
@@ -537,14 +537,27 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
   let folderRoots = new Map<string, string>();
   let explicitFiles = new Set<string>();
   const skippedPaths = new Set<string>();
-  const folderRootFor = (path: string): string | undefined => {
+  const folderRootFor = async (path: string): Promise<string | undefined> => {
     const absolute = resolve(path);
     if (explicitFiles.has(absolute)) return undefined;
     for (const [chosen, canonical] of folderRoots)
       if (isInside(chosen, absolute) || isInside(canonical, absolute)) return canonical;
+    // A stored reference may spell the selected directory through another alias (or different case).
+    // Resolve its directory ancestry without following the file itself: an outside file target must not
+    // hide that its link belongs to the selected folder. A genuinely external reference keeps its policy.
+    if (folderRoots.size === 0) return undefined;
+    for (let directory = dirname(absolute); ;) {
+      const real = await realpath(directory).catch(() => null);
+      if (real !== null)
+        for (const canonical of folderRoots.values())
+          if (relative(canonical, real) === '' || isInside(canonical, real)) return canonical;
+      const parent = dirname(directory);
+      if (parent === directory) break;
+      directory = parent;
+    }
     return undefined;
   };
-  const referenceFile = (path: string) => ({ path, folderRoot: folderRootFor(path) });
+  const referenceFile = async (path: string) => ({ path, folderRoot: await folderRootFor(path) });
 
   /** Find each media file a document names and copy it into the media folder (no database work). */
   const stageMedia = async (refs: readonly ParsedMediaRef[], where: Where): Promise<Staged[]> => {
@@ -559,7 +572,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         out.push({ ref, staged: null, issue: null });
         continue;
       }
-      const source = referenceFile(found.path);
+      const source = await referenceFile(found.path);
       try {
         await folderReadPath(source);
       } catch (error) {
@@ -1574,16 +1587,17 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     const name = fileNameOf(item.path).toLowerCase();
     const candidates = [item.path, ...(where.docsByName.get(name) ?? []).map((f) => f.path)];
     for (const path of candidates) {
+      const source = await referenceFile(path);
       let size: number;
       try {
-        const s = await stat(await folderReadPath(referenceFile(path)));
+        const s = await stat(await folderReadPath(source));
         if (!s.isFile()) continue;
         size = s.size;
       } catch (error) {
         if (error instanceof OutsideImportFolder) skippedOutside(path, formatOf(path), error.message);
         continue;
       }
-      const file: ScannedFile = { ...referenceFile(path), size, format: formatOf(path) };
+      const file: ScannedFile = { ...source, size, format: formatOf(path) };
       await importOne(file, { ...where, sourcePath: path, nearby: [dirname(path), ...where.nearby] });
       return known();
     }
