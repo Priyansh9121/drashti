@@ -100,9 +100,17 @@ describe('soft interface fades keep the show live', () => {
       p.fadeInterface(() => undefined, kind);
       expect(p.startViewTransition, kind).toHaveBeenCalledTimes(1);
       expect(p.root.dataset['interfaceFade']).toBe(kind);
+      expect(p.root.style.getPropertyValue('--motionlooks-in')).toBe(
+        kind === 'help' ? 'var(--dur-menu)' : 'var(--dur-crossfade)',
+      );
+      expect(p.root.style.getPropertyValue('--motionlooks-out')).toBe(
+        kind === 'help' ? 'var(--dur-press)' : 'var(--dur-crossfade)',
+      );
       p.finish();
       await p.finished;
       expect(p.root.dataset['interfaceFade']).toBeUndefined();
+      expect(p.root.style.getPropertyValue('--motionlooks-in')).toBe('');
+      expect(p.root.style.getPropertyValue('--motionlooks-out')).toBe('');
     }
   });
 
