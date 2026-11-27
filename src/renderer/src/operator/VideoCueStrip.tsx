@@ -84,6 +84,8 @@ export function VideoCueStrip() {
         size="sm"
         variant="primary"
         aria-label="Go cued video"
+        // A show control (alpha.24, the bug hunt's S3-1): it changes the screens at once and never moves.
+        instant
         disabled={!ready}
         onClick={() => void dispatch({ type: 'goVideoCue', cueId: cue.id })}
       >
@@ -92,6 +94,7 @@ export function VideoCueStrip() {
       <Button
         size="sm"
         aria-label="Cancel video cue"
+        instant
         onClick={() => void dispatch({ type: 'cancelVideoCue' })}
       >
         Cancel

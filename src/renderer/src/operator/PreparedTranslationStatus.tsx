@@ -103,6 +103,8 @@ export function PreparedTranslationStatus({ state }: { state: EngineState | null
         <Button
           size="sm"
           variant="ghost"
+          // A show control (alpha.24, the re-review's SHOULD-1): the screens' translation goes or comes at once.
+          instant
           onClick={() => {
             void dispatch({ type: 'setTranslationHidden', hidden: !hidden });
           }}
