@@ -55,3 +55,18 @@ it('SECNET-03: a public-content URL cannot authorize its own LAN destination', a
   expect((await fetchPlaylist(`${root}/derived.m3u8`, { guard: false, signal })).ok).toBe(false);
   expect(contacted).toBe(0);
 });
+
+
+it('SECNET-03 review: a typed localhost encoder bound to IPv4 works when IPv6 resolves first', async () => {
+  const root = await serve((_req, res) => res.end('#EXTM3U\n#EXTINF:1,\nsegment.ts\n'));
+  const url = `${root.replace('127.0.0.1', 'localhost')}/live.m3u8`;
+  const got = await fetchPlaylist(url, {
+    guard: false,
+    signal: new AbortController().signal,
+    resolve: () => Promise.resolve([
+      { address: '::1', family: 6 },
+      { address: '127.0.0.1', family: 4 },
+    ]),
+  });
+  expect(got).toMatchObject({ ok: true, url });
+});

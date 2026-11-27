@@ -65,3 +65,15 @@ it('SECNET-03: a later private DNS answer cannot replace a derived public target
   expect(await policy.target('https://derived.example/a.ts')).toMatchObject({ ip: '8.8.4.4' });
   await expect(policy.target('https://derived.example/b.ts')).rejects.toThrow('private');
 });
+
+
+it('SECNET-03 review: every checked DNS answer remains pinned without another lookup', async () => {
+  const answers = [
+    { address: '::1', family: 6 },
+    { address: '127.0.0.1', family: 4 },
+  ];
+  const resolve = vi.fn().mockResolvedValue(answers);
+  const policy = new OutboundPolicy(await authorize('http://localhost:8080/live.m3u8', resolve), false, resolve);
+  expect(await policy.target('http://localhost:8080/segment.ts')).toMatchObject({ addresses: answers });
+  expect(resolve).toHaveBeenCalledTimes(1);
+});

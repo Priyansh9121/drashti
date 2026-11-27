@@ -140,3 +140,46 @@ it.each([
   await s.start(`http://public.example:${port}/live.m3u8`);
   await expect(s.rewrite(`#EXTM3U\n${line}\n`, `http://public.example:${port}/live.m3u8`)).rejects.toThrow();
 });
+
+
+it('SECNET-03 review: the gateway also falls back to the IPv4-only typed encoder for playlists and segments', async () => {
+  const contacts: string[] = [];
+  const port = await fixture((req, res) => {
+    contacts.push(req.url ?? '');
+    res.end(req.url === '/live.m3u8' ? '#EXTM3U\n#EXTINF:1,\nsegment.ts\n' : 'placeholder segment');
+  });
+  const s = new CheckedHls({
+    origin: `http://localhost:${port}`,
+    addresses: [
+      { address: '::1', family: 6 },
+      { address: '127.0.0.1', family: 4 },
+    ],
+  });
+  sessions.push(s);
+  const root = await s.start(`http://localhost:${port}/live.m3u8`);
+  const response = await fetch(root);
+  expect(response.status).toBe(200);
+  const segment = (await response.text()).split('\n').find((line) => line.startsWith('http:')) ?? '';
+  expect(await (await fetch(segment)).text()).toBe('placeholder segment');
+  expect(contacts).toEqual(['/live.m3u8', '/segment.ts']);
+});
+
+const whitespaceUris = ['\t', '\v', '\f'].flatMap((space) => [
+  `#EXT-X-KEY:METHOD=AES-128,${space}URI="http://127.0.0.1/private"`,
+  `#EXT-X-MAP:${space}URI="http://127.0.0.1/private"`,
+  `#EXT-X-MEDIA:TYPE=AUDIO,${space}URI="http://127.0.0.1/private"`,
+]);
+it.each(whitespaceUris)('SECNET-03 review: refuses a private URI after whitespace in %j', async (line) => {
+  const s = new CheckedHls({ origin: 'http://public.example', addresses: [{ address: '8.8.8.8', family: 4 }] });
+  sessions.push(s);
+  await expect(s.rewrite(`#EXTM3U\n${line}\n`, 'http://public.example/root.m3u8')).rejects.toThrow();
+});
+
+it.each(whitespaceUris)('SECNET-03 review: an authorized URI after whitespace is rewritten in %j', async (line) => {
+  const s = new CheckedHls({ origin: 'http://127.0.0.1', addresses: [{ address: '127.0.0.1', family: 4 }] });
+  sessions.push(s);
+  await s.start('http://127.0.0.1/root.m3u8');
+  const rewritten = await s.rewrite(`#EXTM3U\n${line}\n`, 'http://127.0.0.1/root.m3u8');
+  expect(rewritten).not.toContain('http://127.0.0.1/private');
+  expect(rewritten).toMatch(/URI="http:\/\/127\.0\.0\.1:\d+\//u);
+});

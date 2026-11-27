@@ -168,6 +168,7 @@ import type { MediaMarkers } from '../shared/markers';
 import { mediaMarkersInputSchema, NO_MARKERS } from '../shared/markers';
 import { evenGainDb, type SoundLevelsResult } from '../shared/sound';
 import { UpdateService } from './update/update-service';
+import { electronUpdateFetch } from './update/electron-fetch';
 import { defaultInstaller } from './update/installer';
 import { UPDATE_BASE } from '../shared/updates';
 import { lowerThirdInputSchema } from '../shared/lower-thirds';
@@ -7199,7 +7200,7 @@ function start(): void {
     dir: join(userDataDir, 'Updates'),
     // Packaged, an update's files come from GitHub only (Session 30).
     packaged: packaged(),
-    fetch: (url, init) => electronNet.fetch(url, init),
+    fetch: electronUpdateFetch(electronNet),
     installer: defaultInstaller({
       platform: process.platform,
       isPackaged: packaged(),
