@@ -116,7 +116,8 @@ async function fits(win: Page, where: string) {
           for (let at: Element | null = parent; at && at !== root; at = at.parentElement) {
             const style = getComputedStyle(at);
             const r = at.getBoundingClientRect();
-            if (style.display === 'none' || style.visibility === 'hidden' || (r.width <= 1 && r.height <= 1)) hidden = true;
+            if (style.display === 'none' || style.visibility === 'hidden' || (r.width <= 1 && r.height <= 1))
+              hidden = true;
           }
           if (hidden) continue;
           const range = document.createRange();
@@ -124,7 +125,12 @@ async function fits(win: Page, where: string) {
           const r = range.getBoundingClientRect();
           const button = parent.closest('button');
           const room = button?.getBoundingClientRect() ?? edge;
-          if (r.left < room.left - 0.01 || r.right > room.right + 0.01 || r.top < edge.top - 0.01 || r.bottom > edge.bottom + 0.01)
+          if (
+            r.left < room.left - 0.01 ||
+            r.right > room.right + 0.01 ||
+            r.top < edge.top - 0.01 ||
+            r.bottom > edge.bottom + 0.01
+          )
             faults.push(`visible words cut: ${node.textContent.trim()}`);
         }
         return faults;
@@ -136,88 +142,107 @@ async function fits(win: Page, where: string) {
 
 for (const mode of ['pro', 'simple'] as const)
   for (const size of SIZES)
-  test(`MUST-1 ${mode} ${size.width}: mirroring, access countdown, both screens off, Audio muted and disconnected Sound all fit; steady controls never move`, async () => {
-    const { app, access } = await launchApp({
-      ...QUICK,
-      DRASHTI_TEST_AUTO_SCREENS: 'pretend',
-      DRASHTI_TEST_MIRRORED_ONTO: 'PLACEHOLDER PJ',
-      DRASHTI_TEST_FAKE_DEVICES: '1',
-    });
-    try {
-      const win = await operatorPage(app);
-      await operatorReady(win);
-      await sizeOperatorWindow(app, win, size);
-      await expect(win.getByTestId('screens-said')).toHaveAttribute('data-kind', 'mirroring');
-      await win.evaluate(async () => {
-        const d = (globalThis as PageGlobals).drashti;
-        for (const which of ['audience', 'stage'] as const) {
-          const result = await d.screenSwitches.turn(which, false);
-          if (!result.ok) throw new Error(result.message);
-        }
+    test(`MUST-1 ${mode} ${size.width}: mirroring, access countdown, both screens off, Audio muted and disconnected Sound all fit; steady controls never move`, async () => {
+      const { app, access } = await launchApp({
+        ...QUICK,
+        DRASHTI_TEST_AUTO_SCREENS: 'pretend',
+        DRASHTI_TEST_MIRRORED_ONTO: 'PLACEHOLDER PJ',
+        DRASHTI_TEST_FAKE_DEVICES: '1',
       });
-      if (mode === 'simple')
-        await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
-      stopAnswering(access);
-      await expect(win.getByTestId('access-offline-notice')).toBeVisible({ timeout: 30_000 });
-      await expect(win.getByTestId('sound-status')).toBeVisible();
-      const snapshot = await win.evaluate(() => (globalThis as PageGlobals).drashti.screens.get());
-      const showing: ScreenStatus = { screenId: 'placeholder-1', state: 'showing', displayId: 1 };
-      const healthy: ScreenStatus = { screenId: 'placeholder-2', state: 'showing', displayId: 2 };
-      await tell(app, IPC.screens.changed, { ...snapshot, status: [showing, healthy] });
-      const before = await settledSteady(win);
-      for (const missing of [false, true, false]) {
-        // Selecting a missing mixer is a real operator action; returning to System default must restore the same slot.
-        if (mode === 'simple')
-          await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
-        await win.evaluate(
-          (missing) =>
-            (globalThis as PageGlobals).drashti.audio.setOutput(
-              missing ? { id: 'placeholder-mixer', label: 'Placeholder Mixer' } : null,
-            ),
-          missing,
-        );
+      try {
+        const win = await operatorPage(app);
+        await operatorReady(win);
+        await sizeOperatorWindow(app, win, size);
+        await expect(win.getByTestId('screens-said')).toHaveAttribute('data-kind', 'mirroring');
+        await win.evaluate(async () => {
+          const d = (globalThis as PageGlobals).drashti;
+          for (const which of ['audience', 'stage'] as const) {
+            const result = await d.screenSwitches.turn(which, false);
+            if (!result.ok) throw new Error(result.message);
+          }
+        });
         if (mode === 'simple')
           await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
-        const sound = win.getByTestId(missing ? 'sound-warning' : 'sound-status');
-        await expect(sound).toBeVisible();
-        const soundWords = missing ? 'Sound output "Placeholder Mixer" not connected' : 'Sound: System default';
-        await expect(sound).toHaveAccessibleName(soundWords);
-        await expect(sound).toHaveAttribute('title', new RegExp(missing ? 'Placeholder Mixer.*not connected' : 'Sound: System default'));
-        for (const [audience, stage] of [[false, false], [true, false], [false, true], [true, true]] as const) {
-          await tell(app, IPC.screenSwitches.changed, { audience, stage });
-          await expect(win.getByTestId('switch-off-audience')).toHaveCount(audience ? 0 : 1);
-          await expect(win.getByTestId('switch-off-stage')).toHaveCount(stage ? 0 : 1);
-          for (const muted of [true, false]) {
-            await win.evaluate(
-              (muted) => (globalThis as PageGlobals).drashti.sound.setMuted('audio', muted),
-              muted,
+        stopAnswering(access);
+        await expect(win.getByTestId('access-offline-notice')).toBeVisible({ timeout: 30_000 });
+        await expect(win.getByTestId('sound-status')).toBeVisible();
+        const snapshot = await win.evaluate(() => (globalThis as PageGlobals).drashti.screens.get());
+        const showing: ScreenStatus = { screenId: 'placeholder-1', state: 'showing', displayId: 1 };
+        const healthy: ScreenStatus = { screenId: 'placeholder-2', state: 'showing', displayId: 2 };
+        await tell(app, IPC.screens.changed, { ...snapshot, status: [showing, healthy] });
+        const before = await settledSteady(win);
+        for (const missing of [false, true, false]) {
+          // Selecting a missing mixer is a real operator action; returning to System default must restore the same slot.
+          if (mode === 'simple')
+            await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
+          await win.evaluate(
+            (missing) =>
+              (globalThis as PageGlobals).drashti.audio.setOutput(
+                missing ? { id: 'placeholder-mixer', label: 'Placeholder Mixer' } : null,
+              ),
+            missing,
+          );
+          if (mode === 'simple')
+            await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+          const sound = win.getByTestId(missing ? 'sound-warning' : 'sound-status');
+          await expect(sound).toBeVisible();
+          const soundWords = missing
+            ? 'Sound output "Placeholder Mixer" not connected'
+            : 'Sound: System default';
+          await expect(sound).toHaveAccessibleName(soundWords);
+          await expect
+            .soft(sound)
+            .toHaveAttribute(
+              'title',
+              new RegExp(missing ? 'Placeholder Mixer.*not connected' : 'Sound: System default'),
             );
-            await expect(win.getByTestId('sound-muted-status')).toHaveText(muted ? 'Audio muted' : '');
-            const faults: ScreenStatus[] = [healthy,
-              { ...healthy, state: 'missing-display' },
-              { ...healthy, state: 'stopped' },
-              { ...healthy, restarts: 4 },
-            ];
-            for (const fault of faults) {
-              await tell(app, IPC.screens.changed, { ...snapshot, status: [showing, fault] });
-              const words = fault.restarts ? '1 keeps restarting' : fault.state === 'stopped' ? '1 stopped' : fault.state === 'missing-display' ? '1 display not connected' : '2 screens showing';
-              await expect(win.getByTestId('screens-summary')).toContainText(words);
-              if (fault.state === 'stopped') {
-                const notice = win.getByTestId('screen-stopped-notice');
-                if (await notice.count()) await notice.getByRole('button', { name: 'Dismiss' }).click();
-                await expect(notice).toHaveCount(0);
+          for (const [audience, stage] of [
+            [false, false],
+            [true, false],
+            [false, true],
+            [true, true],
+          ] as const) {
+            await tell(app, IPC.screenSwitches.changed, { audience, stage });
+            await expect(win.getByTestId('switch-off-audience')).toHaveCount(audience ? 0 : 1);
+            await expect(win.getByTestId('switch-off-stage')).toHaveCount(stage ? 0 : 1);
+            for (const muted of [true, false]) {
+              await win.evaluate(
+                (muted) => (globalThis as PageGlobals).drashti.sound.setMuted('audio', muted),
+                muted,
+              );
+              await expect(win.getByTestId('sound-muted-status')).toHaveText(muted ? 'Audio muted' : '');
+              const faults: ScreenStatus[] = [
+                healthy,
+                { ...healthy, state: 'missing-display' },
+                { ...healthy, state: 'stopped' },
+                { ...healthy, restarts: 4 },
+              ];
+              for (const fault of faults) {
+                await tell(app, IPC.screens.changed, { ...snapshot, status: [showing, fault] });
+                const words = fault.restarts
+                  ? '1 keeps restarting'
+                  : fault.state === 'stopped'
+                    ? '1 stopped'
+                    : fault.state === 'missing-display'
+                      ? '1 display not connected'
+                      : '2 screens showing';
+                await expect(win.getByTestId('screens-summary')).toContainText(words);
+                if (fault.state === 'stopped') {
+                  const notice = win.getByTestId('screen-stopped-notice');
+                  if (await notice.count()) await notice.getByRole('button', { name: 'Dismiss' }).click();
+                  await expect(notice).toHaveCount(0);
+                }
+                const where = `${mode} ${size.width}, missing ${missing}, muted ${muted}, Audience ${audience}, Stage ${stage}, ${words}`;
+                expect.soft(await steady(win), where).toEqual(before);
+                await fits(win, where);
               }
-              const where = `${mode} ${size.width}, missing ${missing}, muted ${muted}, Audience ${audience}, Stage ${stage}, ${words}`;
-              expect.soft(await steady(win), where).toEqual(before);
-              await fits(win, where);
             }
           }
         }
+      } finally {
+        await app.close();
       }
-    } finally {
-      await app.close();
-    }
-  });
+    });
 
 for (const mode of ['pro', 'simple'] as const)
   test(`MUST-2 ${mode}: missing, stopped and restarting screens never widen the summary or move Sound, calendar, Help or show controls`, async () => {
@@ -278,7 +303,7 @@ for (const mode of ['pro', 'simple'] as const)
               : 'display not connected';
           await expect(win.getByTestId('screens-summary')).toContainText(words);
           await expect(win.getByTestId('screens-summary')).toHaveAccessibleName(new RegExp(words));
-          await expect(win.getByTestId('screens-summary')).toHaveAttribute('title', new RegExp(words));
+          await expect.soft(win.getByTestId('screens-summary')).toHaveAttribute('title', new RegExp(words));
           // The separate, existing top-of-window stopped-screen notice is outside this footer regression.
           // Close it as an operator may, leaving the stopped state and every position/fit assertion intact.
           if (fault.state === 'stopped') {
