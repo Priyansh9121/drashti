@@ -144,6 +144,25 @@ export function cameraAllowed(
   return right && isOwnPage(url);
 }
 
+/** A permission belongs to this app document's main frame, never an embedded or foreign page. */
+export function permissionFrameAllowed(
+  contents: WebContents | null,
+  url: string,
+  mainFrame: boolean,
+  isOwnPage: (url: string) => boolean = ownPage,
+): boolean {
+  if (contents === null || !mainFrame || !isOwnPage(url)) return false;
+  const current = contents.getURL();
+  if (!isOwnPage(current)) return false;
+  try {
+    const asking = new URL(url);
+    const loaded = new URL(current);
+    return asking.protocol === loaded.protocol && asking.host === loaded.host && asking.pathname === loaded.pathname;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Permissions: every request (camera, microphone, notifications, ...) is
  * refused on every page, and every check fails, except the one the audio
@@ -156,11 +175,11 @@ export function cameraAllowed(
 export function applySessionSecurity(session: Session, rules: PermissionRules = {}): void {
   const own = rules.isOwnPage ?? ownPage;
   session.setPermissionRequestHandler((contents, permission, callback, details) => {
-    const url = details.requestingUrl || contents.getURL();
+    const url = details.requestingUrl;
     // MIDI for the operator window's own page, never SysEx; a screen's picture to a page that may capture it
     // now (Session 48); a camera alone to a screen's page (Session 50); nothing else is ever asked for and given.
     const media = 'mediaTypes' in details ? (details.mediaTypes ?? []) : null;
-    const allowed =
+    const allowed = permissionFrameAllowed(contents, url, details.isMainFrame, own) && (
       (permission === 'midi' && (rules.isOperator?.(contents) ?? false) && isOperatorPage(url)) ||
       screenPictureAllowed(permission, media, rules.mayCapture?.(contents) ?? false) ||
       (cameraAllowed(
@@ -173,7 +192,8 @@ export function applySessionSecurity(session: Session, rules: PermissionRules = 
         },
         own,
       ) &&
-        (rules.cameraGranted?.() ?? true));
+        (rules.cameraGranted?.() ?? true)));
+
     rules.log?.(`Permission ${allowed ? 'given' : 'refused'}: ${permission} for ${url}`);
     callback(allowed);
   });
@@ -181,7 +201,7 @@ export function applySessionSecurity(session: Session, rules: PermissionRules = 
     const url = details.requestingUrl ?? contents?.getURL() ?? '';
     const audioPlayer = rules.isAudioPlayer?.(contents) ?? false;
     const operator = rules.isOperator?.(contents) ?? false;
-    const allowed =
+    const allowed = permissionFrameAllowed(contents, url, details.isMainFrame, own) && (
       permissionCheckAllowed(permission, audioPlayer, url, operator) ||
       cameraAllowed(
         {
@@ -192,7 +212,7 @@ export function applySessionSecurity(session: Session, rules: PermissionRules = 
           mainFrame: details.isMainFrame,
         },
         own,
-      );
+      ));
     rules.log?.(`Permission check ${allowed ? 'passed' : 'failed'}: ${permission} for ${url}`);
     return allowed;
   });
@@ -228,24 +248,12 @@ export function allowHangStacks(
 }
 
 /**
- * No pop-ups, no <webview>, and no navigating away from our own pages: not by a link, nor by a redirect,
- * nor in a frame (Sessions 31–36, SEC-15).
+ * Only Main loads app documents. Renderer links, redirects and frames cannot change a window's role;
+ * same-document anchors do not emit these events. Popups and webviews are never needed.
  */
-export function secureWebContents(
-  contents: WebContents,
-  isOwnPage: (url: string) => boolean = ownPage,
-): void {
+export function secureWebContents(contents: WebContents): void {
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  contents.on('will-attach-webview', (event) => {
-    event.preventDefault();
-  });
-  contents.on('will-navigate', (event) => {
-    if (!isOwnPage(event.url)) event.preventDefault();
-  });
-  contents.on('will-redirect', (event) => {
-    if (!isOwnPage(event.url)) event.preventDefault();
-  });
-  contents.on('will-frame-navigate', (event) => {
-    if (!isOwnPage(event.url)) event.preventDefault();
-  });
+  for (const name of ['will-attach-webview', 'will-navigate', 'will-redirect', 'will-frame-navigate'] as const) {
+    contents.on(name, (event) => { event.preventDefault(); });
+  }
 }

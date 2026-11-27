@@ -411,6 +411,7 @@ import {
 } from './watchdog';
 import { filesUp, KeepsFailing, keptFailingNotice, stillUpOn } from './keeps-failing';
 import { allowHangStacks, applySessionSecurity, secureWebContents } from './windows/security';
+import { installElectronHardening } from './windows/electron-hardening';
 import { StreamProfileRepo } from './db/stream-profiles';
 import { StreamKeyStore } from './stream/key-store';
 import { YOUTUBE_WORDS } from '../shared/youtube';
@@ -11837,6 +11838,8 @@ if (!app.requestSingleInstanceLock()) {
     if (operatorWindow.isMinimized()) operatorWindow.restore();
     operatorWindow.focus();
   });
+
+  installElectronHardening(app);
 
   app.on('web-contents-created', (_event, contents) => {
     secureWebContents(contents);

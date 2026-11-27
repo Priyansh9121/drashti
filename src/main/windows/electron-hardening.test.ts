@@ -142,7 +142,7 @@ describe('E-02: renderers cannot change the document attached to a privileged We
   it.each(['will-navigate', 'will-redirect', 'will-frame-navigate'])(
     'refuses %s even for another packaged app page', (eventName) => {
       const contents = Object.assign(new EventEmitter(), { setWindowOpenHandler: vi.fn() });
-      secureWebContents(contents as unknown as WebContents, own);
+      secureWebContents(contents as unknown as WebContents);
       for (const url of [`${ROOT}audio.html`, `${ROOT}output.html`, `${ROOT}index.html`,
         'file:///elsewhere/index.html', 'https://example.invalid/', 'about:blank',
         'data:text/html,placeholder', 'javascript:void(0)']) {
@@ -155,7 +155,7 @@ describe('E-02: renderers cannot change the document attached to a privileged We
   it('denies popup creation and webview attachment', () => {
     const setWindowOpenHandler = vi.fn();
     const contents = Object.assign(new EventEmitter(), { setWindowOpenHandler });
-    secureWebContents(contents as unknown as WebContents, own);
+    secureWebContents(contents as unknown as WebContents);
     const open = setWindowOpenHandler.mock.calls[0]?.[0] as () => unknown;
     expect(open()).toEqual({ action: 'deny' });
     const preventDefault = vi.fn();

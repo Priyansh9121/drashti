@@ -278,13 +278,13 @@ describe('navigating (Sessions 31–36, SEC-15)', () => {
     return { contents, fire };
   }
 
-  it('stops a link, a redirect and a frame going anywhere but our own pages', () => {
+  it('stops every renderer document link, redirect and frame, including app-local pages', () => {
     const { contents, fire } = stand();
-    secureWebContents(contents, (url) => url.startsWith('file:///app/out/renderer/'));
+    secureWebContents(contents);
     for (const name of ['will-navigate', 'will-redirect', 'will-frame-navigate']) {
       expect(fire(name, 'https://example.com/'), `${name} off the app`).toBe(true);
       expect(fire(name, 'file:///elsewhere/index.html'), `${name} to another file`).toBe(true);
-      expect(fire(name, 'file:///app/out/renderer/index.html'), `${name} to our own page`).toBe(false);
+      expect(fire(name, 'file:///app/out/renderer/index.html'), `${name} to our own page`).toBe(true);
     }
   });
 });
