@@ -265,9 +265,10 @@ const LATIN = /^\p{Script=Latin}$/u;
  * keyboard (`code`), so the keymap's letters act with such a layout on, as the quick bar's digits always have. Only a
  * character of another script is replaced, never a Latin one (accented or not) nor a symbol: every Latin layout
  * (QWERTY, AZERTY, QWERTZ, Dvorak) is as it was, letter for letter, and a Mac's Option letters (∫, ™) too. A press
- * without its place (the main process's) is as it was.
+ * without its place (the main process's) is as it was. The windows' own keys outside the keymap read it too (alpha.24,
+ * hunt S3-3: the slide editor's Save, Find, Undo and Redo; shortcutKey in the renderer, never while typing).
  */
-function keyOf(input: Pick<KeyInput, 'key' | 'code'>): string {
+export function latinKey(input: Pick<KeyInput, 'key' | 'code'>): string {
   const { key, code } = input;
   if (code === undefined || (key.codePointAt(0) ?? 0) < 0x370 || !OTHER_SCRIPT.test(key) || LATIN.test(key))
     return key;
@@ -286,7 +287,7 @@ export function keyMatches(input: KeyInput, binding: string, platform: string): 
   // keyboard's 1 is "&"; Shift with it is another key.
   if (want.alt && /^[0-9]$/u.test(want.key) && input.code !== undefined)
     return input.code === `Digit${want.key}` && input.shiftKey === want.shift;
-  const key = normalise(keyOf(input));
+  const key = normalise(latinKey(input));
   // Shift only matters when the binding asks for it, for named keys (Shift+Space is not Space), and for a letter
   // with Cmd, Ctrl or Alt (Session 51: Shift+Cmd+Z is Redo's key, not Mod+Z). A letter alone matches with Shift
   // or without (Caps Lock, Shift held), as a digit or "?" does: some keyboards need Shift to type them.

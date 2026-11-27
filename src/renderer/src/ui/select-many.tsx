@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode, RefObject } from 'react';
+import { shortcutKey } from '../operator/useKeymap';
 import { Button } from './Button';
 import { Trash2, X } from './icons';
 
@@ -208,10 +209,13 @@ export function boxChoice(before: readonly string[], touched: readonly string[],
   return adding ? [...new Set([...before, ...touched])] : [...touched];
 }
 
-/** Cmd-A (Ctrl-A on Windows and Linux): every row of the list. */
+/**
+ * Cmd-A (Ctrl-A on Windows and Linux): every row of the list. With a Gujarati or Hindi layout, the A key's place
+ * (hunt S3-3), outside a field.
+ */
 export function isSelectAll(e: KeyboardEvent, platform: string): boolean {
   const mod = platform === 'darwin' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
-  return mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'a';
+  return mod && !e.altKey && !e.shiftKey && shortcutKey(e).toLowerCase() === 'a';
 }
 
 /**

@@ -7,7 +7,7 @@ import { legacyFontOf, slidesOf } from '../../../shared/slide-edit';
 import { renderEditedSlide } from '../../../shared/slide-design';
 import { keyText, SHOW_F_KEYS } from '../../../shared/keymap';
 import { editorKeys } from '../../../shared/window-keys';
-import { isTyping } from '../operator/useKeymap';
+import { isTyping, shortcutKey } from '../operator/useKeymap';
 import { loadMedia } from '../library/library-store';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
@@ -635,7 +635,8 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       if (outsideBusy || translating) return;
       const m = mac ? e.metaKey : e.ctrlKey;
       if (!m || e.altKey) return;
-      const key = e.key.toLowerCase();
+      // With a Gujarati or Hindi layout, the Latin letter in the key's place (hunt S3-3), outside a text box.
+      const key = shortcutKey(e).toLowerCase();
       if (insertBase.current) {
         e.preventDefault();
         return;

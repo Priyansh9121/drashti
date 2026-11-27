@@ -1,11 +1,36 @@
 import { useEffect, useRef } from 'react';
 import type { KeyBinding, KeyInput, OperatorAction } from '../../../shared/keymap';
-import { actionFor, PAGE_KEYMAP, quickSlotFor } from '../../../shared/keymap';
+import { actionFor, latinKey, PAGE_KEYMAP, quickSlotFor } from '../../../shared/keymap';
 import { useKeymapNow } from './single-keys-store';
 
 export function isTyping(target: unknown): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+}
+
+/** What shortcutKey reads of a press: a KeyboardEvent's parts, or React's (its native event says if an IME composes). */
+export interface ShortcutPress {
+  key: string;
+  code?: string;
+  isComposing?: boolean;
+  nativeEvent?: { isComposing?: boolean };
+  target?: unknown;
+}
+
+/**
+ * The key a window's own shortcut reads, outside the keymap (alpha.24, hunt S3-3: the slide editor's Save, Find, Undo
+ * and Redo, the Access List's Find, Adjust the picture's Undo, a list's Select all): the press's own key; or, with a
+ * keyboard layout of another script (a Gujarati or Hindi layout's Ctrl with the S key says "સ"), the Latin letter,
+ * digit or "." in its place on the keyboard, as the keymap reads it (latinKey: only another script's single letter,
+ * mark, digit or stop on a letter, digit or full stop key). Never while typing in a field or an editable box, nor
+ * during an IME's composition. A Latin layout's press is always its own key, nothing else asked of it.
+ */
+export function shortcutKey(e: ShortcutPress): string {
+  const latin = latinKey(e);
+  if (latin === e.key) return e.key;
+  const composing = e.isComposing === true || e.nativeEvent?.isComposing === true;
+  const typing = e.target !== undefined && e.target !== null && isTyping(e.target);
+  return composing || typing ? e.key : latin;
 }
 
 /** What the window's listener reads of a key press: a KeyboardEvent's parts (a test's stand-in has only these). */
