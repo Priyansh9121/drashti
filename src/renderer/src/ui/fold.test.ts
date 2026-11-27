@@ -218,7 +218,12 @@ describe('a section forgets how its insides arrived as soon as they have', () =>
  * column's scrolling part (a short window), or by the column scrolling back.
  */
 describe('what holds the copy of what folds away', () => {
-  const NONE = { movingShowControl: false, showControlAbove: false, liveBlockInScroller: false, scrollsBack: false };
+  const NONE = {
+    movingShowControl: false,
+    showControlAbove: false,
+    liveBlockInScroller: false,
+    scrollsBack: false,
+  };
 
   it('a show control among what moves, the LIVE block in the same scrolling part, or the column scrolling back', () => {
     expect(copyHeld(NONE)).toBe(false);

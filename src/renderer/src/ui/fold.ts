@@ -113,21 +113,20 @@ export interface ArrivingBody {
  * stop, for a section folded or gone first.
  */
 export function whenArrived(body: ArrivingBody, done: () => void, latest = foldArrivalMs()): () => void {
+  // Its own CSS animations (a transition has no name): the arrival.
+  const arriving = body.getAnimations().filter((a) => typeof a.animationName === 'string');
+  if (arriving.length === 0) {
+    done();
+    return () => undefined;
+  }
   let over = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
   const end = () => {
     if (over) return;
     over = true;
     clearTimeout(timer);
     done();
   };
-  // Its own CSS animations (a transition has no name): the arrival.
-  const arriving = body.getAnimations().filter((a) => typeof a.animationName === 'string');
-  if (arriving.length === 0) {
-    end();
-    return () => undefined;
-  }
-  timer = setTimeout(end, latest);
+  const timer = setTimeout(end, latest);
   void Promise.all(arriving.map((a) => a.finished)).then(end, end);
   return () => {
     over = true;
@@ -222,7 +221,7 @@ function copyHolds(section: HTMLElement, body: HTMLElement, clipper: HTMLElement
   return {
     movingShowControl: others.some(among),
     showControlAbove: others.some((c) => !among(c)),
-    liveBlockInScroller: clipper === null || clipper.querySelector(LIVE_BLOCK) !== null,
+    liveBlockInScroller: clipper?.querySelector(LIVE_BLOCK) !== null,
     scrollsBack: clipper !== null && scrollsBack(clipper, body.getBoundingClientRect().height),
   };
 }
