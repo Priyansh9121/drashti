@@ -5,197 +5,170 @@ function style() {
   return {
     getPropertyValue: (name: string) => values.get(name) ?? '',
     getPropertyPriority: () => '',
-    setProperty: (name: string, value: string) => values.set(name, value),
-    removeProperty: (name: string) => values.delete(name),
+    setProperty: (name: string, value: string) => { values.set(name, value); },
+    removeProperty: (name: string) => { values.delete(name); },
   };
 }
 
-function element(blocked = false, holdsShow = false) {
-  return {
-    style: style(),
-    closest: vi.fn(() => (blocked ? {} : null)),
-    querySelector: vi.fn(() => (holdsShow ? {} : null)),
-    contains: (other: unknown) => other === null,
-    getBoundingClientRect: () => ({ width: 24, height: 24 }),
-  };
-}
-
-async function page(deferred = false) {
-  vi.resetModules();
-  const root = {
-    style: style(),
-    dataset: { opened: '', chip: 'yes', interfaceMotion: 'lively' } as Record<string, string>,
-  };
-  const safe = element();
-  const show = element(true);
-  const wrapper = element(false, true);
-  const output = element(true);
-  let update: (() => void) | undefined;
+function question(text = '?', blocked = false, holdsShow = false) {
+  const cancel = vi.fn();
   let finish!: () => void;
   const finished = new Promise<void>((resolve) => {
     finish = resolve;
   });
-  const skipTransition = vi.fn();
-  const startViewTransition = vi.fn((change: () => void) => {
-    update = change;
-    if (!deferred) change();
-    return { finished, skipTransition };
+  return {
+    textContent: text,
+    style: style(),
+    contains: () => false,
+    closest: vi.fn(() => (blocked ? {} : null)),
+    querySelector: vi.fn(() => (holdsShow ? {} : null)),
+    getBoundingClientRect: () => ({ width: 24, height: 24 }),
+    animate: vi.fn(() => ({ cancel, finished })),
+    cancel,
+    finish,
+    finished,
+  };
+}
+
+async function page() {
+  vi.resetModules();
+  const root = { style: style(), dataset: { opened: '', chip: 'yes', interfaceMotion: 'calm' } as Record<string, string> };
+  const safe = question();
+  const word = question('Screens');
+  const show = question('?', true);
+  const wrapper = question('?', false, true);
+  const startViewTransition = vi.fn(() => {
+    throw new Error('Document capture is forbidden');
   });
   const doc = Object.assign(new EventTarget(), {
     documentElement: root,
     visibilityState: 'visible',
-    querySelectorAll: vi.fn(() => [safe, show, wrapper, output]),
+    querySelectorAll: vi.fn(() => [safe, word, show, wrapper]),
     startViewTransition,
   });
   const reduced = Object.assign(new EventTarget(), { matches: false });
   const forced = Object.assign(new EventTarget(), { matches: false });
+  let changed: (() => void) | undefined;
+  const disconnect = vi.fn();
   vi.stubGlobal('document', doc);
-  vi.stubGlobal('matchMedia', (query: string) => (query.includes('reduced') ? reduced : forced));
-  const api = await import('./interface-fade');
+  vi.stubGlobal('matchMedia', (q: string) => (q.includes('reduced') ? reduced : forced));
+  vi.stubGlobal('getComputedStyle', () => ({
+    getPropertyValue: (name: string) =>
+      name === '--dur-menu' ? '160ms' : name === '--ease-out' ? 'cubic-bezier(0.23, 1, 0.32, 1)' : '',
+  }));
+  vi.stubGlobal(
+    'MutationObserver',
+    class {
+      constructor(callback: () => void) {
+        changed = callback;
+      }
+      observe() {
+        return undefined;
+      }
+      disconnect = disconnect;
+    },
+  );
   return {
-    ...api,
+    ...(await import('./interface-fade')),
     root,
+    doc,
     safe,
+    word,
     show,
     wrapper,
-    output,
-    doc,
     reduced,
     forced,
     startViewTransition,
-    skipTransition,
-    finish,
-    finished,
-    update: () => update?.(),
+    changed: () => changed?.(),
+    disconnect,
   };
 }
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
+afterEach(() => vi.unstubAllGlobals());
 
-describe('soft interface fades keep the show live', () => {
-  it('captures only safe pictures, never the root, a show control, a wrapper holding one or an output', async () => {
-    const p = await page();
-    const change = vi.fn();
-    p.fadeInterface(change, 'look');
-    expect(change).toHaveBeenCalledTimes(1);
-    expect(p.startViewTransition).toHaveBeenCalledTimes(1);
-    expect(p.root.style.getPropertyValue('view-transition-name')).toBe('none');
-    expect(p.safe.style.getPropertyValue('view-transition-name')).toMatch(/^motionlooks-/u);
-    for (const el of [p.show, p.wrapper, p.output])
-      expect(el.style.getPropertyValue('view-transition-name')).toBe('');
-    expect(p.safe.closest).toHaveBeenCalledWith(expect.stringContaining('[data-show-control]'));
-    expect(p.wrapper.querySelector).toHaveBeenCalledWith(expect.stringContaining('[data-show-control]'));
-    p.finish();
-    await p.finished;
-    expect(p.root.style.getPropertyValue('view-transition-name')).toBe('');
-    expect(p.safe.style.getPropertyValue('view-transition-name')).toBe('');
-  });
-
-  it('fades Help and mode changes in Calm as well, with no snapshot of their containing layout', async () => {
-    for (const kind of ['help', 'mode'] as const) {
+describe('Help fades only its live question marks, with no document capture', () => {
+  it('applies the change synchronously, then animates only a question’s own opacity using the motion tokens', async () => {
+    for (const motion of ['calm', 'lively']) {
       const p = await page();
-      p.root.dataset['interfaceMotion'] = 'calm';
-      p.fadeInterface(() => undefined, kind);
-      expect(p.startViewTransition, kind).toHaveBeenCalledTimes(1);
-      expect(p.root.dataset['interfaceFade']).toBe(kind);
-      expect(p.root.style.getPropertyValue('--motionlooks-in')).toBe(
-        kind === 'help' ? 'var(--dur-menu)' : 'var(--dur-crossfade)',
-      );
-      expect(p.root.style.getPropertyValue('--motionlooks-out')).toBe(
-        kind === 'help' ? 'var(--dur-press)' : 'var(--dur-crossfade)',
-      );
-      p.finish();
-      await p.finished;
+      p.root.dataset['interfaceMotion'] = motion;
+      const change = vi.fn(() => expect(p.safe.animate).not.toHaveBeenCalled());
+      p.fadeInterface(change, 'help');
+      expect(change).toHaveBeenCalledTimes(1);
+      expect(p.startViewTransition).not.toHaveBeenCalled();
+      expect(p.doc.querySelectorAll).toHaveBeenCalledWith('[data-what-is-this]');
+      expect(p.safe.animate).toHaveBeenCalledWith([{ opacity: 0 }, { opacity: 1 }], {
+        duration: 160,
+        easing: 'cubic-bezier(0.23, 1, 0.32, 1)',
+        fill: 'none',
+      });
+      for (const el of [p.word, p.show, p.wrapper]) expect(el.animate).not.toHaveBeenCalled();
       expect(p.root.dataset['interfaceFade']).toBeUndefined();
-      expect(p.root.style.getPropertyValue('--motionlooks-in')).toBe('');
-      expect(p.root.style.getPropertyValue('--motionlooks-out')).toBe('');
+      p.safe.finish();
+      await p.safe.finished;
+      await Promise.resolve();
+      expect(p.disconnect).toHaveBeenCalledTimes(1);
     }
   });
 
-  it('is immediate for Off, reduced motion, forced colours, a hidden or opening window, no chip, no API, or a busy show', async () => {
-    for (const held of ['off', 'reduced', 'forced', 'hidden', 'opening', 'chip', 'api', 'busy']) {
+  it('changes immediately and starts nothing for every motion constraint or a busy show', async () => {
+    for (const held of ['off', 'reduced', 'forced', 'hidden', 'opening', 'no-chip', 'unknown-chip', 'busy']) {
       const p = await page();
       if (held === 'off') p.root.dataset['interfaceMotion'] = 'off';
       if (held === 'reduced') p.reduced.matches = true;
       if (held === 'forced') p.forced.matches = true;
       if (held === 'hidden') p.doc.visibilityState = 'hidden';
       if (held === 'opening') delete p.root.dataset['opened'];
-      if (held === 'chip') p.root.dataset['chip'] = 'unknown';
-      if (held === 'api') Object.assign(p.doc, { startViewTransition: undefined });
+      if (held === 'no-chip') p.root.dataset['chip'] = 'no';
+      if (held === 'unknown-chip') p.root.dataset['chip'] = 'unknown';
       const change = vi.fn();
-      p.fadeInterface(change, 'look', held !== 'busy');
+      p.fadeInterface(change, 'help', held !== 'busy');
       expect(change, held).toHaveBeenCalledTimes(1);
+      expect(p.safe.animate, held).not.toHaveBeenCalled();
       expect(p.startViewTransition, held).not.toHaveBeenCalled();
-      expect(p.root.style.getPropertyValue('view-transition-name'), held).toBe('');
     }
   });
 
-  it('finishes a pending change before a newer one and applies each exactly once, even if Chromium calls it later', async () => {
-    const p = await page(true);
-    const order: string[] = [];
-    p.fadeInterface(() => order.push('first'), 'mode');
-    const oldUpdate = p.update;
+  it('stops the live animation on a show change; no update is left pending or applied twice', async () => {
+    const p = await page();
+    const change = vi.fn();
+    p.fadeInterface(change, 'help');
     p.stopInterfaceFade();
-    p.fadeInterface(() => order.push('second'), 'mode', false);
-    oldUpdate();
-    expect(order).toEqual(['first', 'second']);
-    expect(p.skipTransition).toHaveBeenCalledTimes(1);
-    expect(p.root.dataset['interfaceFade']).toBeUndefined();
-    p.finish();
-    await p.finished;
+    expect(p.safe.cancel).toHaveBeenCalledTimes(1);
+    p.safe.finish();
+    await p.safe.finished;
+    expect(change).toHaveBeenCalledTimes(1);
+    expect(p.disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it('stops at once when reduced motion, forced colours, visibility or the chosen motion changes', async () => {
-    for (const held of ['reduced', 'forced', 'hidden', 'off']) {
+  it('cancels at once for reduced motion, forced colours, hidden/opening windows, Off or loss of a known chip', async () => {
+    for (const held of ['reduced', 'forced', 'hidden', 'opening', 'off', 'chip']) {
       const p = await page();
-      let observed: (() => void) | undefined;
-      const disconnect = vi.fn();
-      vi.stubGlobal(
-        'MutationObserver',
-        class {
-          constructor(changed: () => void) {
-            observed = changed;
-          }
-          observe() {
-            return undefined;
-          }
-          disconnect = disconnect;
-        },
-      );
       p.fadeInterface(() => undefined, 'help');
-      if (held === 'reduced') {
-        p.reduced.matches = true;
-        p.reduced.dispatchEvent(new Event('change'));
-      }
-      if (held === 'forced') {
-        p.forced.matches = true;
-        p.forced.dispatchEvent(new Event('change'));
-      }
-      if (held === 'hidden') {
+      if (held === 'reduced' || held === 'forced') {
+        p[held].matches = true;
+        p[held].dispatchEvent(new Event('change'));
+      } else if (held === 'hidden') {
         p.doc.visibilityState = 'hidden';
         p.doc.dispatchEvent(new Event('visibilitychange'));
+      } else {
+        if (held === 'opening') delete p.root.dataset['opened'];
+        if (held === 'off') p.root.dataset['interfaceMotion'] = 'off';
+        if (held === 'chip') p.root.dataset['chip'] = 'unknown';
+        p.changed();
       }
-      if (held === 'off') {
-        p.root.dataset['interfaceMotion'] = 'off';
-        observed?.();
-      }
-      expect(p.skipTransition, held).toHaveBeenCalledTimes(1);
-      expect(p.root.dataset['interfaceFade'], held).toBeUndefined();
-      p.finish();
-      await p.finished;
+      expect(p.safe.cancel, held).toHaveBeenCalledTimes(1);
+      expect(p.disconnect, held).toHaveBeenCalledTimes(1);
     }
   });
 
-  it('falls back to the change exactly once if snapshots cannot start', async () => {
+  it('keeps the change synchronous and once-only when a live animation cannot start', async () => {
     const p = await page();
-    p.startViewTransition.mockImplementation(() => {
-      throw new Error('No snapshot');
+    p.safe.animate.mockImplementation(() => {
+      throw new Error('No animation');
     });
     const change = vi.fn();
-    p.fadeInterface(change, 'mode');
+    p.fadeInterface(change, 'help');
     expect(change).toHaveBeenCalledTimes(1);
-    expect(p.root.dataset['interfaceFade']).toBeUndefined();
+    expect(p.startViewTransition).not.toHaveBeenCalled();
   });
 });

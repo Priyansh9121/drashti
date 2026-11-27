@@ -1,213 +1,227 @@
-import type { Page } from '@playwright/test';
+import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { settled, expectNoSeriousA11yIssues } from './a11y';
-import {
-  chooseMenuItem,
-  launchApp,
-  letTimePass,
-  operatorPage,
-  operatorReady,
-  type PageGlobals,
-} from './helpers';
+import { expectNoSeriousA11yIssues, settled } from './a11y';
+import { chooseMenuItem, launchApp, operatorPage, operatorReady, outputPage, outputReady, setUpScreen, type PageGlobals } from './helpers';
+import { goLive, makeSlides } from './placeholder-slides';
+import { sizeOperatorWindow } from './window-size';
 
-interface FadeTrace {
-  kind: string;
-  root: string;
-  targets: number;
-  blocked: string[];
-  frames: { pseudo: string; keys: string[] }[];
-  done: boolean;
-}
-type Observed = typeof globalThis & { motionlooks: FadeTrace[] };
+const WITH_CHIP = { DRASHTI_TEST_GPU_COMPOSITING: 'enabled' };
+const WITHOUT_CHIP = { DRASHTI_TEST_GPU_COMPOSITING: 'disabled_software' };
+const SIZES = [{ width: 1024, height: 645 }, { width: 1280, height: 720 }, { width: 1410, height: 900 }];
+interface FadeTrace { target: string; keys: string[]; ms: number }
+type Observed = typeof globalThis & {
+  motionlooks: { lastShow: number; captures: number; questions: FadeTrace[]; previews: FadeTrace[]; running: Animation[] };
+};
 
-/** Observe the actual DOM shared by preload and renderer, plus Chromium's real snapshot animations. */
-async function observe(win: Page): Promise<void> {
-  await win.evaluate(() => {
-    const records: FadeTrace[] = [];
-    (globalThis as Observed).motionlooks = records;
-    const root = document.documentElement;
-    let current: FadeTrace | undefined;
-    const capture = (trace: FadeTrace) => {
-      for (const el of document.querySelectorAll<HTMLElement>('*')) {
-        if (!el.style.viewTransitionName.startsWith('motionlooks-')) continue;
-        trace.targets += 1;
-        if (
-          el.closest('[data-show-control], [data-testid="live-preview"], body.output') ||
-          el.querySelector('[data-show-control], canvas, video')
-        )
-          trace.blocked.push(el.getAttribute('data-testid') ?? el.tagName);
+/** Observe actual live animations; hold only the question effect so a real pointer can land during it. */
+async function observe(win: Page, hold = false): Promise<void> {
+  await win.evaluate((hold) => {
+    const state: Observed['motionlooks'] = { lastShow: performance.now(), captures: 0, questions: [], previews: [], running: [] };
+    (globalThis as Observed).motionlooks = state;
+    (globalThis as PageGlobals).drashti.engine.onMessage(() => { state.lastShow = performance.now(); });
+    Object.defineProperty(Document.prototype, 'startViewTransition', { configurable: true, value: () => {
+      state.captures += 1;
+      throw new Error('Document capture is forbidden');
+    } });
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (frames, options) {
+      const animation = animate.call(this, frames, options);
+      if (this.matches('[data-what-is-this]')) {
+        const effect = animation.effect as KeyframeEffect;
+        state.questions.push({ target: this.textContent.trim(), keys: [...new Set(effect.getKeyframes().flatMap(Object.keys))], ms: Number(effect.getTiming().duration) });
+        state.running.push(animation);
+        if (hold) { animation.pause(); animation.currentTime = 16; }
       }
-      for (const animation of document.getAnimations()) {
-        const effect = animation.effect as KeyframeEffect | null;
-        if (!effect?.pseudoElement?.includes('view-transition')) continue;
-        if (trace.frames.some((frame) => frame.pseudo === effect.pseudoElement)) continue;
-        trace.frames.push({
-          pseudo: effect.pseudoElement,
-          keys: [...new Set(effect.getKeyframes().flatMap((frame) => Object.keys(frame)))],
-        });
-      }
+      return animation;
     };
-    const observer = new MutationObserver(() => {
-      const kind = root.dataset['interfaceFade'];
-      if (current && kind === current.kind) return;
-      if (current) current.done = true;
-      current = undefined;
-      if (!kind) return;
-      const trace: FadeTrace = {
-        kind,
-        root: root.style.viewTransitionName,
-        targets: 0,
-        blocked: [],
-        frames: [],
-        done: false,
-      };
-      current = trace;
-      records.push(trace);
-      const look = () => {
-        if (trace.done) return;
-        capture(trace);
-        requestAnimationFrame(look);
-      };
-      look();
+    document.addEventListener('animationstart', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || !target.matches('[data-motion-preview-picture], [data-motion-preview-mark]')) return;
+      for (const animation of target.getAnimations()) {
+        const effect = animation.effect as KeyframeEffect;
+        state.previews.push({ target: target.closest('[data-motion-preview]')?.getAttribute('data-motion-preview') ?? '', keys: [...new Set(effect.getKeyframes().flatMap(Object.keys))], ms: Number(effect.getTiming().duration) });
+      }
     });
-    observer.observe(root, { attributes: true, attributeFilter: ['data-interface-fade'] });
+  }, hold);
+}
+
+/** Follow actual engine messages rather than sleeping through a guessed quiet window. */
+async function quiet(win: Page): Promise<void> {
+  await expect.poll(() => win.evaluate(() => performance.now() - (globalThis as Observed).motionlooks.lastShow > 800)).toBe(true);
+}
+
+async function motion(win: Page, value: 'calm' | 'lively' | 'off'): Promise<void> {
+  expect(await win.evaluate((m) => (globalThis as PageGlobals).drashti.appearance.setMotion(m), value)).toEqual({ ok: true });
+  await expect(win.locator('html')).toHaveAttribute('data-interface-motion', value);
+}
+
+async function ready(app: ElectronApplication, chip: 'yes' | 'no'): Promise<Page> {
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.emulateMedia({ reducedMotion: 'no-preference', forcedColors: 'none' });
+  await expect(win.locator('html')).toHaveAttribute('data-opened', '');
+  await expect(win.locator('html')).toHaveAttribute('data-chip', chip);
+  return win;
+}
+
+async function noCapture(win: Page): Promise<void> {
+  expect(await win.evaluate(() => ({ calls: (globalThis as Observed).motionlooks.captures, names: [...document.querySelectorAll<HTMLElement>('*')].filter((el) => el.style.viewTransitionName).length, overlays: document.getAnimations().filter((a) => (a.effect as KeyframeEffect | null)?.pseudoElement?.includes('view-transition')).length }))).toEqual({ calls: 0, names: 0, overlays: 0 });
+}
+
+const engine = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
+
+for (const kind of ['calm', 'lively'] as const) {
+  test(`${kind}: live Help questions fade in; a real Next press and Black-out key arrive once and cancel the effect`, async () => {
+    const { app } = await launchApp(WITH_CHIP);
+    try {
+      const win = await ready(app, 'yes');
+      await motion(win, kind);
+      await observe(win, true);
+      await setUpScreen(win);
+      const output = await outputPage(app);
+      await outputReady(output);
+      const id = await makeSlides(win, 'Placeholder motion safety', [{ words: 'Placeholder one' }, { words: 'Placeholder two' }, { words: 'Placeholder three' }], { kind: 'cut', durationMs: 0 });
+      await win.bringToFront();
+      for (const size of SIZES) {
+        await sizeOperatorWindow(app, win, size);
+        await goLive(win, id, 0);
+        await expect(output.getByTestId('slide-layer')).toContainText('Placeholder one');
+        await quiet(win);
+        const help = win.getByTestId('help-toggle');
+        await expect(help).toHaveAttribute('aria-pressed', 'false');
+        const before = await win.getByTestId('show-next').boundingBox();
+        await win.evaluate(() => { (globalThis as Observed).motionlooks.questions = []; (globalThis as Observed).motionlooks.running = []; });
+        await help.click();
+        await expect.poll(() => win.evaluate(() => (globalThis as Observed).motionlooks.questions.length)).toBeGreaterThan(0);
+        const records = await win.evaluate(() => (globalThis as Observed).motionlooks.questions);
+        for (const record of records) {
+          expect(record.target).toBe('?');
+          expect(record.ms).toBe(160);
+          expect(record.keys.filter((key) => !['opacity', 'offset', 'computedOffset', 'easing', 'composite'].includes(key))).toEqual([]);
+          expect(record.keys).toContain('opacity');
+        }
+        for (const frame of [0, 16, 32, 80, 159]) {
+          await win.evaluate((time) => { for (const a of (globalThis as Observed).motionlooks.running) a.currentTime = time; }, frame);
+          expect(await win.getByTestId('show-next').boundingBox()).toEqual(before);
+          expect(await win.getByTestId('show-next').evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
+        }
+        const start = await engine(win);
+        const box = await win.getByTestId('show-next').boundingBox();
+        if (!box) throw new Error('Next has no pointer target');
+        // Native pointer input while the effect is active, without locator animation waiting or synthetic clicks.
+        await win.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        await expect.poll(async () => (await engine(win)).state.live.slideIndex).toBe(1);
+        expect((await engine(win)).rev).toBe(start.rev + 1);
+        await expect(output.getByTestId('slide-layer')).toContainText('Placeholder two');
+        await expect.poll(() => win.evaluate(() => (globalThis as Observed).motionlooks.running.every((a) => a.playState === 'idle'))).toBe(true);
+        const beforeKey = await engine(win);
+        await win.keyboard.press('b');
+        await expect(output.getByTestId('blackout')).toHaveCount(1);
+        expect((await engine(win)).rev).toBe(beforeKey.rev + 1);
+        await win.keyboard.press('b');
+        await expect(output.getByTestId('blackout')).toHaveCount(0);
+        await help.click();
+        await expect(win.locator('[data-what-is-this]')).toHaveCount(0);
+        await expect(win.locator('[data-leaving-host] [data-what-is-this]')).toHaveCount(0);
+        await noCapture(win);
+      }
+    } finally { await app.close(); }
   });
 }
 
-async function traces(win: Page): Promise<FadeTrace[]> {
-  await expect
-    .poll(() => win.evaluate(() => (globalThis as Observed).motionlooks.every((t) => t.done)))
-    .toBe(true);
-  return win.evaluate(() => (globalThis as Observed).motionlooks);
-}
+test('chip-enabled dark/light appearance changes keep header words at 4.5:1 in every sampled frame; modes change without capture', async () => {
+  const { app } = await launchApp(WITH_CHIP);
+  try {
+    const win = await ready(app, 'yes');
+    await motion(win, 'lively');
+    await observe(win);
+    for (const size of SIZES) {
+      await sizeOperatorWindow(app, win, size);
+      for (const look of ['black', 'white', 'black']) {
+        // Start before the preload draws; do not wait for animations to finish before reading contrast.
+        const samples = win.evaluate(() => new Promise<{ ratio: number; opacity: number }[]>((resolve) => {
+          const seen: { ratio: number; opacity: number }[] = [];
+          const rgb = (text: string) => (text.match(/[\d.]+/gu) ?? []).slice(0, 3).map(Number);
+          const luminance = (c: number[]) => c.map((v) => { const x = v / 255; return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }).reduce((sum, v, i) => sum + v * ([0.2126, 0.7152, 0.0722][i] ?? 0), 0);
+          let frames = 0;
+          const sample = () => {
+            const header = document.querySelector('[data-header]');
+            if (!header) throw new Error('No header');
+            const bg = luminance(rgb(getComputedStyle(header).backgroundColor));
+            for (const el of header.querySelectorAll<HTMLElement>("[data-variant='ghost']")) {
+              if (el.getBoundingClientRect().width === 0 || el.matches(':hover, :disabled')) continue;
+              const st = getComputedStyle(el);
+              const fg = luminance(rgb(st.color));
+              let opacity = 1;
+              for (let parent: Element | null = el; parent; parent = parent.parentElement) opacity *= Number(getComputedStyle(parent).opacity);
+              seen.push({ ratio: (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05), opacity });
+            }
+            if (++frames === 20) resolve(seen); else requestAnimationFrame(sample);
+          };
+          requestAnimationFrame(sample);
+        }));
+        await chooseMenuItem(app, `appearance-${look}`);
+        await expect(win.locator('html')).toHaveAttribute('data-appearance', look);
+        const readings = await samples;
+        expect(readings.length).toBeGreaterThan(0);
+        for (const reading of readings) { expect(reading.ratio).toBeGreaterThanOrEqual(4.5); expect(reading.opacity).toBe(1); }
+        await noCapture(win);
+      }
+      await win.getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
+      await expect(win.getByTestId('simple-mode')).toBeVisible();
+      await noCapture(win);
+      await win.getByRole('button', { name: 'Pro Mode', exact: true }).dblclick();
+      await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+      await noCapture(win);
+    }
+    expect(await win.evaluate(() => (globalThis as Observed).motionlooks.questions)).toEqual([]);
+  } finally { await app.close(); }
+});
 
-/** Exercise the chip-enabled interface path deterministically; output GPU tests use the actual hardware separately. */
-async function chip(win: Page, motion: 'calm' | 'lively' | 'off' = 'calm'): Promise<boolean> {
-  await win.evaluate(async (m) => {
-    await (globalThis as PageGlobals).drashti.appearance.setMotion(m);
-  }, motion);
-  await expect(win.locator('html')).toHaveAttribute('data-interface-motion', motion);
-  const actual = await win.locator('html').getAttribute('data-chip');
-  await letTimePass(win, 850, 'the show-change guard is quiet before testing interface motion');
-  await win.evaluate(() => {
-    document.documentElement.dataset['chip'] = 'yes';
+for (const hold of ['off', 'reduced', 'forced', 'chipless'] as const) {
+  test(`${hold}: appearance, mode, Help and decorative previews start no retained fade in Pro and Simple`, async () => {
+    const { app } = await launchApp(hold === 'chipless' ? WITHOUT_CHIP : WITH_CHIP);
+    try {
+      const win = await ready(app, hold === 'chipless' ? 'no' : 'yes');
+      await motion(win, hold === 'off' ? 'off' : 'calm');
+      await win.emulateMedia({ reducedMotion: hold === 'reduced' ? 'reduce' : 'no-preference', forcedColors: hold === 'forced' ? 'active' : 'none' });
+      await observe(win);
+      for (const size of SIZES) {
+        await sizeOperatorWindow(app, win, size);
+        for (const mode of ['pro', 'simple'] as const) {
+          expect(await win.evaluate((m) => (globalThis as PageGlobals).drashti.app.setMode(m), mode)).toMatchObject({ ok: true });
+          await expect(win.getByTestId('simple-mode')).toHaveCount(mode === 'simple' ? 1 : 0);
+          const result = await win.evaluate(() => (globalThis as PageGlobals).drashti.appearance.choose('white'));
+          expect(result.ok).toBe(mode === 'pro');
+          await win.getByTestId('help-toggle').click();
+          await win.getByTestId('help-toggle').click();
+          await expect(win.locator('[data-what-is-this]')).toHaveCount(0);
+          await noCapture(win);
+        }
+        await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
+        await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+      }
+      await chooseMenuItem(app, 'appearance-window');
+      await expect(win.getByTestId('appearance-dialog')).toBeVisible();
+      await expect(win.locator('[data-motion-preview]')).toHaveCount(3);
+      for (const preview of await win.locator('[data-motion-preview]').all()) {
+        await expect(preview).toHaveAttribute('aria-hidden', 'true');
+        const choice = preview.locator('..');
+        await choice.hover();
+        expect(await preview.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
+      }
+      expect(await win.evaluate(() => ({ questions: (globalThis as Observed).motionlooks.questions, previews: (globalThis as Observed).motionlooks.previews }))).toEqual({ questions: [], previews: [] });
+      if (hold === 'off') await expectNoSeriousA11yIssues(win, 'motion looks in Appearance');
+    } finally { await app.close(); }
   });
-  return actual === 'yes';
 }
 
-function safe(records: FadeTrace[]): void {
-  expect(records.length).toBeGreaterThan(0);
-  for (const trace of records) {
-    expect(trace.root).toBe('none');
-    expect(trace.targets).toBeGreaterThan(0);
-    expect(trace.blocked).toEqual([]);
-    expect(trace.frames.some((frame) => frame.pseudo.includes('(root)'))).toBe(false);
-    for (const frame of trace.frames)
-      expect(
-        frame.keys.filter((key) => /transform|translate|scale|width|height|top|left/iu.test(key)),
-      ).toEqual([]);
-  }
-  expect(records.some((trace) => trace.frames.length > 0)).toBe(true);
-}
-
-test('Help’s questions fade both ways in place and become no Tab stops when off; keys on show controls stay immediate', async () => {
-  const { app } = await launchApp();
+test('chip-enabled Appearance samples fade decoration unconditionally on hover, with words and geometry unchanged', async () => {
+  const { app } = await launchApp(WITH_CHIP);
   try {
-    const win = await operatorPage(app);
-    await operatorReady(win);
-    await win.emulateMedia({ reducedMotion: 'no-preference', forcedColors: 'none' });
-    await expect(win.locator('html')).toHaveAttribute('data-opened', '');
-    await chip(win);
-    const help = win.getByTestId('help-toggle');
-    if ((await help.getAttribute('aria-pressed')) === 'true') await help.dispatchEvent('click');
-    await settled(win);
-    const before = await win.getByTestId('show-next').boundingBox();
+    const win = await ready(app, 'yes');
+    await motion(win, 'calm');
     await observe(win);
-    await help.dispatchEvent('click');
-    await expect(win.locator('[data-what-is-this]').first()).toBeVisible();
-    await traces(win);
-    expect(await win.getByTestId('show-next').boundingBox()).toEqual(before);
-    await help.dispatchEvent('click');
-    await expect(win.locator('[data-what-is-this]')).toHaveCount(0);
-    safe(await traces(win));
-    expect(await win.getByTestId('show-next').boundingBox()).toEqual(before);
-    expect(
-      await win.getByTestId('show-next').evaluate((el) => el.getAnimations({ subtree: true }).length),
-    ).toBe(0);
-    await expect(win.locator('[data-leaving-host] [data-what-is-this]')).toHaveCount(0);
-  } finally {
-    await app.close();
-  }
-});
-
-test('appearance and Pro/Simple changes fade safe controls only, leaving output pictures and show controls live', async () => {
-  const { app } = await launchApp();
-  try {
-    const win = await operatorPage(app);
-    await operatorReady(win);
-    await win.emulateMedia({ reducedMotion: 'no-preference', forcedColors: 'none' });
-    await expect(win.locator('html')).toHaveAttribute('data-opened', '');
-    const realChip = await chip(win, 'lively');
-    await observe(win);
-    await chooseMenuItem(app, 'appearance-white');
-    await expect(win.locator('html')).toHaveAttribute('data-appearance', 'white');
-    await traces(win);
-    await chip(win);
-    await win.getByRole('button', { name: 'Simple Mode', exact: true }).dblclick();
-    await expect(win.getByTestId('simple-mode')).toBeVisible();
-    await traces(win);
-    await win.getByRole('button', { name: 'Pro Mode', exact: true }).dblclick();
-    await expect(win.getByTestId('simple-mode')).toHaveCount(0);
-    const records = await traces(win);
-    expect(records.some((t) => t.kind === 'look')).toBe(realChip);
-    expect(records.some((t) => t.kind === 'mode')).toBe(true);
-    safe(records);
-  } finally {
-    await app.close();
-  }
-});
-
-test('Off, reduced motion and forced colours draw no fades; Appearance’s samples are decorative and fixed in place', async () => {
-  const { app } = await launchApp();
-  try {
-    const win = await operatorPage(app);
-    await operatorReady(win);
-    await win.emulateMedia({ reducedMotion: 'no-preference', forcedColors: 'none' });
-    await expect(win.locator('html')).toHaveAttribute('data-opened', '');
-    await observe(win);
-    for (const hold of ['off', 'reduced', 'forced'] as const) {
-      await win.emulateMedia({
-        reducedMotion: hold === 'reduced' ? 'reduce' : 'no-preference',
-        forcedColors: hold === 'forced' ? 'active' : 'none',
-      });
-      await chip(win, hold === 'off' ? 'off' : 'calm');
-      await win.getByTestId('help-toggle').dispatchEvent('click');
-      await settled(win);
-    }
-    expect(await traces(win)).toEqual([]);
-    await win.emulateMedia({ reducedMotion: 'no-preference', forcedColors: 'none' });
-    await chip(win, 'off');
-    await chooseMenuItem(app, 'appearance-window');
-    await expect(win.getByTestId('appearance-dialog')).toBeVisible();
-    await expect(win.locator('[data-motion-preview]')).toHaveCount(3);
-    for (const preview of await win.locator('[data-motion-preview]').all()) {
-      await expect(preview).toHaveAttribute('aria-hidden', 'true');
-      expect(await preview.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
-    }
-    await expectNoSeriousA11yIssues(win, 'motion looks in Appearance');
-  } finally {
-    await app.close();
-  }
-});
-
-test('Appearance’s Calm and Lively samples answer hover with opacity alone, in the same fixed room', async () => {
-  const { app } = await launchApp();
-  try {
-    const win = await operatorPage(app);
-    await operatorReady(win);
-    await win.emulateMedia({ reducedMotion: 'no-preference', forcedColors: 'none' });
-    await expect(win.locator('html')).toHaveAttribute('data-opened', '');
-    await chip(win);
     await chooseMenuItem(app, 'appearance-window');
     await expect(win.getByTestId('appearance-dialog')).toBeVisible();
     await settled(win);
@@ -217,36 +231,15 @@ test('Appearance’s Calm and Lively samples answer hover with opacity alone, in
       await choice.scrollIntoViewIfNeeded();
       await win.mouse.move(1, 1);
       const before = await preview.boundingBox();
-      const played = win.evaluate(
-        (id) =>
-          new Promise<string[]>((resolve) => {
-            const started = (event: AnimationEvent) => {
-              const target = event.target;
-              if (
-                !(target instanceof HTMLElement) ||
-                !target.matches('[data-motion-preview-picture]') ||
-                target.closest('[data-motion-preview]')?.getAttribute('data-motion-preview') !== id
-              )
-                return;
-              document.removeEventListener('animationstart', started);
-              resolve(
-                target
-                  .getAnimations()
-                  .flatMap((a) => (a.effect as KeyframeEffect).getKeyframes())
-                  .flatMap((frame) => Object.keys(frame)),
-              );
-            };
-            document.addEventListener('animationstart', started);
-          }),
-        motion,
-      );
       await choice.hover();
-      const keys = await played;
-      expect(keys).toContain('opacity');
-      expect(keys.filter((key) => /transform|translate|scale|width|height|top|left/iu.test(key))).toEqual([]);
+      await expect.poll(() => win.evaluate((id) => (globalThis as Observed).motionlooks.previews.some((record) => record.target === id), motion)).toBe(true);
       expect(await preview.boundingBox()).toEqual(before);
+      expect(await choice.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
     }
-  } finally {
-    await app.close();
-  }
+    for (const record of await win.evaluate(() => (globalThis as Observed).motionlooks.previews)) {
+      expect(record.keys).toContain('opacity');
+      expect(record.keys.filter((key) => /transform|translate|scale|width|height|top|left/iu.test(key))).toEqual([]);
+    }
+    await noCapture(win);
+  } finally { await app.close(); }
 });

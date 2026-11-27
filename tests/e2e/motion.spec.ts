@@ -490,7 +490,7 @@ const watchClick = (win: Page, ms: number) =>
     ms,
   );
 
-test('Lively: the tab’s underline and the chosen playlist glide, cards arrive one after another, a panel opens, a press answers, and an appearance fades into the next (Session 40); without a graphics chip, none of it (alpha.24)', async () => {
+test('Lively: the tab’s underline and the chosen playlist glide, cards arrive one after another, a panel opens, a press answers, and appearance changes draw instantly (alpha.24 safety decision); without a graphics chip, none of it (alpha.24)', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -572,11 +572,11 @@ test('Lively: the tab’s underline and the chosen playlist glide, cards arrive 
   else expect(await transitions('[data-testid="open-network"]')).toContain('transform');
   expect(await transitions('[data-testid="show-next"]')).toBe('none');
 
-  // One appearance fades into the next.
+  // Appearance changes are instant even with a graphics chip: no document-wide capture can suppress a show press.
   started = watchAnimations(win, 800);
   await chooseMenuItem(app, 'appearance-white');
   await chooseMenuItem(app, 'appearance-black');
-  expect((await started).some((a) => a.what.includes('::view-transition') && a.ms === 200)).toBe(!noChip);
+  expect((await started).filter((a) => a.what.includes('::view-transition'))).toEqual([]);
   await app.close();
 });
 
