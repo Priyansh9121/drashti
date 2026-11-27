@@ -33,7 +33,11 @@ async function openManual(help: PanelHelp): Promise<void> {
 /** The ? for a heading, and the words it opens under it (both null without a topic, in Simple Mode or with Help off). */
 export function useWhatIsThis(
   topic: PanelHelpId | null,
-  /** A smaller ? (the header's, where room is short). */
+  /**
+   * A smaller room (the header's and the sabha flow's, where room is short): the ? is the 24 px target every ? is
+   * (WCAG 2.5.8), its margin giving back 2 px on each side, so it takes the 20 px it took when it was 20 px itself
+   * (alpha.24, qtargets) and reaches into the gaps beside it, over no other target.
+   */
   { compact = false }: { compact?: boolean } = {},
 ): { button: ReactNode; card: ReactNode } {
   // Open in the turning on of Help it was opened in (its count, help-store.ts): Help off and on again finds it shut.
@@ -69,7 +73,7 @@ export function useWhatIsThis(
       }}
       className={cx(
         'inline-flex shrink-0 items-center justify-center rounded-full border border-field font-bold text-muted hover:border-muted hover:text-fg',
-        compact ? 'h-5 w-5 text-[11px]' : 'h-6 w-6 text-xs',
+        compact ? '-m-0.5 h-6 w-6 text-[11px]' : 'h-6 w-6 text-xs',
       )}
     >
       ?
