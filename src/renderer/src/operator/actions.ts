@@ -8,6 +8,8 @@ import { undoRemoval } from '../library/undo';
 import { openLibrary, selectPresentation, useLibrary } from '../library/library-store';
 import { playOrder } from '../../../shared/order';
 import type { OperatorAction } from '../../../shared/keymap';
+import { SIMPLE_IDLE } from '../../../shared/keymap';
+import { showKeysSheet } from './keys-sheet-store';
 // logo-store uses dispatch from here; both only call each other when an action runs.
 import { toggleSwitch, turnOnIfOff } from './screen-switches-store';
 
@@ -273,15 +275,14 @@ async function performSimple(action: OperatorAction, start: () => Promise<void>)
       if (problem) useNotice.setState({ text: problem });
       return;
     }
-    // The keys sheet is Pro Mode's (Simple Mode's buttons show their keys).
-    case 'openScreens':
-    case 'findInLibrary':
-    case 'removeSelected':
-    case 'moveItemUp':
-    case 'moveItemDown':
+    // Simple Mode's own keys sheet (a25 item 3, alpha.24): the keys that act here.
     case 'showKeys':
+      showKeysSheet();
       return;
     default:
+      // Screens, Search and a list's keys: Simple Mode changes no screen setup and no library (SIMPLE_IDLE, which its
+      // keys sheet leaves out).
+      if (SIMPLE_IDLE.includes(action)) return;
       return perform(action, { openScreens: () => undefined, showKeys: () => undefined });
   }
 }

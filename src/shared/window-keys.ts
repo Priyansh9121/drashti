@@ -81,6 +81,16 @@ const UNDO_REDO_TYPING = {
   windows: ['Mod+Z', 'Mod+Shift+Z', 'Ctrl+Y'],
 } as const;
 
+/**
+ * The key held to see the buttons' keys with Help off (alpha.24, uihelp: Alt, Option ⌥ on a Mac; help/HelpSwitch.tsx).
+ * The keys sheet names it too (a25 item 24), from this one entry, so the sheet and the manual say the same key.
+ */
+export const HOLD_FOR_KEYS: WindowKey = {
+  window: 'The operator window, in Pro Mode and Simple Mode',
+  what: 'See the buttons’ keys while you hold it, with Help off; let go of it, then press the key',
+  keys: ['Alt'],
+};
+
 export const WINDOW_KEYS: readonly WindowKey[] = [
   // The operator window: its show keys are KEYMAP's; these are its own besides.
   {
@@ -93,11 +103,7 @@ export const WINDOW_KEYS: readonly WindowKey[] = [
     what: 'Switch to Simple Mode or Pro Mode, with the keyboard on the switch: Enter twice',
     keys: ['Enter'],
   },
-  {
-    window: 'The operator window, in Pro Mode and Simple Mode',
-    what: 'See the buttons’ keys while you hold it, with Help off; let go of it, then press the key',
-    keys: ['Alt'],
-  },
+  HOLD_FOR_KEYS,
 
   {
     window: 'Lists: the library, playlists, Media, audio and lower thirds',

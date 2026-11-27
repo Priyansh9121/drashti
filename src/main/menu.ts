@@ -527,18 +527,10 @@ export function installMenu(actions: MenuActions): void {
           ]
         : []),
       { type: 'separator' },
-      // The keys sheet, Pro Mode's (Simple Mode's buttons show their keys). No accelerator: ? is the page's key,
-      // and a menu's would get round the guards for fields and dialogs.
-      ...(simple
-        ? []
-        : [
-            {
-              id: 'keyboard-shortcuts',
-              label: 'Keyboard Shortcuts…',
-              click: actions.keyboardShortcuts,
-            } as MenuItemConstructorOptions,
-            { type: 'separator' } as MenuItemConstructorOptions,
-          ]),
+      // The keys sheet, in both modes since alpha.24 (a25 item 3: Simple Mode's lists the keys that act there). No
+      // accelerator: ? is the page's key, and a menu's would get round the guards for fields and dialogs.
+      { id: 'keyboard-shortcuts', label: 'Keyboard Shortcuts…', click: actions.keyboardShortcuts },
+      { type: 'separator' },
       // Help › Report a Problem… (x49, the owner's Q60-38): in both modes, just above Save Diagnostics….
       { id: 'report-problem', label: 'Report a Problem…', click: actions.reportProblem },
       // Help › Automatic Error Reports… (alpha.21): the access-list owner's alone, on this computer.

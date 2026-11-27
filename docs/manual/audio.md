@@ -71,7 +71,7 @@ This does not crop a new copy. For framing and blurred fill saved for the next s
 
 1. Press the switch beside **Audio** or **Video**: it turns red, **Muted**.
 2. Press it again to have the sound back at its level.
-3. With the keyboard on it, press **Enter** (**Space** is **Next** in this window).
+3. With the keyboard on it, press **Enter** (**Space** stays **Next** on this switch, even after **Tab**).
 4. Drashti always starts with the sound on.
 
 ![How loud: the Audio and Video lines, Video muted](../screenshots/manual-levels.png)
