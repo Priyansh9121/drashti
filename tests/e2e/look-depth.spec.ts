@@ -367,4 +367,3 @@ test('B · Depth: the left column’s corners stay round with the Library open a
   }
   await app.close();
 });
-
