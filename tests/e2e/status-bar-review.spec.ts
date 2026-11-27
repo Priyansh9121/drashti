@@ -54,6 +54,23 @@ const steady = (win: Page) =>
     );
   });
 
+/** ResizeObserver updates the columns after the viewport changes: compare only once their baseline is stable. */
+async function settledSteady(win: Page): Promise<string[]> {
+  let last: string[] = [];
+  await expect
+    .poll(
+      async () => {
+        const now = await steady(win);
+        const same = now.length > 0 && JSON.stringify(now) === JSON.stringify(last);
+        last = now;
+        return same;
+      },
+      { message: 'operator layout settles before the state change', intervals: [1000] },
+    )
+    .toBe(true);
+  return last;
+}
+
 async function fits(win: Page, where: string) {
   expect
     .soft(
@@ -119,7 +136,7 @@ for (const mode of ['pro', 'simple'] as const)
       stopAnswering(access);
       await expect(win.getByTestId('access-offline-notice')).toBeVisible({ timeout: 30_000 });
       await expect(win.getByTestId('sound-status')).toBeVisible();
-      const before = await steady(win);
+      const before = await settledSteady(win);
       for (const missing of [false, true, false]) {
         // Selecting a missing mixer is a real operator action; returning to System default must restore the same slot.
         if (mode === 'simple')
@@ -192,7 +209,7 @@ for (const mode of ['pro', 'simple'] as const)
         await sizeOperatorWindow(app, win, size);
         await tell(app, IPC.screens.changed, { ...snapshot, status: showing });
         await expect(win.getByTestId('screens-summary')).toHaveText('2 screens showing');
-        const before = await steady(win);
+        const before = await settledSteady(win);
         const faults: ScreenStatus[] = [
           { screenId: 'placeholder-2', state: 'missing-display', displayId: 2 },
           { screenId: 'placeholder-2', state: 'stopped', displayId: 2 },
