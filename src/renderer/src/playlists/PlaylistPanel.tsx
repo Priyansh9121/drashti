@@ -156,7 +156,8 @@ function PlaylistTree({ platform, simple }: { platform: string; simple: boolean 
   const many = markedNodes.length > 1;
   const [menu, setMenu] = useState<{ at: MenuPlace; node: PlaylistNode } | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
-  const help = useWhatIsThis('playlists');
+  // Its ?'s room held while Help is off (alpha.24, middlehelp): Help coming or going never moves New.
+  const help = useWhatIsThis('playlists', { keepRoom: true });
   // The empty list's words scroll in a short window (1024 × 645): the keyboard can scroll them then (ui/scrolls.ts).
   const [emptyBox, emptyScrolls] = useScrolls();
   // Lively (Session 40): the chosen row's highlight glides from the row chosen before.
@@ -320,7 +321,9 @@ function PlaylistTree({ platform, simple }: { platform: string; simple: boolean 
             const ids = rows.map((r) => r.node.id);
             usePlaylists.setState({ markedNodes: ids, nodeAnchor: ids[0] ?? null });
           }}
-          className="relative min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2 focus:outline-none"
+          // Its top's 4 px room for the keyboard's ring (2 px drawn 2 px outside): the first row's had been cut by the
+          // list it scrolls in (alpha.24, middlehelp).
+          className="relative min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pt-1 pb-2 focus:outline-none"
         >
           <BoxOverlay box={box.box} as="li" />
           {rows.map(({ node, depth }) => {
