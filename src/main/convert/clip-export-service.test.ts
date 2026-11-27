@@ -717,3 +717,62 @@ it('a kept request of Saved edits with parts is refused at the next start, never
   ]);
   expect(existsSync(dest)).toBe(false);
 });
+
+/*
+ * The kept requests are read once, when Drashti starts, before anything this run keeps (a22-vidparts, found by
+ * edit-video-parts.spec on the Mac, 27 Nov 2026): an Export clip… accepted in the 10 s before they were resumed was
+ * kept, then read back as an earlier run's and exported twice ("… (2).mp4"), and the earlier run's own were dropped.
+ */
+it('an export accepted before the kept requests are resumed runs once, and the earlier run’s kept one runs too', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  const now = join(fixture.dir, 'asked now.mp4');
+  const earlier = join(fixture.dir, 'asked before the restart.mp4');
+  const deps = service(now);
+  clips.close();
+  deps.kept.save([{ request, destination: earlier, identity: fixture.sha }]);
+  // The next start: the operator exports before the kept requests are resumed (10 s after the start).
+  clips = new ClipExports(deps);
+  expect(await clips.start({ ...request, startMs: 200, endMs: 1000 })).toMatchObject({
+    ok: true,
+    job: { state: 'waiting' },
+  });
+  expect
+    .soft(deps.kept.load(), 'the earlier run’s request is still kept beside the new one')
+    .toMatchObject([{ destination: now }, { destination: earlier }]);
+  clips.resume();
+  expect(
+    clips
+      .list()
+      .map((job) => job.name)
+      .sort(),
+  ).toEqual(['asked before the restart.mp4', 'asked now.mp4']);
+  await vi.waitFor(
+    () => {
+      const states = clips.list().map((job) => job.state);
+      if (states.includes('failed'))
+        throw new Error(clips.list().find((j) => j.state === 'failed')?.message ?? '');
+      expect(states).toEqual(['done', 'done']);
+    },
+    { timeout: 10_000 },
+  );
+  expect(existsSync(now)).toBe(true);
+  expect(existsSync(earlier)).toBe(true);
+  expect(readdirSync(fixture.dir).filter((name) => name.includes('(2)'))).toEqual([]);
+  expect(clips.list()).toHaveLength(2);
+}, 20_000);
+it('closing before the kept requests are resumed keeps them for the next start', async () => {
+  fixture = await copyFixture();
+  cleanup.push(() => fixture.cleanup());
+  const earlier = join(fixture.dir, 'asked before the restart.mp4');
+  const deps = service(join(fixture.dir, 'never.mp4'));
+  clips.close();
+  const kept = [{ request, destination: earlier, identity: fixture.sha }];
+  deps.kept.save(kept);
+  clips = new ClipExports(deps);
+  clips.close();
+  expect(deps.kept.load()).toEqual(kept);
+  clips = new ClipExports(deps);
+  clips.resume();
+  expect(clips.list()).toMatchObject([{ name: 'asked before the restart.mp4' }]);
+});
