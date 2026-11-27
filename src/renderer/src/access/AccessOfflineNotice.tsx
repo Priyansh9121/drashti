@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { offlineLine } from '../../../shared/access';
+import { OFFLINE_SHORT_TEXT, offlineLine } from '../../../shared/access';
 import { cx } from '../ui/cx';
 import { AlertTriangle } from '../ui/icons';
-import { Truncate } from '../ui/Truncate';
 import { useAccess } from './access-store';
 
 /*
@@ -16,18 +15,30 @@ import { useAccess } from './access-store';
  * One line in the status bar, in Pro and Simple Mode alike, in place of the version (alpha.24, the owner's
  * QA24-ACCESS-STRIP A, 27 Nov 2026; Session 55 had kept a 24 px strip for it under the top bar, in every look): the
  * version keeps its room, unseen, and the line takes that room and no more, so nothing in the window or the status bar
- * moves when the line comes or goes, and it is never over a control. Its words, cut short with "…" there if they must
- * be, are whole in its tooltip and to a screen reader. It says how long is left, in the owner's own words, and goes
- * once the list answers again. The main process says how long is left at each change; the line counts down between
- * them on the window's own monotonic clock. It is read out politely (its place is a status region, there always).
+ * moves when the line comes or goes, and it is never over a control. That room holds only a few words, so the eye gets
+ * the short form, whole (OFFLINE_SHORT_TEXT, lead 2's decision inside the owner's A), and the whole line, in the
+ * owner's own words with how long is left, is its tooltip and what a screen reader reads. It goes once the list
+ * answers again. The main process says how long is left at each change; the line counts down between them on the
+ * window's own monotonic clock. It is read out politely (its place is a status region, there always).
  */
+
+/** The line's look: the status bar's warning (as Sound output not connected's), its words on one line. */
+const LOOK = 'flex h-5 items-center gap-1 rounded-sm px-1 whitespace-nowrap';
+
 export function AccessOfflineNotice({ children }: { children: ReactNode }) {
   const view = useAccess((s) => s.view);
   const left = view?.phase === 'warning' ? view.stopsInMs : null;
   return (
-    // The version's place: as tall as the bar, so the line has the bar's height; as wide as the version, always.
-    <div className="relative flex items-center self-stretch">
-      <div className={cx('flex items-center', left !== null && 'invisible')}>{children}</div>
+    // The version's place: as tall as the bar, so the line has the bar's height; as wide as the version, and never
+    // narrower than the line's short words (their unseen copy below), always, so nothing moves when the line comes.
+    <div className="relative grid items-center self-stretch">
+      <div className={cx('col-start-1 row-start-1 flex items-center', left !== null && 'invisible')}>
+        {children}
+      </div>
+      <span aria-hidden="true" className={cx(LOOK, 'invisible col-start-1 row-start-1')}>
+        <AlertTriangle size={13} className="shrink-0" />
+        <span>{OFFLINE_SHORT_TEXT}</span>
+      </span>
       <div
         role="status"
         className="pointer-events-none absolute inset-0 flex items-center overflow-hidden"
@@ -51,15 +62,22 @@ function OfflineLine({ stopsInMs }: { stopsInMs: number }) {
       clearInterval(t);
     };
   }, []);
-  const left = Math.max(0, from.left - (now - from.at));
+  const words = offlineLine(Math.max(0, from.left - (now - from.at)));
   return (
     <p
-      // The status bar's warning look (as Sound output not connected's); its tooltip takes the mouse, nothing else.
-      className="pointer-events-auto flex h-5 w-full min-w-0 items-center gap-1.5 rounded-sm bg-warning-bg px-1.5 text-warning-fg"
+      // The whole line where the mouse rests on it; only its tooltip takes the mouse, nothing else here.
+      title={words}
+      className={cx(LOOK, 'pointer-events-auto w-full bg-warning-bg text-warning-fg')}
       data-testid="access-offline-notice"
     >
       <AlertTriangle size={13} aria-hidden="true" className="shrink-0" />
-      <Truncate text={offlineLine(left)} />
+      {/* In sight, the short form; read out, the whole line. */}
+      <span aria-hidden="true" className="min-w-0 truncate" data-testid="access-offline-short">
+        {OFFLINE_SHORT_TEXT}
+      </span>
+      <span className="sr-only" data-testid="access-offline-words">
+        {words}
+      </span>
     </p>
   );
 }

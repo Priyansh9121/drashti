@@ -9,6 +9,7 @@ import {
   NO_CONTACT_COME_BACK_TEXT,
   NO_CONTACT_STOP_TEXT,
   NO_CONTACT_STOP_TITLE,
+  OFFLINE_SHORT_TEXT,
   STOPPED_REFUSAL,
 } from '../../src/shared/access';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -172,18 +173,18 @@ async function oneLineOverNothing(win: Page, what: string): Promise<void> {
     if (!line || !slot) return { problems: ['no line'] };
     const box = line.getBoundingClientRect();
     const problems: string[] = [];
-    const words = line.querySelector('span');
-    if (!words) problems.push('its words are not in it');
-    // Cut short at most with "…" at their end (alpha.24: the version's room), the whole line in its tooltip.
-    if (
-      words &&
-      words.scrollWidth > words.clientWidth + 1 &&
-      getComputedStyle(words).textOverflow !== 'ellipsis'
-    )
-      problems.push('its words are cut with no “…”');
-    if (words && words.getAttribute('title') !== words.textContent)
-      problems.push(`its tooltip is “${String(words.getAttribute('title'))}”, not its words`);
-    // Nor cut at the bottom: the descenders of "keeps working" whole.
+    // In sight, its short words (alpha.24, in the version's room), whole and inside it; read out and in its tooltip, the
+    // whole line.
+    const words = line.querySelector('[data-testid="access-offline-short"]');
+    const whole = line.querySelector('[data-testid="access-offline-words"]');
+    if (!words || !whole) problems.push('its words are not in it');
+    if (words && words.scrollWidth > words.clientWidth + 1) problems.push('its words in sight are cut');
+    const inSight = words?.getBoundingClientRect();
+    if (inSight && (inSight.left < box.left - 0.5 || inSight.right > box.right + 0.5))
+      problems.push('its words in sight run out of it');
+    if (whole && line.getAttribute('title') !== whole.textContent)
+      problems.push(`its tooltip is “${String(line.getAttribute('title'))}”, not its whole line`);
+    // Nor cut at the bottom.
     if (words && words.scrollHeight > words.clientHeight + 1)
       problems.push(
         `its words are cut at the bottom (${String(words.scrollHeight)} px in ${String(words.clientHeight)})`,
@@ -268,8 +269,10 @@ async function inTheVersionsPlace(win: Page, version: Place | null, what: string
   const line = slot.getByTestId('access-offline-notice');
   await expect(line, what).toBeVisible();
   await expect(slot, what).toHaveAttribute('role', 'status');
-  await expect(slot, what).toHaveText(LINE);
-  await expect(line.locator('[title]'), what).toHaveAttribute('title', LINE);
+  // In sight the short words (lead 2's decision inside the owner's A); read out and in its tooltip the whole line.
+  await expect(line.getByTestId('access-offline-short'), what).toHaveText(OFFLINE_SHORT_TEXT);
+  await expect(slot.getByTestId('access-offline-words'), what).toHaveText(LINE);
+  await expect(line, what).toHaveAttribute('title', LINE);
   await expect(win.getByTestId('app-info'), `${what}: the version hidden`).toBeHidden();
   expect(version, what).not.toBeNull();
   const box = await line.boundingBox();
@@ -437,8 +440,9 @@ test('with no answer: no line at the first missed checks; after 2 minutes (12 s 
       expect(await tryIt(win, what), what).not.toContain(STOPPED_REFUSAL);
     // 12 s with no answer: the line.
     await expect(line).toBeVisible({ timeout: 20_000 });
-    await expect(line).toHaveText(LINE);
-    await expect(line).toContainText(/for (9|10) minutes more/u);
+    const words = win.getByTestId('access-offline-words');
+    await expect(words).toHaveText(LINE);
+    await expect(words).toContainText(/for (9|10) minutes more/u);
     expect(await layout(win), 'nothing moved as the line came').toEqual(before);
     expect(await statusBar(win), 'nothing in the status bar moved as the line came').toEqual(bar);
     await inTheVersionsPlace(win, version, 'the line at 1024 × 645');
@@ -487,11 +491,22 @@ test('the line’s words in sight in the status bar (alpha.24): whole, never cut
         // The words in sight whole, and saying what it is about.
         const shown = await line.evaluate((p) => {
           const words = p.querySelector('span:not(.sr-only)');
-          return words ? { text: words.textContent, cut: words.scrollWidth > words.clientWidth + 1 } : null;
+          const r = words?.getBoundingClientRect();
+          const b = p.getBoundingClientRect();
+          return words && r
+            ? {
+                text: words.textContent,
+                cut:
+                  words.scrollWidth > words.clientWidth + 1 ||
+                  r.left < b.left - 0.5 ||
+                  r.right > b.right + 0.5,
+              }
+            : null;
         });
         expect(shown, where).not.toBeNull();
         expect(shown?.cut, `${where}: the words in sight cut`).toBe(false);
         expect(shown?.text, where).toContain('access list');
+        expect(shown?.text, where).toBe(OFFLINE_SHORT_TEXT);
         // The whole line in its tooltip, wherever the mouse rests on it.
         await expect(line, where).toHaveAttribute('title', LINE);
       }
@@ -508,7 +523,7 @@ test('with no answer for 15 days (30 s here), it stops as a revoke stops it, say
   const watch = closedWatch(app);
   try {
     stopAnswering(list);
-    await expect(win.getByTestId('access-offline-notice')).toHaveText(LINE, { timeout: 20_000 });
+    await expect(win.getByTestId('access-offline-words')).toHaveText(LINE, { timeout: 20_000 });
     await expectStopped(win, NO_CONTACT_STOP_TITLE, 40_000);
     const stopped = win.getByTestId('access-stopped');
     await expect(stopped).toHaveAttribute('data-reason', 'no-contact');
@@ -569,7 +584,7 @@ test('the line in days and hours: started with no internet 18 hours after an ans
     const win = await operatorPage(app);
     await operatorReady(win);
     expect(app.windows().filter((w) => w.url().includes('lock.html'))).toEqual([]);
-    const line = win.getByTestId('access-offline-notice');
+    const line = win.getByTestId('access-offline-words');
     await expect(line).toHaveText(
       'Can’t reach the access list: Drashti keeps working for 14 days 5 hours more.',
       { timeout: 30_000 },
@@ -662,7 +677,7 @@ test('the line in Simple Mode, in CI’s window: in its status bar in place of t
     await twoMissed(list, tries);
     await expect(line).toHaveCount(0);
     await expect(line).toBeVisible({ timeout: 20_000 });
-    await expect(line).toHaveText(LINE);
+    await expect(win.getByTestId('access-offline-words')).toHaveText(LINE);
     // In Simple Mode's status bar, in place of the version: nothing moved, over none of its big buttons.
     await expect(simple).toBeVisible();
     try {
@@ -764,7 +779,7 @@ test('started again with no internet within the 15 days of an answer that let it
     expect(windows.filter((u) => u.includes('lock.html'))).toEqual([]);
     expect(await tryIt(win, 'library')).not.toContain(STOPPED_REFUSAL);
     const line = win.getByTestId('access-offline-notice');
-    await expect(line).toHaveText(LINE, { timeout: 30_000 });
+    await expect(win.getByTestId('access-offline-words')).toHaveText(LINE, { timeout: 30_000 });
     // The list answers again: the line goes.
     answerAgain(list);
     await expect(line).toHaveCount(0, { timeout: 20_000 });
