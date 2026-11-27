@@ -455,5 +455,5 @@ it.each(['http://github.com/plain', 'https://127.0.0.1/private', 'https://10.0.0
     await u.check();
     expect(followed).toBe(false);
     expect(u.view().phase).toBe('error');
-  } finally { u.close(); }
+  } finally { u.stop(); }
 });
