@@ -109,9 +109,9 @@ async function fits(win: Page, where: string) {
         // Also check the rendered compact words; hidden full wording must remain available to assistive tech.
         const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
         for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-          if (!node.textContent.trim()) continue;
+          if (!node.textContent?.trim()) continue;
           const parent = node.parentElement;
-          if (!parent || !parent.getClientRects().length) continue;
+          if (!parent?.getClientRects().length) continue;
           let hidden = false;
           for (let at: Element | null = parent; at && at !== root; at = at.parentElement) {
             const style = getComputedStyle(at);
@@ -131,7 +131,7 @@ async function fits(win: Page, where: string) {
             r.top < edge.top - 0.01 ||
             r.bottom > edge.bottom + 0.01
           )
-            faults.push(`visible words cut: ${node.textContent.trim()}`);
+            faults.push(`visible words cut: ${node.textContent?.trim()}`);
         }
         return faults;
       }),
@@ -190,12 +190,9 @@ for (const mode of ['pro', 'simple'] as const)
             ? 'Sound output "Placeholder Mixer" not connected'
             : 'Sound: System default';
           await expect(sound).toHaveAccessibleName(soundWords);
-          await expect
-            .soft(sound)
-            .toHaveAttribute(
-              'title',
-              new RegExp(missing ? 'Placeholder Mixer.*not connected' : 'Sound: System default'),
-            );
+          expect
+            .soft(await sound.getAttribute('title'))
+            .toMatch(new RegExp(missing ? 'Placeholder Mixer.*not connected' : 'Sound: System default'));
           for (const [audience, stage] of [
             [false, false],
             [true, false],
@@ -314,6 +311,22 @@ for (const mode of ['pro', 'simple'] as const)
           expect.soft(await steady(win), where).toEqual(before);
           await fits(win, where);
         }
+        await tell(app, IPC.screenSwitches.changed, { audience: false, stage: false });
+        await win.evaluate(() => (globalThis as PageGlobals).drashti.sound.setMuted('audio', true));
+        await expect(win.getByTestId('sound-muted-status')).toHaveText('Audio muted');
+        await tell(app, IPC.audio.status, {
+          chosen: { id: 'placeholder-mixer', label: 'Placeholder Mixer' },
+          devices: [],
+          state: 'missing',
+          checked: true,
+        });
+        await expect(win.getByTestId('sound-warning')).toBeVisible();
+        expect.soft(await steady(win), `${mode} ${size.width}, calendar and all warnings`).toEqual(before);
+        await fits(win, `${mode} ${size.width}, calendar and all warnings`);
+        await tell(app, IPC.screenSwitches.changed, { audience: true, stage: true });
+        await win.evaluate(() => (globalThis as PageGlobals).drashti.sound.setMuted('audio', false));
+        await tell(app, IPC.audio.status, { chosen: null, devices: [], state: 'default', checked: true });
+        await expect(win.getByTestId('sound-status')).toBeVisible();
         await tell(app, IPC.screens.changed, { ...snapshot, status: showing });
         await expect(win.getByTestId('screens-summary')).toHaveAccessibleName('2 screens showing');
         expect.soft(await steady(win)).toEqual(before);
