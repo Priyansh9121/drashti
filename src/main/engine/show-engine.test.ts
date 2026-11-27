@@ -1755,6 +1755,28 @@ describe('ShowEngine', () => {
       expect(engine.current.layers.ticker).toBeNull();
     });
 
+    // alpha.24 bug hunt S2-1: Oops brought an ended announcement back, and nothing took it down again but Clear ticker.
+    it('takes an ended announcement out of what Oops would bring back too: every step brings back the slides alone', () => {
+      const { engine } = setup();
+      engine.dispatch(goLive('p1', 0));
+      engine.showTicker({ id: 'a1', text: 'Placeholder one' });
+      engine.dispatch({ type: 'showMessage', message: { id: 'a2', text: 'Placeholder two' } });
+      // The operator moves on while both are up: each change is a step for Oops, with both in it.
+      engine.dispatch(goLive('p1', 1));
+      engine.dispatch(goLive('p1', 2));
+      // Their time runs out (or the operator takes them off), then a wrong click.
+      engine.takeDown('a1');
+      engine.takeDown('a2');
+      engine.dispatch(goLive('p1', 0));
+      const slides: (string | null)[] = [];
+      while (engine.dispatch({ type: 'oops' }).ok) {
+        slides.push(engine.current.layers.slide?.slide.id ?? null);
+        expect(engine.current.layers.ticker).toBeNull();
+        expect(engine.current.layers.messages).toEqual([]);
+      }
+      expect(slides).toEqual(['p1s3', 'p1s2', 'p1s1', 'p1s1', null]);
+    });
+
     it('keeps a stage message apart from the layers: Clear all leaves it', () => {
       const { engine } = setup();
       engine.dispatch({ type: 'setStageMessage', text: 'Placeholder: two minutes left' });

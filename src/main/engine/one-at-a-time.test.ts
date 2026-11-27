@@ -251,6 +251,103 @@ describe('LIVE shows one thing at a time (Session 56): a video going up takes th
     expect(covers(engine.current)).toEqual(OFF);
   });
 
+  // alpha.24 bug hunt S2-2: under a cover, a wrong row's click took it off, and Oops then showed the slide that was
+  // under it instead of the cover. Oops and Put it back put the screens back as they were, covers and all.
+  for (const [name, on, covered] of [
+    ['Black-out', { type: 'setBlackout', on: true }, BLACKOUT],
+    ['the Wallpaper', { type: 'setWallpaper', on: true }, WALLPAPER],
+  ] as const)
+    it(`Oops and Put it back put ${name} back as it was before the change they take back, the slide under it`, () => {
+      const { engine } = setup();
+      engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 });
+      engine.dispatch(on);
+      const under = engine.current.layers.slide?.slide.id;
+      // A wrong row's click: the cover comes off and the hall sees that slide.
+      engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 2 });
+      expect(covers(engine.current)).toEqual(OFF);
+      // Oops: the cover is back as it was, the slide that was under it under it again.
+      expect(engine.dispatch({ type: 'oops' })).toMatchObject({ ok: true, changed: true });
+      expect(covers(engine.current)).toEqual(covered);
+      expect(engine.current.layers.slide?.slide.id).toBe(under);
+      // A message shown under the cover and taken back by Oops: the cover stays.
+      engine.dispatch({ type: 'showMessage', message: { id: 'm1', text: 'Placeholder message' } });
+      expect(covers(engine.current)).toEqual(covered);
+      engine.dispatch({ type: 'oops' });
+      expect(engine.current.layers.messages).toEqual([]);
+      expect(covers(engine.current)).toEqual(covered);
+      // Clear all under the cover, then Put it back: the slide comes back still under it.
+      engine.dispatch({ type: 'clearAll' });
+      expect(engine.dispatch({ type: 'putBack' })).toMatchObject({ ok: true, changed: true });
+      expect(engine.current.layers.slide?.slide.id).toBe(under);
+      expect(covers(engine.current)).toEqual(covered);
+    });
+
+  // QA24-OOPS-COVERS (the owner: "Restore covers"), the oopsfix review's SHOULD-1: Black-out put back by Oops counted as
+  // a cover going on, and dropped a video cued under it ("No video is cued" at Go).
+  it('Oops that puts Black-out back keeps a video cued under it, held for Go', () => {
+    const { engine, cover } = setup();
+    engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 });
+    cover();
+    expect(engine.dispatch({ type: 'cueVideo', mediaId: 'clip' })).toMatchObject({ ok: true });
+    const cued = engine.current.videoCue?.id;
+    expect(cued).toEqual(expect.any(String));
+    // A wrong row's click takes Black-out off and leaves the cue held.
+    engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 2 });
+    expect(covers(engine.current)).toEqual(OFF);
+    expect(engine.current.videoCue?.id).toBe(cued);
+    // Oops: Black-out back, and the cue still held.
+    engine.dispatch({ type: 'oops' });
+    expect(covers(engine.current)).toEqual(BLACKOUT);
+    expect(engine.current.videoCue?.id).toBe(cued);
+    expect(backgroundVideo(engine.current)).toBeNull();
+  });
+
+  // QA24-OOPS-COVERS, the review's SHOULD-2: a hall cover never comes off with nothing to see.
+  it('a cover put on since the change stays on when Oops or Put it back brings back nothing to see', () => {
+    const { engine } = setup();
+    // A message over nothing up, then Black-out: Oops takes the message back, and the hall stays black.
+    engine.dispatch({ type: 'showMessage', message: { id: 'm1', text: 'Placeholder message' } });
+    engine.dispatch({ type: 'setBlackout', on: true });
+    engine.dispatch({ type: 'oops' });
+    expect(engine.current.layers.messages).toEqual([]);
+    expect(covers(engine.current)).toEqual(BLACKOUT);
+    // Clear all of a message alone, the Wallpaper on since, Put it back: the message back, the Wallpaper still on.
+    engine.dispatch({ type: 'setBlackout', on: false });
+    engine.dispatch({ type: 'showMessage', message: { id: 'm2', text: 'Placeholder message two' } });
+    engine.dispatch({ type: 'clearAll' });
+    engine.dispatch({ type: 'setWallpaper', on: true });
+    expect(engine.dispatch({ type: 'putBack' })).toMatchObject({ ok: true, changed: true });
+    expect(engine.current.layers.messages.map((m) => m.id)).toEqual(['m2']);
+    expect(covers(engine.current)).toEqual(WALLPAPER);
+    // Black-out taken off by a click with only a message up, the Wallpaper on since, Oops: Black-out back, alone (one
+    // cover at a time), over the message alone.
+    engine.dispatch({ type: 'setBlackout', on: true });
+    engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 });
+    expect(covers(engine.current)).toEqual(OFF);
+    engine.dispatch({ type: 'setWallpaper', on: true });
+    engine.dispatch({ type: 'oops' });
+    expect(engine.current.layers.slide).toBeNull();
+    expect(covers(engine.current)).toEqual(BLACKOUT);
+  });
+
+  it('Oops leaves off a cover the operator took off since the change it takes back, and takes off one put on since', () => {
+    const { engine, cover } = setup();
+    engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 });
+    cover();
+    engine.dispatch({ type: 'showMessage', message: { id: 'm1', text: 'Placeholder message' } });
+    // Black-out off by the operator's own press: Oops takes the message back and the slide stays seen.
+    engine.dispatch({ type: 'setBlackout', on: false });
+    engine.dispatch({ type: 'oops' });
+    expect(engine.current.layers.messages).toEqual([]);
+    expect(covers(engine.current)).toEqual(OFF);
+    // The Wallpaper on after a slide's click (no cover before it): Oops puts the slide before back, seen.
+    engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 1 });
+    engine.dispatch({ type: 'setWallpaper', on: true });
+    engine.dispatch({ type: 'oops' });
+    expect(engine.current.layers.slide?.slide.id).toBe('p1s1');
+    expect(covers(engine.current)).toEqual(OFF);
+  });
+
   it('a slide with a video on it, and Play on a video waiting under a cover', () => {
     const { engine, cover } = setup();
     cover();

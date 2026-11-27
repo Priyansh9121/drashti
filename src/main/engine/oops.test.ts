@@ -198,6 +198,34 @@ describe('Oops: what was on the screens before the last change, step by step', (
     expect(words(engine)).toBe('Placeholder one');
   });
 
+  // alpha.24 bug hunt S3-1: the quick bar's picture pin was two changes, the slide leaving over the old background.
+  it('a picture in the slide’s place (the quick bar’s pin) is one change, and one Oops puts the slide back', () => {
+    const { engine } = setup();
+    engine.dispatch(playItem('i-words'));
+    const rev = engine.rev;
+    const command = parseEngineCommand({
+      type: 'setBackground',
+      background: { kind: 'media', mediaId: 'pic', media: 'image', fit: 'fit', loop: false },
+      slideOff: true,
+    });
+    if (!command.ok) throw new Error('setBackground with slideOff is a command a window may send');
+    expect(engine.dispatch(command.command)).toMatchObject({ ok: true, changed: true });
+    expect(engine.rev).toBe(rev + 1);
+    expect(engine.current.layers.slide).toBeNull();
+    expect(background(engine)?.mediaId).toBe('pic');
+    // The slide leaves with its own way out, over the picture.
+    expect(engine.current.slideOff?.layer.slide.id).toBe('w1');
+    engine.dispatch(oops);
+    expect(words(engine)).toBe('Placeholder one');
+    expect(engine.current.layers.background).toBeNull();
+    // Without it, the slide stays over the picture, as before.
+    engine.dispatch({
+      type: 'setBackground',
+      background: { kind: 'media', mediaId: 'pic', media: 'image', fit: 'fit', loop: false },
+    });
+    expect(words(engine)).toBe('Placeholder one');
+  });
+
   it('a slide moving on by itself is no step: Oops takes back the operator’s own last change', () => {
     const { engine, elapse } = setup();
     engine.dispatch(playItem('i-pic'));

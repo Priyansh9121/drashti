@@ -281,11 +281,22 @@ export class OutputHeartbeat {
     return s.warming || this.deps.translated === true ? WARMING_STALE_MS : REPORT_STALE_MS;
   }
 
-  /** How long after the first change it has not painted its last report came; null when it painted them all. */
+  /**
+   * How long after the first change it has not painted its last report came; null when it painted them all, or has not
+   * painted its first frame yet (-1: only its silence counts then, as before).
+   *
+   * The first change is the first one recorded after the revision it painted (alpha.24 bug hunt S2-3): live captions,
+   * and the operator's levels and mutes, alone are revisions the engine tells no listener of (show-engine.ts), so the
+   * revision right after the one painted is often not recorded, and a page that stopped painting while captions ran
+   * was never judged behind. A page that paints is never judged by a caption it has not painted yet: only the show's
+   * changes are recorded, each judged BEHIND_MS after it came, as before.
+   */
   private lateBy(s: Seen): number | null {
-    if (s.reportAt === null || s.paintedRev >= this.deps.engineRev()) return null;
-    const changedAt = this.revAt.get(s.paintedRev + 1);
-    return changedAt === undefined ? null : s.reportAt - changedAt;
+    if (s.reportAt === null || s.paintedRev < 0 || s.paintedRev >= this.deps.engineRev()) return null;
+    let first: { rev: number; at: number } | null = null;
+    for (const [rev, at] of this.revAt)
+      if (rev > s.paintedRev && (first === null || rev < first.rev)) first = { rev, at };
+    return first === null ? null : s.reportAt - first.at;
   }
 
   private why(s: Seen, now: number): string | null {
