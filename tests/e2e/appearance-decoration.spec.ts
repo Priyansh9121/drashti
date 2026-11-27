@@ -152,7 +152,9 @@ const AT_9ED5D00: Record<string, unknown> = {
     underline: ['rgb(138, 180, 248)'],
     row: ['oklab(0.76608 -0.0191589 -0.106575 / 0.7)', 'rgb(38, 38, 43)'],
     heading: ['rgb(200, 200, 207)'],
-    under: [0, 72, 300, 579],
+    // alpha.24 (the owner's QA24-ACCESS-STRIP A, 27 Nov 2026): the access line is said in the status bar, in place of
+    // the version, and its strip under the top bar went, so the column is 24 px higher and taller again, 603 px.
+    under: [0, 48, 300, 603],
     headingText: 'Stage screen',
   },
   white: {
@@ -164,7 +166,8 @@ const AT_9ED5D00: Record<string, unknown> = {
     underline: ['rgb(29, 78, 216)'],
     row: ['oklab(0.488178 -0.0212675 -0.21611 / 0.7)', 'rgb(223, 225, 230)'],
     heading: ['rgb(67, 70, 78)'],
-    under: [0, 72, 300, 579],
+    // alpha.24: no access line's strip under the top bar (the owner's QA24-ACCESS-STRIP A), as in Black.
+    under: [0, 48, 300, 603],
     headingText: 'Stage screen',
   },
 };

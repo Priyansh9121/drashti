@@ -5,7 +5,6 @@ import type { OperatorAction } from '../../../shared/keymap';
 import { shortcutText, SIMPLE_KEYMAP } from '../../../shared/keymap';
 import type { PlaylistItemInfo } from '../../../shared/playlists';
 import { AccessEndsNotice } from '../access/AccessEndsNotice';
-import { AccessOfflineNotice } from '../access/AccessOfflineNotice';
 import { useAccess } from '../access/access-store';
 import { FileMenu } from '../files/FileMenu';
 import { GuidesDialog } from '../help/GuidesDialog';
@@ -322,8 +321,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       </header>
       <Band />
       <LookMotion where="band" />
-      {/* No internet, and when access ends (Session 54): in the flow, never over the show's controls. */}
-      <AccessOfflineNotice />
+      {/* When access ends (Session 54): in the flow, never over the show's controls. No internet is said in the status
+          bar, in place of the version, as in Pro Mode (alpha.24). */}
       <AccessEndsNotice />
       <RecoveryBanner />
       {/* A hall screen that stopped (Session 26h), or no sound on the stream (Session 31): in the flow, so

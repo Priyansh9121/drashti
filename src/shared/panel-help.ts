@@ -119,7 +119,7 @@ export const PANEL_HELP = {
     chapter: 'playlists',
     feature: 'The open playlist',
     doc: 'operator',
-    text: 'The playlist you opened is where things go live: one click on a row puts it up, and a presentation’s, deck’s or PDF’s name folds its slide rows; type a row’s number and press Enter to put it up. Cmd-click (Ctrl-click on Windows) only marks a row; drag or Alt+Up/Down moves it, within its deck on a slide row, and its menu has Rename, Remove and Undo; the playlist’s ⋯ has Duplicate and Practise this playlist. A video input from Media can be a row too: without that named input on this computer it says Not on this computer and Next goes past it.',
+    text: 'The playlist you opened is where things go live: one click on a row puts it up, and a presentation’s, deck’s or PDF’s name folds its slide rows; type a row’s number and press Enter to put it up. Cmd-click (Ctrl-click on Windows) only marks a row; drag or Alt+Up/Down (Option+Up/Down on a Mac) moves it, within its deck on a slide row, and its menu has Rename, Remove and Undo; the playlist’s ⋯ has Duplicate and Practise this playlist. A video input from Media can be a row too: without that named input on this computer it says Not on this computer and Next goes past it.',
     guide: '**Middle:**',
   },
   controls: {
@@ -167,7 +167,7 @@ export const PANEL_HELP = {
     chapter: 'start',
     feature: 'The status bar',
     doc: 'operator',
-    text: 'What Drashti is doing: the screens, the sound output (and in red Audio muted or Video muted while one is, or at 0 %), imports and warnings, and its version; a bar under the top bar says when your access to Drashti ends, from 7 days before. A warning in yellow says what to look at: Audience off means this computer’s hall screens are switched off, and Stage off that its stage screens show the audience picture; Turn on brings them back where they were, asking nothing. A display plugged in sets itself, said in a line under the top bar; when a change made by hand puts a screen on the display with these controls, Keep these screens? undoes it in 15 seconds unless you press Keep.',
+    text: 'What Drashti is doing: the screens, the sound output (and in red Audio muted or Video muted while one is, or at 0 %), imports and warnings, and its version; with no internet, No access list shows in the version’s place, saying how long Drashti keeps working when the mouse rests on it; a bar under the top bar says when your access to Drashti ends, from 7 days before. A warning in yellow says what to look at: Audience off means this computer’s hall screens are switched off, and Stage off that its stage screens show the audience picture; Turn on brings them back where they were, asking nothing. A display plugged in sets itself, said in a line under the top bar; when a change made by hand puts a screen on the display with these controls, Keep these screens? undoes it in 15 seconds unless you press Keep.',
     guide: '**Along the bottom:**',
   },
   audio: {

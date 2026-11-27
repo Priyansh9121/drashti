@@ -2662,7 +2662,8 @@ test('access by Gmail, live: the bar saying when access ends, the bar with no in
       ok: true,
     });
     await expect(win.getByTestId('access-ends-notice')).toHaveCount(0, { timeout: 30_000 });
-    // No answer from the list (as with no internet): the line under the top bar, while the show goes on.
+    // No answer from the list (as with no internet): the line in the status bar, in place of the version (alpha.24),
+    // while the show goes on.
     stopAnswering(list);
     await expect(win.getByTestId('access-offline-notice')).toBeVisible({ timeout: 45_000 });
     await shot(win, 'access-offline');
