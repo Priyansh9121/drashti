@@ -30,8 +30,18 @@ async function openManual(help: PanelHelp): Promise<void> {
   showManual({ chapter: help.chapter, passage });
 }
 
-/** The ?'s size: the header's smaller (`compact`), every other 24 px. Its room, held with Help off, is the same. */
+/**
+ * The ?'s room: the header's and the sabha flow's smaller (`compact`, 20 px), every other 24 px; held with Help off
+ * (`keepRoom`) at the same size.
+ */
 const askSize = (compact: boolean) => (compact ? 'h-5 w-5' : 'h-6 w-6');
+
+/**
+ * The ? itself, always a 24 px target (WCAG 2.5.8; qtargets, alpha.24; 20 px in a compact room until then): in a
+ * compact room its margin gives 2 px back on each side, so it takes the 20 px it took and no bar grows, and it reaches
+ * into the gaps beside it, over no other target.
+ */
+const targetSize = (compact: boolean) => (compact ? '-m-0.5 h-6 w-6' : 'h-6 w-6');
 
 /**
  * The ? for a heading, and the words it opens under it (both null without a topic, in Simple Mode or with Help off).
@@ -46,7 +56,7 @@ export function useWhatIsThis(
     compact = false,
     keepRoom = false,
   }: {
-    /** A smaller ? (the header's, where room is short). */
+    /** A smaller room for the ? (the header's and the sabha flow's, where room is short). */
     compact?: boolean;
     /** Hold the ?'s room while Help is off (Pro Mode only, as the ? is). */
     keepRoom?: boolean;
@@ -96,7 +106,7 @@ export function useWhatIsThis(
       }}
       className={cx(
         'inline-flex shrink-0 items-center justify-center rounded-full border border-field font-bold text-muted hover:border-muted hover:text-fg',
-        askSize(compact),
+        targetSize(compact),
         compact ? 'text-[11px]' : 'text-xs',
       )}
     >
