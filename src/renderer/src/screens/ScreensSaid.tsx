@@ -26,8 +26,9 @@ import { Tooltip } from '../ui/Tooltip';
  * bar's passing news, so nothing in the window or the bar moves as it comes or goes, and it is never over a control.
  * Its words in sight are a few, whole (saidShort), so that it and the access line ("No access list") both show at
  * 1024 × 645; it never shrinks (the bar's other words do first: a missing screen matters more during a show). The
- * whole line is its tooltip (over its words, or with its buttons focused) and what a screen reader reads, politely, as
- * it comes (its place is a status region, there always).
+ * whole line is the tooltip of its words and icon, and what a screen reader reads, politely, as it comes (its place is
+ * a status region, there always); each button has its own tooltip, on the mouse or keyboard focus (saidTips: the
+ * action button says what it does, the X "Dismiss: " and the line; alpha.25 item 40, done in saidwords).
  *
  * After the release lead's review (27 Nov 2026): Stage's line says Stage is on with no Stage screen, so it closes as
  * Stage goes off (it had stayed, beside Stage off saying the opposite, and at 1024 × 645 with Audience off too the bar
