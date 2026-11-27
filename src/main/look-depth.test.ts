@@ -273,6 +273,18 @@ describe('B · Depth: styles/look-depth.css', () => {
     });
   });
 
+  it('keeps the live picture at the width and place it had before Depth: it reaches the gaps’ room back', () => {
+    // a24-lookgap: the columns' 4 px gaps (border-inline) made the live picture 8 px narrower and 4 px over, and the
+    // graphics chip drew a wide deck's first Cover a new way mid-show (CI's Mac, deck-cover-pipelines.spec.ts:144).
+    const gap = block(
+      `${SCOPE} :is([data-testid='column-left'], [data-testid='column-middle'], [data-testid='column-right'])`,
+    )['border-inline'];
+    expect(gap).toBe('var(--depth-gap) solid transparent');
+    expect(block(`${SCOPE} [data-testid='column-right'] [data-testid='live-preview']`)['margin-inline']).toBe(
+      'calc(-1 * var(--depth-gap))',
+    );
+  });
+
   it('LIVE is a red ring and a light red tint, never a glow: the live picture and the live row', () => {
     // Inside its frame exactly as before (the light along its top: warm-up.spec compares the picture's own pixels).
     expect(block(`${SCOPE} [data-testid='live-preview']`)['box-shadow']).toBe(

@@ -218,6 +218,7 @@ import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter 
 import { type CrashFilesChoice, type GraphicsInfo, libraryNames, writeDiagnosticsFile } from './diagnostics';
 import { log, logDays, logFilesOf, onLogDaysChanged, setLogHeader, startLogCopy, startLogFile } from './log';
 import { CommandLog, requestLogged } from './log-commands';
+import { ShowStill } from './show-still';
 import { type DiagnosticsWho, installId } from './log-who';
 import { type LogPeriod, periodDays, periodText } from '../shared/log-period';
 import { computerName } from './access/identity';
@@ -2288,11 +2289,15 @@ function start(): void {
     engine.dispose();
     commandLog.flush();
   });
+  // When the last show command came (alpha.24): a reading's hidden window is never made in the middle of a run of them.
+  const showStill = new ShowStill();
   // Every show command in the log, whoever sent it (the window, a phone, Companion, OSC, a script, or the show itself:
   // a slide moving on by itself), and what came of it (alpha.21, logs for 100+ installs (a)): written a turn later.
   const dispatchNow = engine.dispatch.bind(engine);
   let dispatching = 0;
   engine.dispatch = (command) => {
+    // A reading of a deck's own words and shapes waits for a pause in these (alpha.24: show-still.ts).
+    showStill.noted();
     dispatching++;
     let result: ReturnType<typeof dispatchNow>;
     try {
@@ -6690,6 +6695,13 @@ function start(): void {
       !e.sender.isDestroyed() &&
       (fromOperator(e) || editorWindow.isPage(e.sender)),
     sourceReader: async (request) => {
+      // Its hidden PDF window (or PowerPoint reader) is made once the live commands pause (alpha.24, show-still.ts:
+      // making it held Main's UI thread 44-270 ms on CI's Mac, and a Next pressed then waited behind it).
+      if (!(await showStill.still(request.signal)))
+        return {
+          ok: false,
+          message: 'Reading the original’s words and shapes was stopped. The slides still show as before.',
+        };
       const result = await documentReaders.read(request);
       if (!result.ok && result.retainOutput) sourceOutputQuarantined = true;
       return result;

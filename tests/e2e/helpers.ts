@@ -406,15 +406,18 @@ const SLOW_START_MS = 10_000;
  * Choose an application menu item, as the operator would: from the main process's event loop.
  * Playwright's evaluate can otherwise run in the middle of other main-process work (between two
  * rows of a database query), where the item's own query is refused as the connection is busy.
+ * setImmediate, never a Node timer (alpha.24, a24-nature-hang): the evaluate runs on a V8 interrupt, and a timer made
+ * there, in the middle of Node's own timer code, could leave Main's event loop spinning for good
+ * (src/main/e2e-main-evaluate.test.ts).
  */
 export async function chooseMenuItem(app: ElectronApplication, id: string): Promise<void> {
   await app.evaluate(
     ({ Menu }, item) =>
       new Promise<void>((resolve) => {
-        setTimeout(() => {
+        setImmediate(() => {
           Menu.getApplicationMenu()?.getMenuItemById(item)?.click();
           resolve();
-        }, 0);
+        });
       }),
     id,
   );

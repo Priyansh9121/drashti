@@ -86,6 +86,8 @@ const READ_MS = 2000;
 export const askWindow = (app: ElectronApplication, part: string, script: string): Promise<string> =>
   app.evaluate(
     async ({ BrowserWindow }, { at, js, ms }) => {
+      // On Main's own turn: its READ_MS timer is never made inside the call (src/main/e2e-main-evaluate.test.ts).
+      await new Promise<void>((resolve) => setImmediate(resolve));
       const w = BrowserWindow.getAllWindows().find(
         (b) => !b.isDestroyed() && b.webContents.getURL().includes(at),
       );
@@ -143,12 +145,15 @@ export const watchdogEvents = (app: ElectronApplication) =>
     ).drashtiDiagnostics.watchdog.events.map((e) => `${String(e.at)} ${e.kind} ${e.window}`),
   );
 
-/** A menu item found by its words, clicked on Main's next turn: whether it was found. */
+/**
+ * A menu item found by its words, clicked on Main's next turn: whether it was found. setImmediate, never a Node timer,
+ * inside a call into Main (src/main/e2e-main-evaluate.test.ts, a24-nature-hang).
+ */
 export const clickMenu = (app: ElectronApplication, label: string) =>
   app.evaluate(
     ({ Menu }, words) =>
       new Promise<boolean>((resolve) => {
-        setTimeout(() => {
+        setImmediate(() => {
           const find = (items: MenuItem[]): MenuItem | null => {
             for (const item of items) {
               if (item.label === words) return item;
@@ -160,7 +165,7 @@ export const clickMenu = (app: ElectronApplication, label: string) =>
           const item = find(Menu.getApplicationMenu()?.items ?? []);
           item?.click();
           resolve(item !== null);
-        }, 0);
+        });
       }),
     label,
   );

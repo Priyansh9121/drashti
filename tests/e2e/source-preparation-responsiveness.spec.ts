@@ -4,7 +4,14 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { EditSlidesResult } from '../../src/shared/slide-edit';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  letTimePass,
+  operatorPage,
+  operatorReady,
+  type PageGlobals,
+} from './helpers';
 
 const PROBE = '__drashtiGeneratedSourcePreparationHeartbeat';
 const PREP = '__drashtiGeneratedSourcePreparationPromise';
@@ -81,17 +88,24 @@ async function measured<T>(promise: Promise<T>): Promise<{ value: T; elapsedMs: 
 }
 
 async function startBeat(app: ElectronApplication) {
-  await app.evaluate(() => {
-    const globals = globalThis as MainGlobals;
-    const state: Beat = { last: performance.now(), worst: 0, ticks: 0 };
-    state.timer = setInterval(() => {
-      const now = performance.now();
-      state.worst = Math.max(state.worst, now - state.last);
-      state.last = now;
-      state.ticks++;
-    }, 10);
-    globals.__drashtiGeneratedSourcePreparationHeartbeat = state;
-  });
+  await app.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        // On Main's own turn: no Node timer made inside the call (src/main/e2e-main-evaluate.test.ts).
+        setImmediate(() => {
+          const globals = globalThis as MainGlobals;
+          const state: Beat = { last: performance.now(), worst: 0, ticks: 0 };
+          state.timer = setInterval(() => {
+            const now = performance.now();
+            state.worst = Math.max(state.worst, now - state.last);
+            state.last = now;
+            state.ticks++;
+          }, 10);
+          globals.__drashtiGeneratedSourcePreparationHeartbeat = state;
+          resolve();
+        });
+      }),
+  );
 }
 const pending = (win: Page) =>
   win.evaluate(
@@ -265,13 +279,150 @@ test('preparing a complex generated source leaves Main responsive to live comman
             })
             .catch(() => undefined);
     await app
-      .evaluate(() => {
-        const globals = globalThis as MainGlobals;
-        const probe = globals.__drashtiGeneratedSourcePreparationHeartbeat;
-        if (probe?.timer) clearInterval(probe.timer);
-        delete globals.__drashtiGeneratedSourcePreparationHeartbeat;
-      })
+      .evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            setImmediate(() => {
+              const globals = globalThis as MainGlobals;
+              const probe = globals.__drashtiGeneratedSourcePreparationHeartbeat;
+              if (probe?.timer) clearInterval(probe.timer);
+              delete globals.__drashtiGeneratedSourcePreparationHeartbeat;
+              resolve();
+            });
+          }),
+      )
       .catch(() => undefined);
+    try {
+      await app.close();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+/*
+ * alpha.24 (joined run 2's Mac flake of the test above, and the a22-spprobe traces): what held the first live command
+ * was Main's UI thread while the preparation made its hidden PDF reading window (the window, its compositor and its
+ * process: 44-270 ms on CI's Mac), not the preparation's reading. The window is now made only once the live commands
+ * have paused; the preparation still reads every page.
+ */
+interface MadeWindow {
+  at: number;
+  title: string;
+  /** The page it loaded, once it has ('' until then). */
+  url: string;
+}
+type WindowGlobals = typeof globalThis & { __drashtiWindowsMade?: MadeWindow[] };
+/** A hidden PDF reading window (pictures-window.ts: its title, or the pdf page it loads), or one not loaded yet. */
+const reading = (w: MadeWindow) =>
+  w.title === 'Drashti pictures' || /\/pdf\.html(?:[?#]|$)/u.test(w.url) || w.url === '';
+
+test('a source preparation makes its PDF reading window only once live commands pause, then prepares every page', async () => {
+  test.setTimeout(240_000);
+  const { app } = await launchApp({ DRASHTI_TEST_NO_CONVERTER: '1' });
+  const root = mkdtempSync(join(tmpdir(), 'drashti-preparation-window-'));
+  let prepStarted = false;
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const file = join(root, 'Placeholder generated preparation window.pdf');
+    writeFileSync(file, complexPdf());
+    const [sourceId = ''] = await importAndGetIds(win, [file]);
+    expect(sourceId, 'the existing generated PDF import is a setup precondition').not.toBe('');
+    await win.evaluate(async () => {
+      const d = (globalThis as PageGlobals).drashti;
+      const made = await d.library.newFromWords(
+        'Placeholder live window',
+        'Placeholder live one\n\nPlaceholder live two',
+      );
+      if (!made.ok) throw new Error(made.message);
+      const shown = await d.engine.dispatch({ type: 'goLive', presentationId: made.id, slideIndex: 0 });
+      if (!shown.ok) throw new Error('The generated live command fixture could not go live.');
+    });
+    // Each window Main makes from now on, by Main's clock, with its title and the page it loads (the import's reading
+    // windows are made and gone by now).
+    await app.evaluate(({ app: electronApp }) => {
+      const made: MadeWindow[] = [];
+      (globalThis as WindowGlobals).__drashtiWindowsMade = made;
+      electronApp.on('browser-window-created', (_event, created) => {
+        const entry: MadeWindow = { at: performance.now(), title: '', url: '' };
+        made.push(entry);
+        try {
+          entry.title = created.getTitle();
+        } catch {
+          entry.title = '(no title)';
+        }
+        created.webContents.once('did-navigate', (_navigated, url) => {
+          entry.url = url;
+        });
+      });
+    });
+    await win.evaluate((id) => {
+      const globals = globalThis as ProbeGlobals;
+      const state = { pending: true, promise: globals.drashti.library.slidesForEdit(id) };
+      globals.__drashtiGeneratedSourcePreparationPromise = state;
+      const settle = () => {
+        state.pending = false;
+      };
+      void state.promise.then(settle, settle);
+    }, sourceId);
+    prepStarted = true;
+    // Next and Back every tenth of a second for over a second, as an operator going through the slides; Main's clock
+    // read just after the last one (the review's M1: never a pause after it, so the bound below keeps its margin).
+    for (let i = 0; i < 12; i++) {
+      if (i > 0) await letTimePass(win, 100, 'an operator’s tenth of a second between live commands');
+      const done = await win.evaluate(
+        (back: boolean) =>
+          (globalThis as PageGlobals).drashti.engine.dispatch({ type: back ? 'back' : 'next' }),
+        i % 2 !== 0,
+      );
+      expect(done.ok, `live command ${String(i + 1)}`).toBe(true);
+    }
+    const lastCommandAt = await app.evaluate(() => performance.now());
+    const during = (
+      await app.evaluate(() => (globalThis as WindowGlobals).__drashtiWindowsMade ?? [])
+    ).filter(reading).length;
+    expect(during, 'PDF reading windows made while the live commands came').toBe(0);
+    // Then the preparation goes on as before: every page, with its own words.
+    const prepared = await win.evaluate(async () => {
+      const probe = (globalThis as ProbeGlobals).__drashtiGeneratedSourcePreparationPromise;
+      if (!probe) throw new Error('The preparation call was not installed.');
+      return await probe.promise;
+    });
+    expect(prepared.ok, 'the generated supported PDF must actually finish preparation').toBe(true);
+    if (!prepared.ok) throw new Error(prepared.message);
+    const pages = prepared.doc.groups.flatMap((group) => group.slides);
+    expect(pages).toHaveLength(6);
+    expect(
+      pages.every((page) =>
+        page.elements.some(
+          (element) =>
+            element.kind === 'text' && element.text.includes('Placeholder generated pressure page'),
+        ),
+      ),
+    ).toBe(true);
+    const windows = await app.evaluate(() => (globalThis as WindowGlobals).__drashtiWindowsMade ?? []);
+    const made = windows.filter(reading).map((w) => w.at);
+    await test.info().attach('preparation-reading-window', {
+      body: JSON.stringify({ lastCommandAt, made, windows }),
+      contentType: 'application/json',
+    });
+    expect(made, 'the reading window, made once').toHaveLength(1);
+    expect(
+      (made[0] ?? 0) - lastCommandAt,
+      'the reading window, made ms after the last live command',
+    ).toBeGreaterThanOrEqual(400);
+  } finally {
+    if (prepStarted)
+      for (const page of app.windows())
+        if (!page.isClosed() && page.url().includes('index.html'))
+          await page
+            .evaluate(async () => {
+              const globals = globalThis as ProbeGlobals;
+              await globals.__drashtiGeneratedSourcePreparationPromise?.promise.catch(() => undefined);
+              delete globals.__drashtiGeneratedSourcePreparationPromise;
+            })
+            .catch(() => undefined);
     try {
       await app.close();
     } finally {

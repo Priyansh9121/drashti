@@ -193,19 +193,26 @@ async function cueThenGo(holdMs: number): Promise<void> {
     );
     // Diagnostics only (a22-cue: the Mac's held cue got its Go late): how late the main process's event loop runs
     // around Go, and when the click went.
-    await app.evaluate(() => {
-      const lags: { t: number; ms: number }[] = [];
-      let tickAt = Date.now();
-      const timer = setInterval(() => {
-        const now = Date.now();
-        if (now - tickAt > 35 && lags.length < 2000) lags.push({ t: now, ms: now - tickAt });
-        tickAt = now;
-      }, 20);
-      (globalThis as { s5MainLag?: { lags: typeof lags; stop: () => void } }).s5MainLag = {
-        lags,
-        stop: () => clearInterval(timer),
-      };
-    });
+    await app.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          // On Main's own turn: no Node timer made inside the call (src/main/e2e-main-evaluate.test.ts).
+          setImmediate(() => {
+            const lags: { t: number; ms: number }[] = [];
+            let tickAt = Date.now();
+            const timer = setInterval(() => {
+              const now = Date.now();
+              if (now - tickAt > 35 && lags.length < 2000) lags.push({ t: now, ms: now - tickAt });
+              tickAt = now;
+            }, 20);
+            (globalThis as { s5MainLag?: { lags: typeof lags; stop: () => void } }).s5MainLag = {
+              lags,
+              stop: () => clearInterval(timer),
+            };
+            resolve();
+          });
+        }),
+    );
     const clickAt = Date.now();
     await win.getByRole('button', { name: 'Go cued video', exact: true }).click();
     const bg = (await snapshot(win)).layers.background;
@@ -282,13 +289,19 @@ async function cueThenGo(holdMs: number): Promise<void> {
         await test.info().attach('s5-held-media-trace.json', { path: kept, contentType: 'application/json' });
     }
     const mainLag = await app
-      .evaluate(() => {
-        const g = globalThis as { s5MainLag?: { lags: unknown; stop: () => void } };
-        g.s5MainLag?.stop();
-        const lags = g.s5MainLag?.lags ?? null;
-        delete g.s5MainLag;
-        return lags;
-      })
+      .evaluate(
+        () =>
+          // Its stop clears a Node timer: on Main's own turn too.
+          new Promise<unknown>((resolve) => {
+            setImmediate(() => {
+              const g = globalThis as { s5MainLag?: { lags: unknown; stop: () => void } };
+              g.s5MainLag?.stop();
+              const lags = g.s5MainLag?.lags ?? null;
+              delete g.s5MainLag;
+              resolve(lags);
+            });
+          }),
+      )
       .catch(() => null);
     if (mainLag)
       await test.info().attach('s5-main-lag.json', {
