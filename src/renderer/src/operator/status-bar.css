@@ -1,0 +1,9 @@
+/*
+ * The status bar's focus rings (alpha.24, lead 2's statusbar; alpha.25 items 41 and 11): the bar is 28 px tall at the
+ * window's very bottom and its controls are 24 px (WCAG 2.5.8), so the window's 2 px ring 2 px out lost its bottom
+ * 2.5 px to the window's edge (Help, the bar's ?, Turn on, Set up Stage screen…, the line's X). Here the ring is drawn
+ * inside each control's own edge: the same 2 px solid ring in the same colour, whole, cut by nothing.
+ */
+footer[aria-label='Status'] :focus-visible {
+  outline-offset: -2px;
+}

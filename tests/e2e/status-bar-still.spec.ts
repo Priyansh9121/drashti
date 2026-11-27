@@ -84,7 +84,12 @@ async function settled(read: () => Promise<string[]>, what: string): Promise<str
 }
 
 /** Audience or Stage turned, from Pro Mode in Simple Mode (Simple Mode only turns the screens on). */
-async function turn(win: Page, mode: 'pro' | 'simple', which: 'audience' | 'stage', on: boolean): Promise<void> {
+async function turn(
+  win: Page,
+  mode: 'pro' | 'simple',
+  which: 'audience' | 'stage',
+  on: boolean,
+): Promise<void> {
   const viaPro = mode === 'simple' && !on;
   if (viaPro) {
     await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
@@ -159,12 +164,15 @@ for (const mode of ['pro', 'simple'] as const)
         await sizeOperatorWindow(app, win, size);
         const where = `${mode === 'pro' ? 'Pro' : 'Simple'} Mode at ${String(size.width)} × ${String(size.height)}`;
         const first = await settled(() => steadyParts(win), where);
-        expect(first.map((p) => p.split(':')[0]), where).toEqual(
-          expect.arrayContaining(['screens-summary', 'sound-status', 'help-toggle']),
-        );
+        expect(
+          first.map((p) => p.split(':')[0]),
+          where,
+        ).toEqual(expect.arrayContaining(['screens-summary', 'sound-status', 'help-toggle']));
         for (const { what, act } of ACTS) {
           await act(win, mode);
-          expect(await settled(() => steadyParts(win), `${where}, ${what}`), `${where}, ${what}`).toEqual(first);
+          expect(await settled(() => steadyParts(win), `${where}, ${what}`), `${where}, ${what}`).toEqual(
+            first,
+          );
         }
         // Help on and off: no control in the bar moves (the bar's ?, Pro Mode's from 1280 px wide, comes in its room).
         const controls = await settled(() => barControls(win), `${where}, Help off`);
@@ -290,7 +298,10 @@ test('Pro Mode: Set up Stage screen… says what it does as its description, its
     await turn(win, 'pro', 'stage', true);
     const button = said(win).getByTestId('screens-said-set-up-stage');
     await expect(button).toHaveAccessibleName('Set up Stage screen…');
-    await expect(button).toHaveAttribute('aria-description', 'Opens Screens, to give a display the Stage job.');
+    await expect(button).toHaveAttribute(
+      'aria-description',
+      'Opens Screens, to give a display the Stage job.',
+    );
   } finally {
     await app.close();
   }

@@ -28,7 +28,8 @@ import { Tooltip } from '../ui/Tooltip';
  * 1024 × 645; it never shrinks (the bar's other words do first: a missing screen matters more during a show). The
  * whole line is the tooltip of its words and icon, and what a screen reader reads, politely, as it comes (its place is
  * a status region, there always); each button has its own tooltip, on the mouse or keyboard focus (saidTips: the
- * action button says what it does, the X "Dismiss: " and the line; alpha.25 item 40, done in saidwords).
+ * action button says what it does, the X "Dismiss: " and the line; alpha.25 item 40, done in saidwords), and the
+ * action button's words are its description too (alpha.25 item 48, statusbar).
  *
  * After the release lead's review (27 Nov 2026): Stage's line says Stage is on with no Stage screen, so it closes as
  * Stage goes off (it had stayed, beside Stage off saying the opposite, and at 1024 × 645 with Audience off too the bar
@@ -115,7 +116,8 @@ function SaidLine({ said, onChange }: { said: ScreensSaid; onChange: ((displayId
     onChange?.(id);
   };
   // Each part its own tooltip (alpha.25 item 40, done in saidwords): the words the whole line, each button what it does,
-  // the X Dismiss with the line. Their words are in the line already for screen readers: the tooltips only show them.
+  // the X Dismiss with the line. The line's words and the X's are in the line already for screen readers, so those
+  // tooltips only show them; what an action button does is its description (alpha.25 item 48, statusbar).
   const tips = saidTips(said);
   return (
     <div
@@ -148,6 +150,7 @@ function SaidLine({ said, onChange }: { said: ScreensSaid; onChange: ((displayId
             size="sm"
             icon={Settings}
             className="h-6!"
+            aria-description={tips.described ?? undefined}
             data-testid="screens-said-change"
             onClick={() => {
               changeTo(first);
@@ -163,6 +166,7 @@ function SaidLine({ said, onChange }: { said: ScreensSaid; onChange: ((displayId
             size="sm"
             icon={Tv}
             className="h-6!"
+            aria-description={tips.described ?? undefined}
             data-testid="screens-said-set-up-stage"
             onClick={() => {
               changeTo(first);

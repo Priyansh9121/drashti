@@ -197,6 +197,26 @@ export const offlineLine = (ms: number): string =>
  */
 export const OFFLINE_SHORT_TEXT = 'No access list';
 
+/**
+ * The time left in sight after the short words (alpha.25 item 5, in alpha.24: the owner's delegate's words through lead
+ * 2, 28 Nov 2026): "No access list · 14 days", then "· 5 hours" in the last day and "· 40 minutes" in the last hour,
+ * each rounded down; never under "1 minute" in sight (the whole line, its tooltip and what a screen reader reads, says
+ * "less than a minute"). The whole line keeps the owner's own words with how long is left.
+ */
+export function offlineShortLeft(ms: number): string {
+  const minutes = Math.floor(Math.max(0, ms) / 60_000);
+  const hours = Math.floor(minutes / 60);
+  if (hours >= 24) return plural(Math.floor(hours / 24), 'day');
+  if (hours >= 1) return plural(hours, 'hour');
+  return plural(Math.max(1, minutes), 'minute');
+}
+
+/**
+ * The widest of each unit's time left (15 days at most, 23 hours, 59 minutes): the line's room in the status bar holds
+ * them all (unseen copies, in tabular digits), so nothing in the bar moves as the count runs down or its unit changes.
+ */
+export const OFFLINE_SHORT_ROOM = [OFFLINE_DAYS_TEXT, '23 hours', '59 minutes'] as const;
+
 /** What the lock screen says for each reason Drashti is not let in. */
 export const LOCK_REASON_TEXT: Record<AccessReason, string> = {
   revoked:

@@ -96,7 +96,9 @@ describe('the line’s countdown in sight', () => {
     for (let ms = 0; ms <= ACCESS_STOP_AFTER_MS; ms += 7 * MINUTE) {
       const words = offlineShortLeft(ms);
       const [count, unit] = words.split(' ');
-      const widest = OFFLINE_SHORT_ROOM.find((w) => w.split(' ')[1]?.replace(/s$/u, '') === unit?.replace(/s$/u, ''));
+      const widest = OFFLINE_SHORT_ROOM.find(
+        (w) => w.split(' ')[1]?.replace(/s$/u, '') === unit?.replace(/s$/u, ''),
+      );
       expect(widest, words).toBeDefined();
       expect(count?.length, words).toBeLessThanOrEqual(widest?.split(' ')[0]?.length ?? 0);
       expect(words, words).not.toContain('…');

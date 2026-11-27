@@ -280,7 +280,10 @@ async function inTheVersionsPlace(win: Page, version: Place | null, what: string
   await expect(line.getByTestId('access-offline-short'), what).toHaveText(OFFLINE_SHORT_TEXT);
   // And the time left in sight after them (alpha.25 item 5, the delegate's words): "· 9 minutes" here, whole.
   await expect(line.getByTestId('access-offline-left'), what).toHaveText(/^ · \d+ (days?|hours?|minutes?)$/u);
-  await expect(line.getByTestId('access-offline-left'), what).toHaveCSS('font-variant-numeric', 'tabular-nums');
+  await expect(line.getByTestId('access-offline-left'), what).toHaveCSS(
+    'font-variant-numeric',
+    'tabular-nums',
+  );
   await expect(slot.getByTestId('access-offline-words'), what).toHaveText(LINE);
   await expect(line, what).toHaveAttribute('title', LINE);
   await expect(win.getByTestId('app-info'), `${what}: the version hidden`).toBeHidden();
@@ -516,7 +519,7 @@ test('the line’s words in sight in the status bar (alpha.24): whole, never cut
         expect(shown, where).not.toBeNull();
         expect(shown?.cut, `${where}: the words in sight cut`).toBe(false);
         expect(shown?.text, where).toContain('access list');
-        expect(shown?.text, where).toBe(OFFLINE_SHORT_TEXT);
+        expect(shown?.text, where).toBe(`${OFFLINE_SHORT_TEXT} · 9 minutes`);
         // The whole line in its tooltip, wherever the mouse rests on it.
         await expect(line, where).toHaveAttribute('title', LINE);
       }
