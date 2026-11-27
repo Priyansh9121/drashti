@@ -273,6 +273,20 @@ const FOLD_LAYER = 5;
 
 let sheet: CSSStyleSheet | null = null;
 let sheetFrom = -1;
+/** Every custom property the page's styles set somewhere (its tokens), found as the copy's sheet is made. */
+let tokens: string[] = [];
+
+/** The custom properties these rules set, however deep in layers and groups. */
+function tokensIn(rules: CSSRuleList, into: Set<string>): void {
+  for (const rule of rules) {
+    if (rule instanceof CSSStyleRule)
+      for (let i = 0; i < rule.style.length; i++) {
+        const name = rule.style.item(i);
+        if (name.startsWith('--')) into.add(name);
+      }
+    if ('cssRules' in rule) tokensIn((rule as CSSGroupingRule).cssRules, into);
+  }
+}
 
 /** A selector list's selectors, split at its own commas (never at those inside brackets). */
 function selectorsOf(list: string): string[] {
@@ -328,6 +342,9 @@ function pageStyles(): CSSStyleSheet[] {
     sheet.replaceSync(text.join('\n'));
     // The copy draws in the window's own appearance, never the default one's (hostless).
     dropHost(sheet.cssRules);
+    const found = new Set<string>();
+    tokensIn(sheet.cssRules, found);
+    tokens = [...found];
     sheetFrom = count;
   }
   return [sheet];
@@ -348,8 +365,16 @@ export function leave(node: Element | null, kind: Leaving, place?: LeavingPlace)
   const layer = Number.parseInt(seen.zIndex, 10);
   host.style.cssText = `position:fixed;inset:0;pointer-events:none;z-index:${String(place ? FOLD_LAYER : Number.isNaN(layer) ? 70 : layer)}`;
   if (place) host.style.clipPath = place.clip;
+  // Where it was, the tokens it drew with: a colourful look's column has colours of its own ([data-zone], app.css),
+  // which the host under <body> would not inherit (the Mac run of 9db112236: Sandalwood's copy took the window's panel
+  // colour, not the right column's).
   const shadow = host.attachShadow({ mode: 'closed' });
   shadow.adoptedStyleSheets = pageStyles();
+  const around = getComputedStyle(node.parentElement ?? document.documentElement);
+  for (const name of tokens) {
+    const value = around.getPropertyValue(name);
+    if (value !== '') host.style.setProperty(name, value);
+  }
   const copy = node.cloneNode(true) as HTMLElement;
   // Where its scrolling parts were scrolled to (a copy starts at their tops): set again once it is drawn.
   const originals = [node, ...node.querySelectorAll('*')];
