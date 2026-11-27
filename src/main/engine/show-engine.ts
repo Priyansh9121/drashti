@@ -101,6 +101,7 @@ import {
   noPictureOff,
   oneAtATime,
   putsUp,
+  seenIn,
 } from './one-at-a-time';
 import {
   clipLeftMs,
@@ -3360,7 +3361,7 @@ export class ShowEngine {
             { type: 'show/put', live: step.live, layers: this.withLengths(step.layers) },
             { type: 'repeat/set', repeat: step.repeat },
             // Black-out or the Wallpaper as it was (alpha.24 bug hunt S2-2): a wrong row's click under one took it off.
-            ...coversBack(step.covers.before, step.covers.after, coversOf(this.state)),
+            ...coversBack(step.covers.before, step.covers.after, coversOf(this.state), seenIn(step.layers)),
           ],
         };
       }
@@ -3379,7 +3380,7 @@ export class ShowEngine {
             // Repeat Slides that was going round goes round again.
             ...(cleared.repeat ? [{ type: 'repeat/set' as const, repeat: cleared.repeat }] : []),
             // A cover on at Clear all and still on stays on, the layers back under it (alpha.24 bug hunt S2-2, as Oops).
-            ...coversBack(cleared.covers, cleared.covers, coversOf(this.state)),
+            ...coversBack(cleared.covers, cleared.covers, coversOf(this.state), seenIn(cleared.from)),
           ],
         };
       }

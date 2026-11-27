@@ -15,7 +15,8 @@ import type { EngineAction } from './actions';
  *   video or a video on the slide, a video input on the audience, Oops, Put it back, Play on its time bar) takes both
  *   covers off, so what was put up is seen.
  * - Oops and Put it back put the screens back as they were before the change they take back, the covers too (alpha.24
- *   bug hunt S2-2, coversBack): a cover that change took off comes back, one on all along stays, any other comes off.
+ *   bug hunt S2-2; QA24-OOPS-COVERS, coversBack): a cover that change took off comes back, one on all along stays, one
+ *   put on since stays while nothing seen comes back, any other comes off.
  * - Wallpaper and Black-out each take the other off in the same change. An older save with both recovers Black-out.
  * - A cover going on (or a video the engine would bring up by itself under one: a slide moving on by itself, restart
  *   recovery of a file that held both) stops what plays: the background's video or video input comes off, as clearing
@@ -104,16 +105,18 @@ const PUTS_UP: ReadonlySet<EngineAction['type']> = new Set([
 /**
  * Whether a change puts something up on the audience's picture (Session 56, the lead's open question to the owner,
  * slides and pictures): a slide (a click on the slide already up too, Next, Back, a deck's click, a timer shown alone),
- * a picture, a colour or another app's window as the background, or what Back, Oops and Put it back bring back; and
- * something is up there after it. Only the operator's own changes count (show-engine.ts: never the time bar's moves, a
- * jump to a marker or what the engine does by itself), and never what is heard or laid over the picture (a sound, a
- * message, a lower third, the ticker, the picture-in-picture box).
+ * a picture, a colour or another app's window as the background, or what Back brings back; and something is up there
+ * after it (Oops and Put it back set the covers themselves: coversBack). Only the operator's own changes count
+ * (show-engine.ts: never the time bar's moves, a jump to a marker or what the engine does by itself), and never what is
+ * heard or laid over the picture (a sound, a message, a lower third, the ticker, the picture-in-picture box).
  */
 export function putsUp(actions: readonly EngineAction[], next: EngineState): boolean {
-  return (
-    (next.layers.slide !== null || next.layers.background !== null) &&
-    actions.some((a) => PUTS_UP.has(a.type))
-  );
+  return seenIn(next.layers) && actions.some((a) => PUTS_UP.has(a.type));
+}
+
+/** Whether these layers have anything seen on the audience's picture: a slide or a background (as putsUp has it). */
+export function seenIn(layers: EngineState['layers']): boolean {
+  return layers.slide !== null || layers.background !== null;
 }
 
 /** Black-out and the Wallpaper, each on or off. */
@@ -128,18 +131,25 @@ export const coversOf = (state: EngineState): Covers => ({
 });
 
 /**
- * The covers as Oops and Put it back leave them (alpha.24 bug hunt S2-2), from the covers just `before` and just
- * `after` the change they take back, and as they are `now`. A cover that was on before that change stays on while it
- * still is (a message taken back under Black-out leaves it black), and comes back on when that change took it off (a
- * wrong row's click under Black-out: black again, the slide that was under it under it again). Any other cover comes
- * off, so what is put back is seen (Session 56: one put on after the change, or one the operator took off since). What
- * Oops and Put it back put back under a cover is what was under it then, so nothing plays there.
+ * The covers as Oops and Put it back leave them (alpha.24 bug hunt S2-2; QA24-OOPS-COVERS, the owner's "Restore covers":
+ * as they were before the mistake), from the covers just `before` and just `after` the change they take back, as they
+ * are `now`, and whether what they put back has anything `seen` (a slide or a background). A cover that was on before
+ * that change stays on while it still is (a message taken back under Black-out leaves it black), and comes back on when
+ * that change took it off (a wrong row's click under Black-out: black again, the slide that was under it under it
+ * again). A cover put on since stays on when nothing seen comes back (the oopsfix review's SHOULD-2: a hall cover never
+ * comes off with nothing to see), and comes off when something does, so it is seen (Session 56); one the operator took
+ * off since stays off. One cover at a time: with both, the one on before the change. What Oops and Put it back put back
+ * under a cover is what was under it then, so nothing plays there.
  */
-export function coversBack(before: Covers, after: Covers, now: Covers): EngineAction[] {
-  const on = (cover: keyof Covers) => before[cover] && (!after[cover] || now[cover]);
+export function coversBack(before: Covers, after: Covers, now: Covers, seen: boolean): EngineAction[] {
+  const on = (cover: keyof Covers) => (before[cover] ? !after[cover] || now[cover] : now[cover] && !seen);
+  const blackout = on('blackout');
+  const wallpaper = on('wallpaper');
+  // Both: the one on before (Black-out when both were, as an older save with both recovers it).
+  const both = blackout && wallpaper;
   return [
-    { type: 'blackout/set', on: on('blackout') },
-    { type: 'wallpaper/set', on: on('wallpaper') },
+    { type: 'blackout/set', on: blackout && !(both && !before.blackout) },
+    { type: 'wallpaper/set', on: wallpaper && !(both && before.blackout) },
   ];
 }
 
