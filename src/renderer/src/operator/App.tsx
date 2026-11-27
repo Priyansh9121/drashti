@@ -30,7 +30,7 @@ import { dropFolders, loadTree, openImportDestination, watchPlaylists } from '..
 import { ScreensPanel } from '../screens/ScreensPanel';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { closeDashboard, useNodes } from '../nodes/nodes-store';
-import { connectScreens, focusDisplay, useScreens } from '../screens/screens-store';
+import { connectScreens, useScreens } from '../screens/screens-store';
 import { cancelAsk, connectScreenSwitches } from './screen-switches-store';
 import { runAction, undoSimple, useNotice, useTaskProgress } from './actions';
 import type { OperatorAction } from '../../../shared/keymap';
@@ -50,7 +50,6 @@ import { JumpBox } from './JumpBox';
 import { FileMenu } from '../files/FileMenu';
 import { holdOpening } from '../ui/motion';
 import { StoppedScreens } from '../screens/StoppedScreens';
-import { ScreensSaidNotice } from '../screens/ScreensSaid';
 import { EngineUnread } from './EngineUnread';
 import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
@@ -405,13 +404,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
       {/* A hall screen that stopped (Session 26h): in the flow, so it never covers the show controls. */}
       <EngineUnread />
       <StoppedScreens />
-      {/* A display plugged in, given its job by itself (Session 55): said in one line, with Change… (Screens). */}
-      <ScreensSaidNotice
-        onChange={(displayId) => {
-          focusDisplay(displayId);
-          openScreens();
-        }}
-      />
+      {/* A display plugged in, given its job by itself (Session 55), and Stage on with no Stage screen: said in the
+          status bar (alpha.24, lead 2's screensaid), so nothing here moves as it comes. */}
       <NoSoundNotice />
       <StreamPageStopped />
       {/* Drashti's sound stopped: its sound player kept failing (x53): in the flow too. */}

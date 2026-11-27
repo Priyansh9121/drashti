@@ -3521,8 +3521,8 @@ function start(): void {
     log: (message) => {
       log.info(message);
     },
-    // Stage on with no screen set to Stage (alpha.22): said under the top bar, with Set up Stage screen…, which
-    // opens Screens at the displays that could take the job (the controls' last).
+    // Stage on with no screen set to Stage (alpha.22): said in the status bar (alpha.24), with Set up Stage
+    // screen…, which opens Screens at the displays that could take the job (the controls' last).
     noStageScreen: () => {
       const controls = controlsDisplay();
       const ids = listDisplays().map((d) => d.id);
