@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } fro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { APPEARANCE_FILE } from './appearance-file';
+import { APPEARANCE_FILE, isNewInstall } from './appearance-file';
 import { hexToOklch } from '../../shared/appearance/oklch';
 import { AppearanceService, type ComputerTheme } from './appearance-service';
 
@@ -210,6 +210,42 @@ describe('AppearanceService', () => {
     expect(service.setMotion('bouncy')).toBe(false);
     expect(service.now().motion).toBe('lively');
     expect(kept(dir)).toMatchObject({ motion: 'lively' });
+  });
+
+  it('a new install starts in Lively and keeps it; a computer that had Drashti before stays as it was, Calm until chosen (alpha.24)', () => {
+    // The owner's QA24-UI-3 ("more interactive and more animated"), lead 2's recommendation answered as recommended.
+    const dir = fresh();
+    const said: string[] = [];
+    const first = new AppearanceService({ userData: dir, say: (l) => said.push(l), newInstall: true });
+    first.start(new Computer(true));
+    expect(first.now().motion).toBe('lively');
+    expect(first.view().motion).toBe('lively');
+    expect(first.choice).toBe('follow');
+    expect(kept(dir)).toMatchObject({ version: 1, choice: 'follow', motion: 'lively', own: [] });
+    expect(said.join('\n')).toContain('interface motion lively');
+    // Its next start is no new install: what was kept stands.
+    expect(isNewInstall(dir)).toBe(false);
+    const again = new AppearanceService({ userData: dir, say: () => undefined, newInstall: false });
+    expect(again.now().motion).toBe('lively');
+    // Chosen Calm, it stays Calm.
+    expect(again.setMotion('calm')).toBe(true);
+    expect(new AppearanceService({ userData: dir, say: () => undefined }).now().motion).toBe('calm');
+    // A computer that had Drashti before, with nothing chosen: Calm, and nothing written.
+    const old = fresh();
+    const before = new AppearanceService({ userData: old, say: () => undefined, newInstall: false });
+    expect(before.now().motion).toBe('calm');
+    expect(existsSync(join(old, APPEARANCE_FILE))).toBe(false);
+  });
+
+  it('a new install is a data folder with no role, no library and no appearance kept', () => {
+    const dir = fresh();
+    expect(isNewInstall(dir)).toBe(true);
+    expect(isNewInstall(join(dir, 'not-made-yet'))).toBe(true);
+    for (const name of ['drashti-role.json', 'drashti.sqlite', APPEARANCE_FILE]) {
+      const had = fresh();
+      writeFileSync(join(had, name), '{}');
+      expect(isNewInstall(had), name).toBe(false);
+    }
   });
 
   it('Moving is On until turned Off (Session 60, his safety rule), kept for the next start, and every window told', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { onQuitRefused } from './quit-refused';
+import { onQuitRefused, resumeAfterRefusal, type QuitResume } from './quit-refused';
 
 describe('quit refusal', () => {
   it('observes a later listener preventing before-quit or window close', async () => {
@@ -40,5 +40,43 @@ describe('quit refusal', () => {
     await Promise.resolve();
     expect(refused).toHaveBeenCalledOnce();
     expect(allowed).not.toHaveBeenCalled();
+  });
+});
+
+describe('after a refused quit (review S3)', () => {
+  const main = (library: boolean, operator: boolean) => {
+    const did: string[] = [];
+    const to: QuitResume = {
+      libraryOpen: () => library,
+      reset: () => did.push('reset'),
+      screens: () => did.push('screens'),
+      operatorOpen: () => operator,
+      openOperator: () => did.push('operator window'),
+    };
+    return { to, did };
+  };
+
+  it('a refused source stop after the operator window closed (its X began the quit) opens it again, with the screens', () => {
+    const { to, did } = main(true, false);
+    resumeAfterRefusal(to, true);
+    expect(did).toEqual(['reset', 'screens', 'operator window']);
+  });
+
+  it('with the operator window still open, only the screens come back', () => {
+    const { to, did } = main(true, true);
+    resumeAfterRefusal(to, true);
+    expect(did).toEqual(['reset', 'screens']);
+  });
+
+  it('any other refusal leaves the operator window as it is, as before', () => {
+    const { to, did } = main(true, false);
+    resumeAfterRefusal(to, false);
+    expect(did).toEqual(['reset', 'screens']);
+  });
+
+  it('once the library has closed, nothing comes back', () => {
+    const { to, did } = main(false, false);
+    resumeAfterRefusal(to, true);
+    expect(did).toEqual([]);
   });
 });

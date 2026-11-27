@@ -48,7 +48,7 @@ How Drashti looks on this computer, how it opens, and what it does by itself: ba
 
 ## Interface motion
 
-**What it is.** How Drashti's own window moves: **Calm**, **Lively** or **Off**. Next, Back, the clears, the slides and the live picture never move, whichever you choose.
+**What it is.** How Drashti's own window moves: **Calm**, **Lively** or **Off**. A new install starts in **Lively**; a computer that had Drashti before keeps what it had (**Calm** unless someone chose). In **Calm** a section under LIVE fades open and closed; in **Lively** it unrolls as the sections under it slide down, and a button lifts a little as you point at it. Next, Back, the clears, the slides and the live picture never move, whichever you choose, and on a computer without a graphics chip Lively looks and moves as Calm does, and the sections and buttons simply change.
 
 **When you would use it.** Choose **Off** if moving panels distract, or for someone who finds motion hard.
 

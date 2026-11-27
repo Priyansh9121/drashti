@@ -12,6 +12,12 @@ export interface OutputWindow {
   hide(): void;
   /** ...and shown again, without taking the focus, once it is back. */
   show(): void;
+  /**
+   * Told once the window has closed, however it closed (review S1): a close the manager did not make (Electron's quit
+   * closing it after a quit that is then refused) opens it again. Left out (the tests' own windows), the next
+   * reconcile finds it closed.
+   */
+  onClosed?(listener: () => void): void;
 }
 
 export interface OutputManagerDeps {
@@ -77,6 +83,8 @@ export class OutputManager {
    */
   private quit = false;
   private closed = false;
+  /** A reconcile asked for on the next turn, as a window the manager did not close has closed (review S1). */
+  private soon: (() => void) | null = null;
 
   constructor(private readonly deps: OutputManagerDeps) {
     this.off = new Set(deps.startsOff ?? []);
@@ -173,8 +181,13 @@ export class OutputManager {
         held.window.show();
         this.open.set(screen.id, { window: held.window, displayId: display.id });
         this.deps.onPutBack?.(screen.id);
-      } else
-        this.open.set(screen.id, { window: this.deps.openWindow(screen, display), displayId: display.id });
+      } else {
+        const window = this.deps.openWindow(screen, display);
+        window.onClosed?.(() => {
+          this.closedOutside(screen.id, window);
+        });
+        this.open.set(screen.id, { window, displayId: display.id });
+      }
     }
 
     // A window closed is no longer given up on, nor restarted again and again (a23-heartbeat): a new one starts afresh.
@@ -287,6 +300,21 @@ export class OutputManager {
     this.quit = true;
   }
 
+  /**
+   * A window has closed (review S1). One the manager closed itself is no longer its own; one closed while Drashti
+   * quits stays closed (QA24-QUITRACE-1). Any other, still its own, opens again on the next turn: a window Electron's
+   * quit closes only after the quit was refused (a page still warming up closes later, WarmUp.tsx) would otherwise
+   * leave its screen black while Screens says Showing.
+   */
+  private closedOutside(screenId: string, window: OutputWindow): void {
+    if (this.quit || this.closed || this.soon) return;
+    if (this.open.get(screenId)?.window !== window && this.held.get(screenId)?.window !== window) return;
+    this.soon = (this.deps.later ?? realLater)(() => {
+      this.soon = null;
+      this.reconcile();
+    }, 0);
+  }
+
   /** A refused quit lets screens follow displays again. */
   cancelQuitting(): void {
     if (this.closed || !this.quit) return;
@@ -305,6 +333,8 @@ export class OutputManager {
   /** Every window closes, held ones too, and none opens again (the quit's last stop; QA24-QUITRACE-1). */
   closeAll(): void {
     this.closed = true;
+    this.soon?.();
+    this.soon = null;
     this.closeForQuit();
     this.open.clear();
     for (const screenId of [...this.held.keys()]) this.letGo(screenId);
