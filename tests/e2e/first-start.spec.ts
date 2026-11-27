@@ -185,6 +185,17 @@ test('the practice show: placeholder slides on this screen only, reaching no out
   await expect(win.getByTestId('put-back')).toBeVisible();
   await win.getByTestId('put-back').click();
   await expect(thumbs.nth(0)).toHaveAttribute('aria-current', 'true');
+  // Under Black-out, Clear all, then Put it back: the slide back under Black-out, still on, as in a show
+  // (QA24-OOPS-COVERS); off again, the slide is there.
+  await win.keyboard.press('b');
+  await expect(win.getByTestId('blackout-button')).toHaveText(/Black-out is on/u);
+  await win.keyboard.press('F1');
+  await win.getByTestId('put-back').click();
+  await expect(thumbs.nth(0)).toHaveAttribute('aria-current', 'true');
+  await expect(win.getByTestId('blackout-button')).toHaveText(/Black-out is on/u);
+  await win.keyboard.press('b');
+  await expect(win.getByTestId('blackout-button')).not.toHaveText(/Black-out is on/u);
+  await expect(win.getByTestId('live-preview')).toContainText('Practice slide one');
   await thumbs.nth(3).click();
   await expect(thumbs.nth(3)).toHaveAttribute('aria-current', 'true');
 
