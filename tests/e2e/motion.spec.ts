@@ -1278,7 +1278,6 @@ const copiedCanvas = (win: Page) =>
   );
 
 test('a fold’s copy shows what its canvases showed, never blank (alpha.24, lead 2’s item 12; the review of uimotion, a NIT)', async () => {
-  test.setTimeout(120_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
