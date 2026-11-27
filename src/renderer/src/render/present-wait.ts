@@ -1,3 +1,5 @@
+import { watchStart } from './no-picture';
+
 /*
  * A background video drawn over the picture before (render/BackgroundMedia.tsx, alpha.20): its data is in, and the
  * picture before (another background, the Wallpaper or black-out's cover: render/Scene.tsx) stays under it until
@@ -40,6 +42,20 @@ export type PresentingVideo = Pick<
  * its own stop.
  */
 export type EndOfWait = (end: () => void) => () => void;
+
+/**
+ * The end of a background video's wait (render/BackgroundMedia.tsx): the no-first-frame watch on its element (no
+ * progress for FIRST_FRAME_MS, or SLOW_START_MS gone by: shared/no-picture.ts), saying nothing to Main when it gives up
+ * (a24-review-bgblack SHOULD-2). Given no showing, it says no "Starting…" words either; its only ask of Main is how much
+ * of the file it has sent. This page decoded the video's first frame (said as it loaded), and a page out of sight,
+ * drawing nothing, must not take the show's video off.
+ */
+export const quietEndOfWait =
+  (video: HTMLVideoElement, mediaId: string): EndOfWait =>
+  (end) =>
+    watchStart(video, mediaId, () => {
+      end();
+    });
 
 /** After these a video may hold still (paused, at its end, held at rate 0), or have its frame where it is again. */
 const STILL_EVENTS = ['pause', 'ended', 'ratechange', 'seeked', 'loadeddata', 'canplay'] as const;

@@ -47,7 +47,7 @@ import { useInputReport, useVideoInput } from './video-input';
 import { hasNoPicture, tellCannotPlay, tellNoPicture, tellPlaysHere, watchStart } from './no-picture';
 import { NO_FIRST_FRAME, NO_START_IN_TIME } from '../../../shared/no-picture';
 import { SHAPED_PLACE, shapedVideoStyle, shapeFor, useVideoShapes } from './video-shape';
-import { untilPresented } from './present-wait';
+import { quietEndOfWait, untilPresented } from './present-wait';
 
 function style(fit: MediaFit, visible: boolean) {
   return {
@@ -227,10 +227,8 @@ function VideoSlot({
         dispatch({ type: 'ready', key, at: engineNow() });
       },
       // A frame that never comes (a decoder that stopped, a page that draws nothing for long): the no-first-frame watch
-      // ends the wait (no progress for FIRST_FRAME_MS, or SLOW_START_MS gone by), the picture before going then, never
-      // kept for ever. Not said to Main: this page decoded its first frame (said as it loaded, above), and a page out of
-      // sight, drawing nothing, must not take the show's video off.
-      (end) => watchStart(v, mediaId, () => end()),
+      // ends the wait, the picture before going then, never kept for ever; nothing said to Main (present-wait.ts).
+      quietEndOfWait(v, mediaId),
     );
   }, [presenting, key, mediaId, dispatch]);
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FIRST_FRAME_MS } from '../../../shared/no-picture';
+import { FIRST_FRAME_MS, SLOW_START_MS } from '../../../shared/no-picture';
 import { watchStart } from './no-picture';
-import { type EndOfWait, PRESENT_WAIT_MS, untilPresented } from './present-wait';
+import { type EndOfWait, PRESENT_WAIT_MS, quietEndOfWait, untilPresented } from './present-wait';
 
 /*
  * A background video drawn over the picture before (another background, the Wallpaper, black-out's cover) takes it
@@ -279,5 +279,110 @@ describe('a background video drawn over the picture before (render/present-wait.
     expect(presented).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(presented).toHaveBeenCalledTimes(1);
+  });
+  it('keeps the picture before while a paused video seeks with its frame still in (readyState unchanged): its seek alone keeps it', () => {
+    // a24-review-bgblack SHOULD-1: Chromium can leave readyState where it was for a seek to where a paused video is.
+    const video = new FakeVideo();
+    video.paused = true;
+    video.seeking = true;
+    const presented = vi.fn();
+    wait(video, presented);
+    vi.advanceTimersByTime(PRESENT_WAIT_MS * 10);
+    expect(presented, 'seeking: nothing new drawn yet').not.toHaveBeenCalled();
+    video.land();
+    expect(presented).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the picture before while a paused video has no frame where it is (not seeking); its data in, let go PRESENT_WAIT_MS after', () => {
+    // a24-review-bgblack SHOULD-1: the frame guard alone; its data coming in arms the timer ('loadeddata' or 'canplay').
+    for (const event of ['loadeddata', 'canplay'] as const) {
+      const video = new FakeVideo();
+      video.paused = true;
+      video.readyState = HAVE_METADATA;
+      const presented = vi.fn();
+      wait(video, presented);
+      vi.advanceTimersByTime(PRESENT_WAIT_MS * 10);
+      expect(presented, `${event}: no frame where it is`).not.toHaveBeenCalled();
+      video.readyState = HAVE_ENOUGH_DATA;
+      video.dispatchEvent(new Event(event));
+      vi.advanceTimersByTime(PRESENT_WAIT_MS - 1);
+      expect(presented, event).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(presented, event).toHaveBeenCalledTimes(1);
+    }
+  });
+});
+
+/*
+ * The end of the wait as BackgroundMedia.tsx gives it (a24-review-bgblack SHOULD-2): the no-first-frame watch, which
+ * says nothing to Main when it gives up, whichever way. A stand-in bridge records every word a page could send.
+ */
+describe('the quiet end of a background video’s wait (render/present-wait.ts quietEndOfWait)', () => {
+  const g = globalThis as { drashti?: unknown };
+  let media: Record<
+    'served' | 'cannotPlay' | 'starting' | 'playsHere' | 'noPicture',
+    ReturnType<typeof vi.fn>
+  >;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    media = {
+      served: vi.fn(() => Promise.resolve(0)),
+      cannotPlay: vi.fn(() => Promise.resolve()),
+      starting: vi.fn(() => Promise.resolve()),
+      playsHere: vi.fn(() => Promise.resolve()),
+      noPicture: vi.fn(() => Promise.resolve()),
+    };
+    g.drashti = { media };
+  });
+  afterEach(() => {
+    delete g.drashti;
+    vi.useRealTimers();
+  });
+
+  /** A playing video that never presents a frame: `decoding`, whether it decodes on meanwhile (progress). */
+  const never = (decoding: boolean) => {
+    const video = Object.assign(new FakeVideo(), {
+      buffered: { length: 0, start: () => 0, end: () => 0 },
+      webkitDecodedFrameCount: 1,
+    });
+    const presented = vi.fn();
+    untilPresented(
+      video,
+      presented,
+      quietEndOfWait(video as unknown as HTMLVideoElement, 'placeholder-media'),
+    );
+    const step = (ms: number) => {
+      for (let t = 0; t < ms; t += 500) {
+        if (decoding) video.webkitDecodedFrameCount++;
+        vi.advanceTimersByTime(Math.min(500, ms - t));
+      }
+    };
+    return { presented, step };
+  };
+
+  const onlyServedAsked = () => {
+    expect(media.served).toHaveBeenCalled();
+    for (const word of ['cannotPlay', 'starting', 'playsHere', 'noPicture'] as const)
+      expect(media[word], `${word}: nothing said to Main`).not.toHaveBeenCalled();
+  };
+
+  it('gives up when it makes no progress for FIRST_FRAME_MS (stalled), saying nothing to Main', async () => {
+    const { presented, step } = never(false);
+    step(FIRST_FRAME_MS - 500);
+    expect(presented).not.toHaveBeenCalled();
+    step(500);
+    expect(presented).toHaveBeenCalledTimes(1);
+    await vi.runOnlyPendingTimersAsync();
+    onlyServedAsked();
+  });
+
+  it('gives up SLOW_START_MS after it began while it still decodes (slow), saying nothing to Main', async () => {
+    const { presented, step } = never(true);
+    step(SLOW_START_MS - 500);
+    expect(presented).not.toHaveBeenCalled();
+    step(500);
+    expect(presented).toHaveBeenCalledTimes(1);
+    await vi.runOnlyPendingTimersAsync();
+    onlyServedAsked();
   });
 });
