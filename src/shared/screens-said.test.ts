@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { NO_STAGE_SCREEN } from './screen-switches';
-import { saidShort } from './screens';
+import { NO_STAGE_SCREEN, SET_UP_STAGE } from './screen-switches';
+import { saidShort, saidTips } from './screens';
 
 /*
  * The screens' one line in the status bar (alpha.24, lead 2's screensaid; the release lead's rules): its words in sight
@@ -25,5 +25,33 @@ describe('the screens’ line in short words', () => {
   it('is about what the whole line says', () => {
     expect(NO_STAGE_SCREEN).toContain('Stage');
     expect(saidShort({ kind: 'no-stage', displayIds: [] })).toContain('Stage');
+  });
+});
+
+/*
+ * Each part's own tooltip (the release lead's alpha.25 item 40, new in alpha.24, done in saidwords): on keyboard focus
+ * both buttons had shown the line's sentence. The words (and the icon) show the whole line; the action button says
+ * what it does; the X says Dismiss, with the line.
+ */
+describe('the screens’ line: each part’s own tooltip', () => {
+  it('the words the whole line, each button what it does, the X Dismiss with the line', () => {
+    expect(saidTips({ kind: 'no-stage', text: NO_STAGE_SCREEN })).toEqual({
+      words: 'No screen is set to Stage.',
+      action: `${SET_UP_STAGE}: opens Screens, to give a display the Stage job`,
+      dismiss: 'Dismiss: No screen is set to Stage.',
+    });
+    const set = { kind: 'set', text: '“Placeholder projector” shows the audience picture.' } as const;
+    expect(saidTips(set)).toEqual({
+      words: '“Placeholder projector” shows the audience picture.',
+      action: 'Change…: opens Screens at this display, to give it another job',
+      dismiss: 'Dismiss: “Placeholder projector” shows the audience picture.',
+    });
+    // Mirroring has no action button.
+    expect(saidTips({ kind: 'mirroring', text: 'Placeholder words.' }).action).toBeNull();
+    for (const kind of ['no-stage', 'set', 'mirroring'] as const) {
+      const tips = saidTips({ kind, text: 'Placeholder words.' });
+      expect(tips.dismiss).toMatch(/^Dismiss: /u);
+      if (tips.action !== null) expect(tips.action).not.toBe(tips.words);
+    }
   });
 });
