@@ -118,9 +118,10 @@ async function bothWays(
     // Off the screen and out of the engine: nothing plays under the cover (its sound neither).
     await expect.poll(() => playingThere(hall, mediaId), `${mode}: ${name} took the video off`).toBe('gone');
     expect(await up(win)).toMatchObject({ background: null });
-    // LIVE never shows it beside the cover: no time bar, the row's line not live.
+    // LIVE never shows it beside the cover: no time bar, the row's line not live (with nothing else up, Off and
+    // "Cleared: <the row>" since topbar, a25 list item 32: it said "Live: <the row> (cleared)").
     await expect(row(win, 'background')).toHaveCount(0);
-    await expect(win.getByTestId('live-text')).toHaveText(/\(cleared\)$/u);
+    await expect(win.getByTestId('live-text')).toHaveText(/^Cleared: /u);
     // Off again: the video does not come back.
     await cover.click();
     await expect(cover).not.toHaveText(/is on/u);
@@ -132,7 +133,7 @@ async function bothWays(
     await expect(cover).not.toHaveText(/is on/u);
     expect(await up(win)).toMatchObject({ blackout: false, wallpaper: false, background: mediaId });
     await expect.poll(() => playingThere(hall, mediaId), `${mode}: put up under ${name}`).toBe('playing');
-    await expect(win.getByTestId('live-text')).not.toHaveText(/\(cleared\)/u);
+    await expect(win.getByTestId('live-text')).not.toHaveText(/cleared/iu);
   }
   // A slide stays under a cover and comes back as it was; put up under one, it takes it off.
   await show.words.click();

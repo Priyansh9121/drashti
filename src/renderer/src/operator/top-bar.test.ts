@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  COLOURS_AT_ONCE,
+  COMPACT_HEADER_GAP,
   COUNT_IF_NARROW,
+  HELP_ROOM,
   HIDDEN_IF_NARROWER,
   iconClass,
   MAY_SHOW_ICON_ALONE,
@@ -25,12 +28,20 @@ import {
 const PX = {
   /** The bar's sides (2 × 16), the name with its mark, and the gaps either side of the states (2 × 16). */
   frame: 32 + 95 + 32,
+  /** Phones on below 1280 px: two 12 px outer gaps give the live states 8 px more; the button group is unchanged. */
+  compactFrame: 32 + 95 + 24,
   /** The longest the stream says beside LIVE ("On air · reconnecting" and REC) and the gap after it. */
   onAir: 216 + 16,
   /** The network's badge ("Network on · 3 devices"; its count alone below 1280 px) and the gap after it. */
   network: { full: 174 + 16, compact: 36 + 16 },
   /** LIVE's badge and the gap before what is live. */
   live: 50 + 8,
+  /**
+   * Phones on, with the held LIVE/Off room: Windows 46034661877 measured 42.296875 px for the live line at 1536 px,
+   * reconnecting + REC, where this old screenshot-based budget promised 48. Reserve the missing 5.703125 px, rounded
+   * up, in the crowded budget. Quiet breakpoints passed that run and keep their measured budget.
+   */
+  crowdedAllowance: 6,
   /** What is live ("Live: … · slide 2 of 5"): at least this much of it is always in sight. */
   line: 48,
   /** Each ghost button with its words; any of them with its icon alone (square). */
@@ -78,7 +89,16 @@ function groupWidth(width: number, crowded: boolean, force?: IconAloneButton): n
 /** How wide the whole bar must be at this width, on air (the longest), with LIVE and at least PX.line of its line. */
 function need(width: number, crowded: boolean, force?: IconAloneButton): number {
   const network = crowded ? (width < 1280 ? PX.network.compact : PX.network.full) : 0;
-  return PX.frame + PX.onAir + network + PX.live + PX.line + groupWidth(width, crowded, force);
+  const frame = crowded && width < 1280 ? PX.compactFrame : PX.frame;
+  return (
+    frame +
+    PX.onAir +
+    network +
+    PX.live +
+    PX.line +
+    (crowded ? PX.crowdedAllowance : 0) +
+    groupWidth(width, crowded, force)
+  );
 }
 
 const MODES = [
@@ -143,5 +163,23 @@ describe('the top bar’s words', () => {
           before,
         );
       }
+  });
+});
+
+describe('the top bar holding still (topbar, alpha.24)', () => {
+  it('Phones on below 1280 px gives the live states 8 px more with two 12 px outer gaps; the button group’s target sizes and spacing stay as they were', () => {
+    expect(COMPACT_HEADER_GAP).toBe('max-[1280px]:gap-3');
+    expect(PX.frame - PX.compactFrame).toBe(8);
+  });
+
+  it('the ? beside Stream, Phones and Announcements keep their room while Help is off, so turning Help on or off moves nothing in the bar (a25 list item 6), in the compact room the bar’s widths above count', () => {
+    expect(HELP_ROOM).toEqual({ compact: true, keepRoom: true });
+  });
+
+  it('the Announcements button’s colours change at once as one comes to wait (a25 list item 30): it eases no colour, only what any button may ease, its opacity and its move, and over the motion rules too', () => {
+    expect(COLOURS_AT_ONCE.endsWith('!')).toBe(true);
+    const eased = /^\[transition-property:([a-z,-]+)\]!$/u.exec(COLOURS_AT_ONCE)?.[1]?.split(',') ?? [];
+    expect(eased).toEqual(['opacity', 'transform', 'translate']);
+    for (const p of eased) expect(p, p).not.toMatch(/color|shadow|filter|all/u);
   });
 });

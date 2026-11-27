@@ -472,7 +472,11 @@ test('the top bar fits at 1024 × 645 and 1280 × 720 with Phones on: nothing cu
     for (const stream of streams) {
       await win.setViewportSize({ width, height });
       await onAirAndRec(app, win, stream.live, stream.noSound);
-      await expectTopBarFits(win, `the top bar at ${String(width)} × ${String(height)}, ${stream.words}`);
+      const where = `the top bar at ${String(width)} × ${String(height)}, ${stream.words}`;
+      await expectTopBarFits(win, where);
+      // The compact header must keep the same 48 px live-line minimum as the word-return breakpoints below.
+      const line = (await win.getByTestId('live-text').boundingBox())?.width ?? 0;
+      expect(line, `${where}: what is live keeps 48 px`).toBeGreaterThanOrEqual(47.5);
     }
   await app.close();
 });
