@@ -1082,7 +1082,12 @@ const copyColours = (win: Page) =>
       }),
   );
 
-test('a fold’s copy draws in the window’s appearance: Follow the computer (light on CI) and White, Calm and Lively (alpha.24, lead 2’s hands-on pass of uilook, problem 1)', async () => {
+/*
+ * Looks chosen by name, White and the light, coloured Sandalwood. Follow the computer is left out: once uilook merges it
+ * draws in Depth, whose styling a leaving copy does not take (accepted for alpha.24); its round comes back with lead
+ * 2's item 3 for alpha.25 (the fold's copy drawing in the window's whole look).
+ */
+test('a fold’s copy draws in the window’s appearance: White and Sandalwood, chosen by name, Calm and Lively (alpha.24, lead 2’s hands-on pass of uilook, problem 1)', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -1090,11 +1095,10 @@ test('a fold’s copy draws in the window’s appearance: Follow the computer (l
   await operatorReady(win);
   await expect(win.locator('html')).toHaveAttribute('data-opened', '');
   const noChip = await chipless(win);
-  for (const look of ['as it started', 'appearance-white'] as const) {
-    if (look !== 'as it started') {
-      await chooseMenuItem(app, look);
-      await expect(win.locator('html')).toHaveAttribute('data-appearance', 'white');
-    }
+  for (const look of ['white', 'sandalwood'] as const) {
+    await chooseMenuItem(app, `appearance-${look}`);
+    await expect(win.locator('html')).toHaveAttribute('data-appearance', look);
+    await expect(win.locator('html')).toHaveAttribute('data-base', 'light');
     for (const motion of ['calm', 'lively'] as const) {
       await interfaceMotion(win, motion);
       await letTimePass(win, 900, 'the show has not changed for a moment, as a fold waits for');
