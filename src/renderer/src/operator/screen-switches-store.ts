@@ -6,7 +6,7 @@ import {
   type ScreenSwitch,
   type ScreenSwitches,
 } from '../../../shared/screen-switches';
-import { useEngine } from '../engine/engine-store';
+import { getCurrentEngineState } from '../engine/engine-store';
 import { useScreens } from '../screens/screens-store';
 
 /*
@@ -96,7 +96,7 @@ export async function turnSwitch(which: ScreenSwitch, on: boolean): Promise<stri
 export function switchAsksFirst(which: ScreenSwitch): boolean {
   const snapshot = useScreens.getState().snapshot;
   const open = snapshot && useScreenSwitches.getState().known ? openUnder(snapshot, which) : null;
-  return asksFirst(which, open, useEngine.getState().state);
+  return asksFirst(which, open, getCurrentEngineState());
 }
 
 /**

@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { fKeyFirstStep, shortcutText, SIMPLE_KEYMAP } from '../../../shared/keymap';
 import { useKeymapNow } from '../operator/single-keys-store';
-import { useEngine } from '../engine/engine-store';
+import { getCurrentEngineState, useEngine } from '../engine/engine-store';
 import { Button } from '../ui/Button';
 import { Kbd } from '../ui/Kbd';
 
@@ -85,7 +85,7 @@ export function SimpleFirstRun({ platform }: { platform: string }) {
     // Never while a slide is live: then not this time (they come when Simple Mode next opens with none up).
     if (live) return;
     void window.drashti.app.simpleFirstRun().then((show) => {
-      if (!show || useEngine.getState().state?.layers.slide != null) return;
+      if (!show || getCurrentEngineState()?.layers.slide != null) return;
       showing.current = true;
       setStep(0);
     });

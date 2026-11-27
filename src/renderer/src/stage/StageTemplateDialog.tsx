@@ -18,7 +18,7 @@ import {
 import { TIMER_WORDS } from '../../../shared/timer-slides';
 import type { TimerState } from '../../../shared/timers';
 import { parseDuration, TIMER_KIND_NAMES, timerDuration } from '../../../shared/timers';
-import { useEngine } from '../engine/engine-store';
+import { getCurrentEngineState, useEngine } from '../engine/engine-store';
 import { PlacedInParent } from '../render/Placed';
 import { StageLayoutView } from '../render/StageLayoutView';
 import { connectScreens, useScreens } from '../screens/screens-store';
@@ -137,7 +137,7 @@ export function StageTemplateDialog({ onClose }: { onClose: () => void }) {
     let timerId: string;
     // For Undo (Session 55): the timer made, if one was, and the layout the stage screens showed before.
     let madeTimer: string | null = null;
-    const before = useEngine.getState().state?.stage?.layout?.id ?? null;
+    const before = getCurrentEngineState()?.stage?.layout?.id ?? null;
     if (ownChosen) {
       timerId = ownChosen.id;
       // Let it run on past 0:00, as asked: in Timers too, where it is the same timer.

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { TaskProgress } from '../../../shared/app-info';
 import type { EngineCommand } from '../../../shared/engine/commands';
 import type { PlaylistCursor } from '../../../shared/engine/state';
-import { useEngine } from '../engine/engine-store';
+import { getCurrentEngineState, useEngine } from '../engine/engine-store';
 import { requestRemoval } from '../library/import-store';
 import { undoRemoval } from '../library/undo';
 import { openLibrary, selectPresentation, useLibrary } from '../library/library-store';
@@ -139,7 +139,7 @@ export function runAction(action: OperatorAction, ui: OperatorUi): Promise<void>
 async function perform(action: OperatorAction, ui: OperatorUi): Promise<void> {
   // The quick bar's keys (Session 55, Part 8) are its own (quick-bar-store.ts): Pro Mode's window sends them there.
   if (action === 'quickBar') return;
-  const live = useEngine.getState().state?.live;
+  const live = getCurrentEngineState()?.live;
   const { selectedId, doc, item } = useLibrary.getState();
   const somethingLive = live?.presentationId != null || live?.playlist != null;
   const itemIsLive =
@@ -198,7 +198,7 @@ async function perform(action: OperatorAction, ui: OperatorUi): Promise<void> {
       return dispatch({ type: 'oops' });
     // Esc does nothing when nothing is repeating.
     case 'stopRepeat':
-      if (useEngine.getState().state?.repeat) return dispatch({ type: 'stopRepeat' });
+      if (getCurrentEngineState()?.repeat) return dispatch({ type: 'stopRepeat' });
       return;
     case 'openScreens':
       ui.openScreens();
@@ -248,7 +248,7 @@ export function runBack(): Promise<void> {
  * Pro Mode's history stays available when the operator returns there.
  */
 export async function undoSimple(): Promise<void> {
-  if (useEngine.getState().state?.canPutBack === true) return dispatch({ type: 'putBack' });
+  if (getCurrentEngineState()?.canPutBack === true) return dispatch({ type: 'putBack' });
   await undoRemoval('simple');
 }
 
@@ -257,7 +257,7 @@ export function runSimpleAction(action: OperatorAction, start: () => Promise<voi
 }
 
 async function performSimple(action: OperatorAction, start: () => Promise<void>): Promise<void> {
-  const state = useEngine.getState().state;
+  const state = getCurrentEngineState();
   const live = state?.live;
   // Next plays what is cued (the arti), else goes on, else starts the playlist.
   const somethingLive = live?.presentationId != null || live?.playlist != null || state?.cue != null;
