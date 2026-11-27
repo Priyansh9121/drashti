@@ -13,7 +13,7 @@ export type PinnedRequest = (
 export const pinnedRequest: PinnedRequest = (target, signal, headers = {}) =>
   new Promise((resolve, reject) => {
     const lookup: LookupFunction = (_host, options, cb) => {
-      if (options.all) cb(null, [{ address: target.ip, family: target.family }]);
+      if (options.all) cb(null, target.addresses);
       else cb(null, target.ip, target.family);
     };
     const secure = target.url.protocol === 'https:';
@@ -23,6 +23,7 @@ export const pinnedRequest: PinnedRequest = (target, signal, headers = {}) =>
       {
         method: 'GET',
         lookup,
+        autoSelectFamily: true,
         agent: false,
         signal,
         headers: { Accept: '*/*', ...headers },

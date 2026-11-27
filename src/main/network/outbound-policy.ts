@@ -13,6 +13,7 @@ export interface Authority {
 }
 export interface PinnedTarget {
   url: URL;
+  addresses: Address[];
   ip: string;
   family: 4 | 6;
 }
@@ -99,7 +100,12 @@ export class OutboundPolicy {
     if (!mine && found.some((a) => !publicAddress(a.address))) throw new Error('Refused private destination');
     const first = found[0];
     if (!first || !isIP(first.address)) throw new Error('No destination');
-    return { url, ip: first.address, family: first.family === 6 ? 6 : 4 };
+    return {
+      url,
+      ip: first.address,
+      family: first.family === 6 ? 6 : 4,
+      addresses: found.map((a) => ({ ...a })),
+    };
   }
 }
 

@@ -107,14 +107,14 @@ export class CheckedHls {
       if (tag === '#EXT-X-DEFINE' || tag === '#EXT-X-CONTENT-STEERING')
         throw new Error('Unsupported HLS indirection');
       if (tag === '#EXT-X-STREAM-INF') variant = true;
-      if (!/(?:^|[, :])(?:[A-Z0-9-]*URI)\s*=/u.test(line)) {
+      if (!URI_TAGS[tag] && !/(?:^|[,:\s])(?:[A-Z0-9-]*URI)\s*=/u.test(line)) {
         output.push(line);
         continue;
       }
       const kind = URI_TAGS[tag];
       if (!kind) throw new Error('Unsupported HLS URI tag');
       const attrs = line.slice(colon + 1);
-      const re = /([A-Z0-9-]+)=("[^"\r\n]*"|[^,"\r\n]*)(?:,|$)/gy;
+      const re = /\s*([A-Z0-9-]+)\s*=\s*("[^"\r\n]*"|[^,"\r\n]*)\s*(?:,|$)/gy;
       let at = 0;
       const pairs: string[] = [];
       while (at < attrs.length) {

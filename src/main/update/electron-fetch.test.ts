@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { Readable } from 'node:stream';
+import { PassThrough, Readable } from 'node:stream';
 import type { ClientRequestConstructorOptions, Net } from 'electron';
 import { expect, it, vi } from 'vitest';
 import { checkedUpdateFetch, type UpdateFetch } from './checked-fetch';
@@ -14,16 +14,18 @@ const options = () => ({
   base: 'https://github.com/o/r/releases',
   signal: new AbortController().signal,
 });
-type Reply = { status: number; location?: string; body?: Buffer };
+type Reply = { status: number; location?: string; body?: Buffer; stream?: Readable };
 
 /** Electron 44 emits redirect instead of a response, then cancels when it was not followed synchronously. */
 function transport(replies: Record<string, Reply>) {
-  const requests: { options: ClientRequestConstructorOptions; request: EventEmitter; aborted: boolean }[] = [];
+  const requests: { options: ClientRequestConstructorOptions; request: EventEmitter; aborted: boolean }[] =
+    [];
   const fetch = vi.fn<UpdateFetch>().mockRejectedValue(new Error('Redirect was cancelled'));
   const request = vi.fn((options: ClientRequestConstructorOptions) => {
     const entry = { options, request: new EventEmitter(), aborted: false };
     requests.push(entry);
-    const response = Readable.from([replies[options.url ?? '']?.body ?? Buffer.from('placeholder')]);
+    const reply = replies[options.url ?? ''];
+    const response = reply?.stream ?? Readable.from([reply?.body ?? Buffer.from('placeholder')]);
     const req = Object.assign(entry.request, {
       abort: () => {
         if (entry.aborted) return;
@@ -89,3 +91,44 @@ it('U01 review: Electron redirect loops still stop at the five-hop limit', async
   expect(t.requests).toHaveLength(6);
   expect(t.requests.every((r) => r.aborted)).toBe(true);
 });
+
+it('U01 review: cancellation after headers aborts Chromium and rejects an unfinished download body', async () => {
+  const stream = new PassThrough();
+  const t = transport({ [root]: { status: 200, stream } });
+  const abort = new AbortController();
+  const response = await checkedUpdateFetch(electronUpdateFetch(t.net), root, {
+    ...options(),
+    signal: abort.signal,
+  });
+  const body = response.text();
+  abort.abort();
+  await expect(body).rejects.toThrow('aborted');
+  expect(t.requests[0]?.aborted).toBe(true);
+});
+
+it('U01 review: cancelling an unread body closes the Chromium transaction', async () => {
+  const t = transport({ [root]: { status: 200, stream: new PassThrough() } });
+  const response = await checkedUpdateFetch(electronUpdateFetch(t.net), root, options());
+  await response.body?.cancel();
+  expect(t.requests[0]?.aborted).toBe(true);
+});
+
+it('U01 review: a truncated Chromium response rejects instead of yielding a complete body', async () => {
+  const stream = new PassThrough();
+  const t = transport({ [root]: { status: 200, stream } });
+  const response = await checkedUpdateFetch(electronUpdateFetch(t.net), root, options());
+  const body = response.text();
+  stream.destroy(new Error('upstream reset'));
+  await expect(body).rejects.toThrow('upstream reset');
+});
+
+it.each([204, 205, 304])(
+  'U01 review: an empty HTTP %s response does not throw from an event callback',
+  async (status) => {
+    const t = transport({ [root]: { status } });
+    const response = await checkedUpdateFetch(electronUpdateFetch(t.net), root, options());
+    expect(response.status).toBe(status);
+    expect(response.body).toBeNull();
+    expect(t.requests[0]?.aborted).toBe(true);
+  },
+);

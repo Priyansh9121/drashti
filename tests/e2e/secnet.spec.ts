@@ -181,7 +181,6 @@ test('SECNET-01: malformed node frames leave Main’s worker and a second paired
   }
 });
 
-
 test('U01 review: Electron follows approved release redirects for both the manifest and checked download', async () => {
   const bytes = Buffer.from('placeholder installer bytes');
   const paths: string[] = [];
@@ -198,31 +197,52 @@ test('U01 review: Electron follows approved release redirects for both the manif
       res.end();
     } else if (req.url === '/assets/manifest.json') {
       res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({
-        app: 'drashti', version: '9.9.9', releasedAt: '2026-11-28T00:00:00Z',
-        notes: 'Placeholder update notes.', source: `${source.base}/tag/v9.9.9`,
-        files: [{
-          platform: process.platform, arch: process.arch,
-          kind: process.platform === 'win32' ? 'nsis' : 'zip',
-          name: process.platform === 'win32' ? 'Placeholder.exe' : 'Placeholder.zip',
-          url: `${source.base}/download/v9.9.9/placeholder.bin`, size: bytes.length,
-          sha512: createHash('sha512').update(bytes).digest('base64'),
-        }],
-      }));
+      res.end(
+        JSON.stringify({
+          app: 'drashti',
+          version: '9.9.9',
+          releasedAt: '2026-11-28T00:00:00Z',
+          notes: 'Placeholder update notes.',
+          source: `${source.base}/tag/v9.9.9`,
+          files: [
+            {
+              platform: process.platform,
+              arch: process.arch,
+              kind: process.platform === 'win32' ? 'nsis' : 'zip',
+              name: process.platform === 'win32' ? 'Placeholder.exe' : 'Placeholder.zip',
+              url: `${source.base}/download/v9.9.9/placeholder.bin`,
+              size: bytes.length,
+              sha512: createHash('sha512').update(bytes).digest('base64'),
+            },
+          ],
+        }),
+      );
     } else if (req.url === '/assets/placeholder.bin') res.end(bytes);
-    else { res.writeHead(404); res.end(); }
+    else {
+      res.writeHead(404);
+      res.end();
+    }
   });
   const { app } = await launchApp({ DRASHTI_UPDATE_URL: source.base });
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
     await win.evaluate(async () => (globalThis as PageGlobals).drashti.updates.check());
-    expect(await win.evaluate(async () => (await (globalThis as PageGlobals).drashti.updates.view()).phase)).toBe('available');
+    expect(
+      await win.evaluate(async () => (await (globalThis as PageGlobals).drashti.updates.view()).phase),
+    ).toBe('available');
     await win.evaluate(async () => (globalThis as PageGlobals).drashti.updates.download());
-    await expect.poll(async () => win.evaluate(async () => (await (globalThis as PageGlobals).drashti.updates.view()).phase)).toBe('ready');
+    await expect
+      .poll(async () =>
+        win.evaluate(async () => (await (globalThis as PageGlobals).drashti.updates.view()).phase),
+      )
+      .toBe('ready');
     expect(paths).toEqual([
-      '/latest/download/drashti-update.json', '/download/v9.9.9/drashti-update.json', '/assets/manifest.json',
-      '/download/v9.9.9/placeholder.bin', '/assets/placeholder.bin',
+      '/latest/download/drashti-update.json',
+      '/download/v9.9.9/drashti-update.json',
+      '/assets/manifest.json',
+      '/download/v9.9.9/placeholder.bin',
+      '/assets/placeholder.bin',
     ]);
   } finally {
     await app.close();
