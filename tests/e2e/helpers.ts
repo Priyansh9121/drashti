@@ -874,9 +874,11 @@ export async function editorGroup(ed: Page, name: string): Promise<void> {
 }
 
 /** The slide editor's slide as one read of the page: its box in the window, its scale, and whether it is placed. */
-interface EditorSlidePlace {
+export interface EditorSlidePlace {
   x: number;
   y: number;
+  width: number;
+  height: number;
   scale: number;
   placed: boolean;
   /** Where it sits and for what area, said when it is not placed yet. */
@@ -915,6 +917,8 @@ function readEditorSlide(): EditorSlidePlace | null {
   return {
     x: box.left,
     y: box.top,
+    width: box.width,
+    height: box.height,
     scale: Number(slide.dataset['scale']),
     placed,
     why: `the slide at ${String(left)}, ${String(top)} (${String(width)} × ${String(height)}) in an area of ${String(area.clientWidth)} × ${String(area.clientHeight)}${room ? ', zoomed' : ''}`,
@@ -923,10 +927,10 @@ function readEditorSlide(): EditorSlidePlace | null {
 
 /**
  * The slide editor's slide once the editor has placed it for its area as the area is now (see readEditorSlide):
- * where it is in the window and its scale, read together. Polled, as a person would see it settle: never by counting
- * frames, which CI's Mac can draw none of for seconds. Null when the editor shows no slide.
+ * where it is in the window, its size and its scale, read together. Polled, as a person would see it settle: never by
+ * counting frames, which CI's Mac can draw none of for seconds. Null when the editor shows no slide.
  */
-async function placedEditorSlide(ed: Page): Promise<EditorSlidePlace | null> {
+export async function placedEditorSlide(ed: Page): Promise<EditorSlidePlace | null> {
   const last: { read?: EditorSlidePlace | null } = {};
   await expect
     .poll(
