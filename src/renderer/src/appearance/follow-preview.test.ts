@@ -89,7 +89,7 @@ describe('the Appearance window: Follow the computer’s picture', () => {
         expect(strip, `${a.name}: the ${name}`).toBeDefined();
         expect(styleOf(strip)['background'], `${a.name}: the ${name} on the ground`).toBeUndefined();
         expect(
-          classes(strip).filter((c) => /^border/u.test(c)),
+          classes(strip).filter((c) => c.startsWith('border')),
           `${a.name}: the ${name}'s line`,
         ).toEqual([]);
       }
