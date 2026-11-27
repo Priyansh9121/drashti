@@ -5,7 +5,8 @@ import { Truncate } from './Truncate';
 /*
  * A row in a list (presentations, playlist items, media, themes, props):
  * a button that can be the one shown (selected), one of several marked,
- * and dragged. It never says "live" by colour: put a LiveBadge in it. The one shown has an edge in the
+ * and dragged. It never says "live" by colour alone: put a LiveBadge in it (the open playlist's rows, since alpha.24:
+ * an edge and a LiveDot, which only the row that is up has). The one shown has an edge in the
  * appearance's second colour (Session 42), kept apart from LIVE's red by the rules.
  */
 

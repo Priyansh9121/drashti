@@ -2,6 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../render/fonts.css';
 import '../styles/app.css';
+// B · Depth (alpha.24, QA24-UI-4): this window's look while it follows the computer; this window alone loads it.
+import '../styles/look-depth.css';
 import { App } from './App';
 import { AccessGate } from '../access/AccessGate';
 import { OpeningAtStart } from '../opening/OpeningAtStart';

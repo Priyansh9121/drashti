@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { emptyLayers } from '../../../shared/engine/state';
 import type { KeyBinding } from '../../../shared/keymap';
 import { KEYMAP, shortcutText, SIMPLE_KEYMAP } from '../../../shared/keymap';
-import { ariaKeys, clearLook, LAYER_CLEARS } from './layer-clears';
+import { ariaKeys, clearLook, LAYER_CLEARS, putBackKeys } from './layer-clears';
 
 /*
  * The layer bar's clears follow the keys (Session 51): left to right Slide F2, Background F3, Audio F5,
@@ -86,5 +86,13 @@ describe('the bar’s buttons’ keys for a screen reader', () => {
     const modded: KeyBinding[] = [{ action: 'clearAll', keys: ['Mod+Shift+K'], label: 'Clear all' }];
     expect(ariaKeys('clearAll', 'darwin', modded)).toBe('Meta+Shift+K');
     expect(ariaKeys('clearAll', 'win32', modded)).toBe('Control+Shift+K');
+  });
+
+  it('are Undo’s on Simple Mode’s Put it back, where Undo puts back what Clear all took down; none on Pro Mode’s (clearroom)', () => {
+    expect(putBackKeys(true, 'darwin', SIMPLE_KEYMAP)).toBe('Meta+Z');
+    expect(putBackKeys(true, 'win32', SIMPLE_KEYMAP)).toBe('Control+Z');
+    // Pro Mode's Undo brings back a removal, not what Clear all took down.
+    expect(putBackKeys(false, 'darwin', KEYMAP)).toBeUndefined();
+    expect(putBackKeys(false, 'win32', KEYMAP)).toBeUndefined();
   });
 });

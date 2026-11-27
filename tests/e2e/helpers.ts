@@ -8,7 +8,7 @@ import type { DrashtiBridge } from '../../src/shared/bridge';
 import type { AccessStandIn } from '../access-standin';
 import { type AccessOptions, letInBeforeStart, sayIfFirstCheckMissed } from './access';
 import type { EngineState } from '../../src/shared/engine/state';
-import { logLines } from './log-lines';
+import { instanceLines, logLines } from './log-lines';
 
 /** Globals inside our pages, for code passed to page.evaluate(). */
 export type PageGlobals = typeof globalThis & { drashti: DrashtiBridge };
@@ -381,9 +381,9 @@ function sayHowItStarted(win: Page, first: string): void {
   const folder = pageDataFolder.get(win);
   let lines = '(no log)';
   if (folder !== undefined && existsSync(join(folder, 'logs'))) {
-    const all = logLines(folder);
-    const from = all.findLastIndex((l) => l.includes('Start: the main process running'));
-    lines = all.slice(Math.max(0, from), Math.max(0, from) + 80).join('\n');
+    // From this start's first line (log-lines.ts, across the day's files); with none yet, the log's first lines.
+    const mine = instanceLines(folder);
+    lines = (mine.length > 0 ? mine : logLines(folder)).slice(0, 80).join('\n');
   }
   console.log(
     `${first}\nThis start in Drashti's log:\n${lines}\nStill running on this computer: ${stillRunning()}`,
@@ -710,6 +710,10 @@ export async function openSection(page: Page, section: LiveSection): Promise<voi
   const toggle = page.getByTestId(`group-${section}-toggle`);
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  // Its chevron settled (alpha.24): where Chromium draws with a graphics chip it turns over --dur-open (ui/motion.css),
+  // and a spec that measures the section next must read its boxes still, never mid-turn (live-column-widths.spec.ts on
+  // CI's Mac, run 45894668186: a 14 px chevron a few degrees round is 14.7 px wide).
+  await expect.poll(() => toggle.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
 }
 
 /** Unfold every section under LIVE (Pro Mode's), top to bottom. */

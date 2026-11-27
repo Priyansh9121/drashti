@@ -123,7 +123,7 @@ It is for preparing slides: read pages before the sabha, not while slides are ch
 
 **How:**
 
-1. Right-click the row. With the keyboard, press **Shift+F10**; on a touch screen, hold a finger on it.
+1. Right-click the row (on a Mac, Control-click it too). With the keyboard, press **Shift+F10** (**Fn+Shift+F10** on a Mac laptop); on a touch screen, hold a finger on it.
 2. Choose what you need, such as **Rename…** or **Show in Finder** (**Show in Explorer** on Windows).
 3. **Delete…** asks first only when the file is on the screens or used.
 4. Press **Cmd+Z** (Ctrl+Z) to undo it.
@@ -159,7 +159,7 @@ A video also shows its **Lighter playing copy** status; see **Lighter playing co
 
 1. In **Media** or a playlist, right-click the video and choose **Edit Video…**.
 2. Type a time in the original video, such as **0:03.500**, in **Go to time** and press **Jump**, or move the **Trim timeline**. The source preview is private and silent.
-3. In **Trim**, set **Start (seconds)** and **End (seconds)**. **Use this frame as library thumbnail** keeps the chosen frame when you Save.
+3. In **Trim**, set **Start (seconds)** and **End (seconds)**, as seconds such as **600** or as a time such as **10:00**. **Use this frame as library thumbnail** keeps the chosen frame when you Save.
 4. In **Picture**, crop, turn, flip, zoom or move the picture, adjust **Brightness**, **Contrast** or **Colour**, and choose **Frame shape** and **Blurred fill behind the video**.
 5. In **Sound**, choose **Audio track** or **Reduce steady background noise in a talk**. In **Playback**, choose **Speed** and the picture and sound fades.
 6. Press **Save**. **Preparing** waits only while a video or a sound plays, or the stream is on air or recording, and says which. A still slide, a picture, the Wallpaper or a video that has ended never holds it. Wait for **Ready for next showing**.
@@ -253,17 +253,18 @@ For the waveform and scene suggestions, see **Waveforms and suggested scene mark
 
 ## Exporting a clip, including vertical video
 
-**What it is.** A new video file containing the start and end chosen in Edit Video, with saved edits or the original picture. Vertical 9:16 keeps the middle of the picture without stretching. The original stays unchanged.
+**What it is.** A new video file containing the start and end chosen in Edit Video, with saved edits or the original picture. It can also join two or more parts of the same video into one clip. Vertical 9:16 keeps the middle of the picture without stretching. The original stays unchanged.
 
-**When you would use it.** To share a short part of a video or make a portrait clip for a phone.
+**When you would use it.** To share a short part of a video or make a portrait clip for a phone, or to keep minutes 0 to 10 and 20 to 30 of a talk as one video.
 
 **How:**
 
 1. Open **Edit Video…** in Pro Mode and choose the start and end in **Trim**.
-2. Choose **Preparation and export**. Under **Picture and sound**, choose **Saved edits** or **Original**. Under **Clip shape**, choose **As the video** or **Vertical 9:16**. Save edits and wait for them to be ready before exporting Saved edits.
-3. Choose MP4, or WebM to keep transparency. Tick **Also add the clip to Media** if wanted.
-4. Press **Export clip…** and choose a new file with Save as…. The original is never replaced, even when you choose its name.
-5. The export waits only while a video or a sound plays, or the stream is on air or recording. You may close the editor; it keeps the accepted request across a restart too.
-6. Open the editor again for progress, **Stop export**, or **Show the file** when done. If it failed, check the source, chosen folder and free space, then export again.
+2. For more parts, press **Add a part** and type its start and end, such as **20:00** and **30:00**; **×** removes it. The parts join in time order, with a cut at each join. An overlap or an empty part is refused.
+3. Choose **Preparation and export**. Under **Picture and sound**, choose **Saved edits** or **Original**; joined parts use **Original**. Under **Clip shape**, choose **As the video** or **Vertical 9:16**. Save edits and wait for them to be ready before exporting Saved edits.
+4. Choose MP4, or WebM to keep transparency. Tick **Also add the clip to Media** if wanted.
+5. Press **Export clip…** and choose a new file with Save as…. The original is never replaced, even when you choose its name.
+6. The export waits only while a video or a sound plays, or the stream is on air or recording. You may close the editor; it keeps the accepted request across a restart too.
+7. Open the editor again for progress, **Stop export**, or **Show the file** when done. If it failed, check the source, chosen folder and free space, then export again.
 
 ![Preparation and export: Original, Vertical 9:16 and a new clip file](../screenshots/manual-edit-video-export.png)

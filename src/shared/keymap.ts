@@ -146,6 +146,24 @@ export const SHOW_F_KEYS: readonly string[] = KEYMAP.flatMap((b) =>
 );
 
 /**
+ * What the show's F-keys need on this computer's keyboard, in its words (alpha.24, keyplat R4; the owner's "shortcuts
+ * should be adaptable to mac, mac intel, and windows"). A Mac's own keyboard, Apple silicon or Intel, uses its top row
+ * for the brightness and the sound unless fn is held, and a MacBook Pro with a Touch Bar (the Intel ones of 2016 to
+ * 2020, the 13-inch M1 and M2) has no F-keys at all; a Windows laptop may need Fn, or Fn Lock. The keys sheet says it;
+ * the manual's Keys chapter says the rest.
+ */
+export function fKeyHint(platform: string): string {
+  return platform === 'darwin'
+    ? 'The F-keys on a Mac keyboard: hold fn with the F-key, or turn on Use F1, F2, etc. keys as standard function keys (System Settings › Keyboard › Keyboard Shortcuts… › Function Keys). With a Touch Bar, hold fn to see F1 to F12, or add Drashti to the apps listed under Function Keys.'
+    : 'The F-keys on a laptop: hold Fn with the F-key, or turn on Fn Lock (often Fn and Esc together).';
+}
+
+/** Simple Mode's first steps, which it has instead of a keys sheet, say it once: on a Mac only. */
+export function fKeyFirstStep(platform: string): string | null {
+  return platform === 'darwin' ? 'On a Mac keyboard, hold fn with an F-key such as F1.' : null;
+}
+
+/**
  * The keys sheet, built from KEYMAP and grouped by what the operator is doing (Session 25): every
  * action once (a unit test checks), so the sheet never drifts from the keys.
  */
@@ -237,6 +255,27 @@ function normalise(key: string): string {
   return key.length === 1 ? key.toUpperCase() : key;
 }
 
+/** A letter, mark, digit or stop of a script other than Latin (Gujarati "વ", Devanagari "२" or "।", Cyrillic "и"). */
+const OTHER_SCRIPT = /^[\p{L}\p{M}\p{N}\p{P}]$/u;
+const LATIN = /^\p{Script=Latin}$/u;
+
+/**
+ * The key a press names, for the keymap: its own; or, when a keyboard layout of another script typed it (alpha.24,
+ * keyplat R6: a Gujarati or Hindi layout's B key says "વ" or "ब"), the Latin letter, digit or "." in that place on the
+ * keyboard (`code`), so the keymap's letters act with such a layout on, as the quick bar's digits always have. Only a
+ * character of another script is replaced, never a Latin one (accented or not) nor a symbol: every Latin layout
+ * (QWERTY, AZERTY, QWERTZ, Dvorak) is as it was, letter for letter, and a Mac's Option letters (∫, ™) too. A press
+ * without its place (the main process's) is as it was.
+ */
+function keyOf(input: Pick<KeyInput, 'key' | 'code'>): string {
+  const { key, code } = input;
+  if (code === undefined || (key.codePointAt(0) ?? 0) < 0x370 || !OTHER_SCRIPT.test(key) || LATIN.test(key))
+    return key;
+  const place = /^(?:Key([A-Z])|Digit([0-9]))$/u.exec(code);
+  if (place) return place[1] ?? place[2] ?? key;
+  return code === 'Period' ? '.' : key;
+}
+
 /** Does this key press trigger this binding key? */
 export function keyMatches(input: KeyInput, binding: string, platform: string): boolean {
   const want = parse(binding);
@@ -247,7 +286,7 @@ export function keyMatches(input: KeyInput, binding: string, platform: string): 
   // keyboard's 1 is "&"; Shift with it is another key.
   if (want.alt && /^[0-9]$/u.test(want.key) && input.code !== undefined)
     return input.code === `Digit${want.key}` && input.shiftKey === want.shift;
-  const key = normalise(input.key);
+  const key = normalise(keyOf(input));
   // Shift only matters when the binding asks for it, for named keys (Shift+Space is not Space), and for a letter
   // with Cmd, Ctrl or Alt (Session 51: Shift+Cmd+Z is Redo's key, not Mod+Z). A letter alone matches with Shift
   // or without (Caps Lock, Shift held), as a digit or "?" does: some keyboards need Shift to type them.
@@ -266,9 +305,16 @@ export function actionFor(
   return null;
 }
 
-/** A binding's key, written for people as this computer shows it: "→", "Page Down", "⌘⇧S" or "Ctrl+Shift+S". */
+/**
+ * A binding's key, written for people as this computer shows it: "→", "Page Down", "⇧⌘S" or "Ctrl+Shift+S". A Mac
+ * (Apple silicon or Intel: both darwin) writes its modifiers in Apple's order, Control, Option, Shift, Command (⌃⌥⇧⌘),
+ * as its menus draw the same keys (alpha.24, the owner's "shortcuts should be adaptable to mac, mac intel, and
+ * windows"); Windows writes Ctrl, Alt, Shift. "Ctrl" in a binding is the Control key itself on both (a Mac's ⌃, as
+ * its menus' full screen ⌃⌘F has it): only the manual's other windows' keys use it (window-keys.ts), never KEYMAP.
+ */
 export function keyText(binding: string, platform: string): string {
   const { key, mod, shift, alt } = parse(binding);
+  const ctrl = binding.split('+').slice(0, -1).includes('Ctrl');
   const names: Record<string, string> = {
     ArrowRight: '→',
     ArrowLeft: '←',
@@ -276,13 +322,20 @@ export function keyText(binding: string, platform: string): string {
     ArrowDown: '↓',
     PageDown: 'Page Down',
     PageUp: 'Page Up',
+    // As both computers' keyboards print it (esc, Esc), and the guides write it.
+    Escape: 'Esc',
+    // Windows' Menu key (a Mac has none: its lists' menus are Shift+F10 or a Control-click).
+    ContextMenu: 'Menu',
   };
-  const name = names[key] ?? key;
-  if (platform === 'darwin') return `${mod ? '⌘' : ''}${alt ? '⌥' : ''}${shift ? '⇧' : ''}${name}`;
-  return [mod ? 'Ctrl' : '', alt ? 'Alt' : '', shift ? 'Shift' : '', name].filter(Boolean).join('+');
+  // A Mac's own: its return key as its menus draw it (⌘↩), and a modifier held on its own (while dragging) as its sign.
+  const mac: Record<string, string> = { Enter: '↩', Alt: '⌥', Shift: '⇧', Mod: '⌘', Ctrl: '⌃' };
+  const name = (platform === 'darwin' ? mac[key] : undefined) ?? names[key] ?? (key === 'Mod' ? 'Ctrl' : key);
+  if (platform === 'darwin')
+    return `${ctrl ? '⌃' : ''}${alt ? '⌥' : ''}${shift ? '⇧' : ''}${mod ? '⌘' : ''}${name}`;
+  return [mod || ctrl ? 'Ctrl' : '', alt ? 'Alt' : '', shift ? 'Shift' : '', name].filter(Boolean).join('+');
 }
 
-/** The first key of an action, written for people, e.g. "F2", "Space", "⌘⇧S" or "Ctrl+Shift+S". */
+/** The first key of an action, written for people, e.g. "F2", "Space", "⇧⌘S" or "Ctrl+Shift+S". */
 export function shortcutText(
   action: OperatorAction,
   platform: string,

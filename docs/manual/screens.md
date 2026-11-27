@@ -47,7 +47,7 @@
 
 ## Audience and Stage
 
-**What it is.** Two switches in the top bar. **Audience** off closes this computer's hall screens (their displays show the desktop). **Stage** off makes every stage screen show the audience picture. The show carries on.
+**What it is.** Two switches in the top bar, each a small dot and **On** or **Off** (amber while off). **Audience** off closes this computer's hall screens (their displays show the desktop). **Stage** off makes every stage screen show the audience picture. The show carries on.
 
 **When you would use it.** When the hall's projector must show the computer's desktop for a moment, or the stage should show what the hall sees.
 

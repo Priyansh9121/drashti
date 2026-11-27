@@ -146,6 +146,8 @@ function StageTimerRow({ timer }: { timer: TimerState }) {
           <Button
             size="sm"
             icon={counts ? Pause : Square}
+            // A show control (alpha.24, the bug hunt's S3-1): it changes the screens at once and never moves.
+            instant
             onClick={() => void dispatch({ type: counts ? 'pauseTimer' : 'resetTimer', timerId: timer.id })}
           >
             {counts ? 'Pause' : 'Stop'}
@@ -155,6 +157,7 @@ function StageTimerRow({ timer }: { timer: TimerState }) {
             size="sm"
             variant="secondary"
             icon={Play}
+            instant
             onClick={() => void dispatch({ type: 'startTimer', timerId: timer.id })}
           >
             Start
@@ -164,6 +167,7 @@ function StageTimerRow({ timer }: { timer: TimerState }) {
           <Button
             size="sm"
             icon={RotateCcw}
+            instant
             onClick={() => void dispatch({ type: 'resetTimer', timerId: timer.id })}
           >
             Reset

@@ -245,6 +245,17 @@ test('a photo converted after it became a wallpaper: the wallpaper moves to its 
   );
   await expect(win.getByTestId('wallpaper-find-missing')).toHaveCount(0);
   await expect(win.getByTestId('live-wallpaper-missing')).toContainText('needs conversion');
+  // Until it is converted the screens leave it out, as a missing picture (bughunt S1-1): with nothing else to show,
+  // black as with all missing, never a picture they cannot draw; LIVE says so.
+  await expect.poll(async () => (await state(win)).chosenWallpaper?.pictures).toEqual([]);
+  await expect.poll(() => nothingUp(hall)).toBe('black');
+  await expect(win.getByTestId('live-preview').getByTestId('scene').first()).toHaveAttribute(
+    'data-nothing-up',
+    'black',
+  );
+  await expect(win.getByTestId('live-wallpaper-missing')).toHaveText(
+    'The wallpaper’s picture needs conversion: “Placeholder photo.heic”. The screens show black when the wallpaper is up.',
+  );
   expect(
     await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.convert([id]), photo),
   ).toMatchObject({ ok: true });
@@ -275,8 +286,56 @@ test('a photo converted after it became a wallpaper: the wallpaper moves to its 
   expect(
     await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.undoConversion(id), conversionId),
   ).toMatchObject({ ok: true });
-  await expect.poll(async () => (await state(win)).chosenWallpaper?.pictures).toEqual([photo]);
+  // Back to the original: it needs conversion again, so the screens leave it out again.
   await expect(wallpaperTile.getByTestId('wallpaper-missing')).toHaveText('Convert picture');
+  await expect.poll(async () => (await state(win)).chosenWallpaper?.pictures).toEqual([]);
+  await expect.poll(() => nothingUp(hall)).toBe('black');
   await expect(win.getByTestId('wallpaper-find-missing')).toHaveCount(0);
+  await app.close();
+});
+
+test('a photo still to convert among a wallpaper’s pictures: the screens leave it out and the others go round, never a black turn; the panel says so, LIVE says nothing (bughunt S1-1)', async () => {
+  test.skip(!ffmpeg && !process.env['CI'], 'FFmpeg is not fetched here: run node scripts/fetch-ffmpeg.mjs');
+  test.setTimeout(150_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-wallpaper-heic-turn-'));
+  const heic = join(dir, 'Placeholder photo.heic');
+  copyFileSync(join(process.cwd(), 'tests', 'fixtures', 'media', 'placeholder.heic'), heic);
+  const { app } = await launchApp({ ...ENV, DRASHTI_TEST_NO_CONVERT_AT_IMPORT: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await setUpScreen(win);
+  const hall = await hallOf(app);
+  const file = await makeTestImage(win, join(dir, FILE), { color: '#1e3a8a' });
+  const [photo = '', picture = ''] = await importAndGetIds(win, [heic, file]);
+  expect(photo).not.toBe('');
+  expect(picture).not.toBe('');
+  // The photo first, so its turn would be the first the screens show.
+  const wallpaperId = await win.evaluate(
+    async ({ first, then }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const added = await d.wallpapers.add([first], null);
+      if (!added.ok) throw new Error(added.message);
+      const id = added.ids[0] ?? '';
+      const more = await d.wallpapers.add([then], id);
+      if (!more.ok) throw new Error(more.message);
+      const chosen = await d.wallpapers.choose(id);
+      if (!chosen.ok) throw new Error(chosen.message);
+      return id;
+    },
+    { first: photo, then: picture },
+  );
+  expect(wallpaperId).not.toBe('');
+  await expect.poll(async () => (await state(win)).chosenWallpaper?.pictures).toEqual([picture]);
+  await expect.poll(() => nothingUp(hall)).toBe('wallpaper');
+  await expect.poll(() => hallPicture(hall)).toBe(picture);
+  await expect(hall.locator(`[data-testid="wallpaper-picture"][data-media-id="${photo}"]`)).toHaveCount(0);
+  await expect(win.getByTestId('live-preview').getByTestId('scene').first()).toHaveAttribute(
+    'data-nothing-up',
+    'wallpaper',
+  );
+  await expect(win.getByTestId('wallpaper-missing-notice')).toHaveText(
+    'One of the wallpaper’s pictures needs conversion: “Placeholder photo.heic”. Convert it in Media. The screens leave that picture out until it is converted, and the others go round.',
+  );
+  await expect(win.getByTestId('live-wallpaper-missing')).toHaveCount(0);
   await app.close();
 });

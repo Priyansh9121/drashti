@@ -16,7 +16,7 @@ import { constants, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { IPC } from '../../shared/ipc';
-import { DEFAULT_LINK_MAX_HEIGHT, type LinkHeight, type LinkView } from '../../shared/links';
+import { DEFAULT_LINK_MAX_HEIGHT, type LinkHeight, type LinkResult, type LinkView } from '../../shared/links';
 import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
 import { lockChannels, refusalFor, refusedNow } from '../ipc/handle';
 import { SIMPLE_MODE_LOCKED, simpleModeBounds, simpleModeRefusals } from '../simple-mode';
@@ -973,6 +973,64 @@ describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     await until(() => h.service.view().phase === 'done', 60_000);
     expect(h.service.view()).toMatchObject({ kind: 'youtube', choice: { type: 'mp3', height: null } });
     expect(files(h.folder)).toEqual(['Placeholder video.mp3']);
+  });
+
+  /** Checked first, as the link window does: its Quality shows once the check is done. */
+  const looked = async (h: { service: LinkService }) => {
+    h.service.reset();
+    h.service.look('youtube', LINK);
+    await until(() => h.service.view().phase === 'looked');
+  };
+
+  it('takes the quality chosen in the window (alpha.24): a height the video offers, above 1080p too, or an MP3 bitrate', async () => {
+    const h = await youtube({ heights: [360, 720, 1080, 1440, 2160] });
+    await looked(h);
+    expect(h.service.start(LINK, false, false, { quality: 720 }).ok).toBe(true);
+    await untilShown(h, () => h.service.view().phase === 'done', 60_000);
+    expect(h.service.view().choice).toEqual({ type: 'mp4', height: 720 });
+    expect(readFileSync(h.fakeLog, 'utf8')).toMatch(/^done mp4 720$/mu);
+    expect(h.logs.join('\n')).toMatch(/a YouTube video download starts \(MP4, 720p, about [\d.]+ [KMG]B\)/u);
+    // Above 1080p when chosen: the paste's 1080p is only where the choice begins.
+    await looked(h);
+    expect(h.service.start(LINK, false, false, { quality: 1440 }).ok).toBe(true);
+    await untilShown(h, () => h.service.view().phase === 'done', 60_000);
+    expect(h.service.view().choice).toEqual({ type: 'mp4', height: 1440 });
+    expect(readFileSync(h.fakeLog, 'utf8')).toMatch(/^done mp4 1440$/mu);
+    // The sound, at the bitrate chosen (from Audio's window).
+    await looked(h);
+    expect(h.service.start(LINK, true, false, { quality: 128 }).ok).toBe(true);
+    await untilShown(h, () => h.service.view().phase === 'done', 60_000);
+    expect(h.service.view().choice).toEqual({ type: 'mp3', height: null, kbps: 128 });
+    expect(readFileSync(h.fakeLog, 'utf8')).toMatch(/^done mp3 128K$/mu);
+    expect(h.logs.join('\n')).toMatch(
+      /a YouTube video download starts \(MP3 at 128 kbps, about [\d.]+ [KMG]B\)/u,
+    );
+    expect(files(h.folder)).toEqual([
+      'Placeholder video (2).mp4',
+      'Placeholder video.mp3',
+      'Placeholder video.mp4',
+    ]);
+  });
+
+  it('refuses in words a quality the video does not offer, keeping the check; nothing starts until one it offers', async () => {
+    const h = await youtube({ heights: [360, 720] });
+    await looked(h);
+    const say = (r: LinkResult) => (r.ok ? '' : r.message);
+    expect(say(h.service.start(LINK, false, false, { quality: 1080 }))).toBe(
+      'That quality is not offered by this video. Choose another under Quality.',
+    );
+    expect(say(h.service.start(LINK, true, false, { quality: 320 }))).toBe(
+      'Choose Best, 192 kbps or 128 kbps for the sound.',
+    );
+    for (const odd of ['high', 7.5, -360, Number.NaN, 1e9])
+      expect(say(h.service.start(LINK, false, false, { quality: odd }))).toBe(
+        'Choose a quality for the download.',
+      );
+    expect(h.service.view().phase).toBe('looked');
+    expect(starts(h.fakeLog)).toEqual([]);
+    expect(h.service.start(LINK, false, false, { quality: 360 }).ok).toBe(true);
+    await untilShown(h, () => h.service.view().phase === 'done', 60_000);
+    expect(h.service.view().choice).toEqual({ type: 'mp4', height: 360 });
   });
 
   it('looks, refuses a download above the setting, then saves under the title, with no tick asked', async () => {

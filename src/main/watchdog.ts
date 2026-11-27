@@ -108,14 +108,16 @@ const realTimers: Timers = {
  */
 export class RendererWatchdog {
   readonly events: WatchdogEvent[] = [];
+  // Each window's own (S1-1, the alpha.24 bug hunt): by its page, never by its name, which two windows may share (two
+  // TVs of one model are named after their display) and a window made again for a screen of that name keeps.
   /** When each window was last reloaded after a render error, or tried again (x53). */
-  private readonly renderReloads = new Map<string, number>();
+  private readonly renderReloads = new Map<WatchTarget, number>();
   /** Windows with a reload for a render error on its way: what their old page still says is not a new failure. */
-  private readonly renderReloading = new Set<string>();
+  private readonly renderReloading = new Set<WatchTarget>();
   /** How each window's page is loaded again after a render error, when not by a reload (a page that failed to load). */
-  private readonly ownReloads = new Map<string, () => void>();
+  private readonly ownReloads = new Map<WatchTarget, () => void>();
   /** Windows given up on because their picture failed again after a reload (x53): Stopped until it draws again. */
-  private readonly renderGaveUp = new Set<string>();
+  private readonly renderGaveUp = new Set<WatchTarget>();
   /** Each watched window's "try it again now" (Screens' Try again, Session 23). */
   private readonly retries = new Map<WatchTarget, (why: string) => void>();
   /** Each watched window's own give-up, its tries afresh, and its reload soon (x53), from its watch. */
@@ -127,7 +129,8 @@ export class RendererWatchdog {
   private readonly askingStack = new Map<WatchTarget, () => void>();
 
   constructor(
-    private readonly onEvent: (e: WatchdogEvent) => void = () => undefined,
+    /** Each event, with its window's page: the one window it is about, whatever its name (S1-1). */
+    private readonly onEvent: (e: WatchdogEvent, page: WatchTarget) => void = () => undefined,
     private readonly timers: Timers = realTimers,
     /** Whether this run keeps crash files (crash-files.ts): then a restart writes the hung window's dump first. */
     private readonly crashFiles = true,
@@ -136,6 +139,7 @@ export class RendererWatchdog {
   ) {}
 
   private record(
+    page: WatchTarget,
     window: string,
     kind: WatchdogEventKind,
     reason?: string,
@@ -153,7 +157,7 @@ export class RendererWatchdog {
     };
     this.events.push(e);
     if (this.events.length > 200) this.events.shift();
-    this.onEvent(e);
+    this.onEvent(e, page);
   }
 
   /**
@@ -166,30 +170,31 @@ export class RendererWatchdog {
    * once, and missing that left it black and counted as showing).
    */
   renderError(target: WatchTarget, name: string, reason: string, reload?: () => void): void {
-    if (this.renderGaveUp.has(name) || this.renderReloading.has(name)) return;
+    if (this.renderGaveUp.has(target) || this.renderReloading.has(target)) return;
     const now = this.timers.now();
-    const last = this.renderReloads.get(name);
-    this.record(name, 'render-error', reason);
+    const last = this.renderReloads.get(target);
+    this.record(target, name, 'render-error', reason);
     // A page that failed to load is loaded again as itself (Session 31), not reloaded at the failed address.
-    if (reload) this.ownReloads.set(name, reload);
+    if (reload) this.ownReloads.set(target, reload);
     if (last !== undefined && now - last < 60_000) {
-      this.renderGaveUp.add(name);
+      this.renderGaveUp.add(target);
       this.giveUp(target, name, 'its picture failed again after a reload');
       return;
     }
-    this.renderReloading.add(name);
+    this.renderReloading.add(target);
     this.timers.setTimeout(() => {
-      this.renderReloading.delete(name);
-      this.renderReloads.set(name, this.timers.now());
+      this.renderReloading.delete(target);
+      // Gone meanwhile: nothing kept of it (its 'destroyed' has forgotten it already).
       if (target.isDestroyed()) return;
-      this.loadAgain(target, name);
-      this.record(name, 'reloaded');
+      this.renderReloads.set(target, this.timers.now());
+      this.loadAgain(target);
+      this.record(target, name, 'reloaded');
     }, 100);
   }
 
   /** A window's page loaded again: as itself, if it once failed to load (Session 31); else reloaded. */
-  private loadAgain(target: WatchTarget, name: string): void {
-    const own = this.ownReloads.get(name);
+  private loadAgain(target: WatchTarget): void {
+    const own = this.ownReloads.get(target);
     if (own) own();
     else target.reload();
   }
@@ -198,15 +203,15 @@ export class RendererWatchdog {
   private giveUp(target: WatchTarget, name: string, why: string): void {
     const state = this.states.get(target);
     if (state) state.giveUp(why);
-    else this.record(name, 'gave-up', why);
+    else this.record(target, name, 'gave-up', why);
   }
 
   /**
    * A window given up on because its picture kept failing draws again (x53): its page drew a change after its last
    * failure, as its boundary tries each change. No longer given up on; nothing reloaded.
    */
-  drawsAgain(target: WatchTarget, name: string): void {
-    if (!this.renderGaveUp.delete(name)) return;
+  drawsAgain(target: WatchTarget): void {
+    if (!this.renderGaveUp.delete(target)) return;
     this.states.get(target)?.settle();
   }
 
@@ -214,8 +219,8 @@ export class RendererWatchdog {
    * What kept bringing a window down was taken off the show (x53: a video it went down on twice within a minute): it
    * is loaded again now, its crash count and any give-up afresh, never after its longer back-off, or never at all.
    */
-  tookOff(target: WatchTarget, name: string, why: string): void {
-    this.renderGaveUp.delete(name);
+  tookOff(target: WatchTarget, why: string): void {
+    this.renderGaveUp.delete(target);
     this.states.get(target)?.reloadSoon(why);
   }
 
@@ -257,7 +262,7 @@ export class RendererWatchdog {
     }
     if (!frame) {
       if (this.askingStack.has(target)) return;
-      this.record(name, 'hung', reason);
+      this.record(target, name, 'hung', reason);
       this.restart(target, name);
       return;
     }
@@ -266,7 +271,7 @@ export class RendererWatchdog {
       if (this.askingStack.get(target) !== stopped) return;
       this.askingStack.delete(target);
       if (timer !== null) this.timers.clearTimeout(timer);
-      this.record(name, 'hung', reason, { stack });
+      this.record(target, name, 'hung', reason, { stack });
       if (crash) this.restart(target, name);
     };
     const stopped = () => {
@@ -298,7 +303,7 @@ export class RendererWatchdog {
     const started = this.timers.now();
     target.forcefullyCrashRenderer();
     const heldMs = Math.max(0, this.timers.now() - started);
-    this.record(name, 'restarted', waitWords(heldMs, this.crashFiles), { heldMs });
+    this.record(target, name, 'restarted', waitWords(heldMs, this.crashFiles), { heldMs });
   }
 
   /** Try a window again now (after it was given up on): false when it is not watched. */
@@ -329,10 +334,10 @@ export class RendererWatchdog {
       if (target.isDestroyed()) return;
       crashes.length = 0;
       gaveUp = false;
-      this.renderGaveUp.delete(name);
-      this.renderReloads.set(name, this.timers.now());
-      this.loadAgain(target, name);
-      this.record(name, 'retried', why);
+      this.renderGaveUp.delete(target);
+      this.renderReloads.set(target, this.timers.now());
+      this.loadAgain(target);
+      this.record(target, name, 'retried', why);
     };
     this.retries.set(target, retry);
 
@@ -340,7 +345,7 @@ export class RendererWatchdog {
     // wait from the crash before), only the retry, sooner the first time.
     const giveUp = (why: string) => {
       if (!gaveUp) {
-        this.record(name, 'gave-up', why);
+        this.record(target, name, 'gave-up', why);
         if (reloadTimer !== null) this.timers.clearTimeout(reloadTimer);
         reloadTimer = null;
         gaveUpTimes++;
@@ -366,7 +371,7 @@ export class RendererWatchdog {
         reloadTimer = null;
         if (target.isDestroyed()) return;
         target.reload();
-        this.record(name, 'reloaded', why);
+        this.record(target, name, 'reloaded', why);
       }, backoff[0] ?? 100);
     };
     this.states.set(target, { giveUp, settle, reloadSoon });
@@ -381,7 +386,7 @@ export class RendererWatchdog {
       this.askingStack.get(target)?.();
       if (details.reason === 'clean-exit' || target.isDestroyed()) return;
       const exit = exitText(details.exitCode, details.reason, this.platform);
-      this.record(name, 'crashed', details.reason, exit ? { exit } : {});
+      this.record(target, name, 'crashed', details.reason, exit ? { exit } : {});
       const now = this.timers.now();
       crashes.push(now);
       while (crashes.length > 0 && now - (crashes[0] ?? now) > 60_000) crashes.shift();
@@ -395,12 +400,12 @@ export class RendererWatchdog {
         reloadTimer = null;
         if (target.isDestroyed()) return;
         target.reload();
-        this.record(name, 'reloaded');
+        this.record(target, name, 'reloaded');
       }, wait);
     });
 
     target.on('unresponsive', () => {
-      this.record(name, 'unresponsive');
+      this.record(target, name, 'unresponsive');
       cancelHang();
       hangTimer = this.timers.setTimeout(() => {
         hangTimer = null;
@@ -411,7 +416,7 @@ export class RendererWatchdog {
     });
 
     target.on('responsive', () => {
-      if (hangTimer !== null) this.record(name, 'responsive');
+      if (hangTimer !== null) this.record(target, name, 'responsive');
       cancelHang();
     });
 
@@ -423,10 +428,12 @@ export class RendererWatchdog {
       this.retries.delete(target);
       this.states.delete(target);
       // A window made again for the same screen starts afresh (x53): never left given up on, never loaded again
-      // through the closed window's own loader.
-      this.renderGaveUp.delete(name);
-      this.renderReloading.delete(name);
-      this.ownReloads.delete(name);
+      // through the closed window's own loader, its last reload forgotten (S1-1); another window of its name is left
+      // as it is.
+      this.renderGaveUp.delete(target);
+      this.renderReloading.delete(target);
+      this.renderReloads.delete(target);
+      this.ownReloads.delete(target);
     });
   }
 }

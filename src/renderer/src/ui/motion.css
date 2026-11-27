@@ -4,7 +4,7 @@
  * reduced motion stop all of it (app.css's own rules), and none of it ever reaches a show control (data-show-control:
  * Next, Back, the clears, Black-out, the Wallpaper, the slides and the live picture change at once).
  *
- * As a live look's touch (shared/appearance/moving.ts, the release lead's rule for anything new), a control's
+ * By the release lead's rule for anything new (the chip, as a live look's touch needs it), a control's
  * answer starts only once the window has opened settled (data-opened) and with a graphics chip known to be there
  * (data-chip): never while the window opens, and never where Chromium draws without one (CI's Windows). Only the
  * transitions wait for that; what a control looks like at rest never changes with it, so nothing starts moving as
