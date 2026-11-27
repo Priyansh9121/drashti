@@ -56,7 +56,7 @@ The right column starts with **LIVE**: what the hall sees this moment. Under it 
 1. Press **Black-out** along the bottom, or **B**.
 2. Press it again to bring the picture back.
 3. Press **Wallpaper**, or **F12**, for the wallpaper instead.
-4. Putting anything up takes either one off, so it is seen.
+4. Putting anything up takes either one off, so it is seen. **Oops** after a click by mistake puts it back on, with what was under it, and **Put it back** after **Clear all** leaves on one that is still on.
 
 ![The show controls along the bottom, each with its key](../screenshots/quick-bar.png)
 
@@ -69,14 +69,14 @@ The right column starts with **LIVE**: what the hall sees this moment. Under it 
 **How:**
 
 1. Press **Clear all**, or **F1**, to clear everything.
-2. Straight after it, **Put it back** brings it all back.
+2. Straight after it, **Put it back** brings it all back (under **Black-out** or the **Wallpaper** if one is still on).
 3. Press one clear button to take only its layer off, such as **F2** for the words.
 
 ![The bar of clears and the quick bar along the bottom](../screenshots/quick-bar.png)
 
 ## Oops
 
-**What it is.** **Oops** (**F9**) puts back what was on the screens before the last change: the slide, the background, the sound and every layer, one step a press, up to the last 20.
+**What it is.** **Oops** (**F9**) puts back what was on the screens before the last change: the slide, the background, the sound, every layer and **Black-out** or the **Wallpaper**, one step a press, up to the last 20.
 
 **When you would use it.** Right after a wrong click.
 
