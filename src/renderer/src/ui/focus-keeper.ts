@@ -11,9 +11,9 @@
  *
  * Last of all: the window's own code puts the keyboard back first where it knows better (a menu to what opened it, the
  * Library sheet to Library, the open playlist's rows after a move, ui/Dialog.tsx to what opened a dialog), so the keeper
- * looks two frames later, and only while the keyboard is still nowhere. Lists that put the keyboard back themselves (a
- * list or tree that takes the keyboard, the open playlist's items and slide rows) are left to them while the list
- * remains; a whole list going away still keeps focus in its region.
+ * looks two frames later, and only while the keyboard is still nowhere. This also leaves usable focus restored by a
+ * list's own handler alone (the open playlist's items and slide rows after a move). A focusable list remaining on the
+ * page does not mean its handler restored focus: rename and removal still need the regional fallback when it did not.
  *
  * The operator window installs it (operator/main.tsx); a dialog there (ui/Dialog.tsx) closing after what opened it went
  * gives the keyboard to where that was, the same way (item 18: Set up Stage screen… goes as Screens opens). Other
@@ -23,10 +23,6 @@
 /** The parts of the window the keyboard may be kept in: landmarks and named groups. Never a list or a menu. */
 const PLACES =
   'header, footer, main, aside, nav, section[aria-label], section[aria-labelledby], [role="region"], [role="group"], [role="search"], [role="dialog"], [role="alertdialog"], [role="banner"], [role="contentinfo"], [role="main"], [role="complementary"], [role="navigation"]';
-
-/** Lists that take the keyboard and put it back themselves after a change: left to them. */
-const OWN_FOCUS =
-  'ul[tabindex], ol[tabindex], [role="listbox"], [role="tree"], [role="treegrid"], [role="grid"]';
 
 /** What can take the keyboard (Dialog.tsx's FOCUSABLE, with tabindex -1 too: made again, it took it then). */
 const FOCUSABLE =
@@ -45,8 +41,6 @@ interface Trail {
   /** Its places, the nearest first. */
   readonly places: readonly Place[];
   readonly testid: string | null;
-  /** A list that puts the keyboard back itself, while it remains in the window. */
-  readonly ownFocus: HTMLElement | null;
 }
 
 const trails = new WeakMap<HTMLElement, Trail>();
@@ -80,7 +74,6 @@ export function rememberPlace(el: HTMLElement): void {
   trails.set(el, {
     places,
     testid: el.dataset['testid'] ?? null,
-    ownFocus: el.closest<HTMLElement>(OWN_FOCUS),
   });
 }
 
@@ -207,7 +200,6 @@ function lookSoon(): void {
       looking = false;
       const el = held;
       if (!el || !gone(el) || !nowhere(el)) return;
-      if (trails.get(el)?.ownFocus?.isConnected === true) return;
       keepFrom(el);
     });
   });

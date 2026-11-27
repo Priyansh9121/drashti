@@ -8,20 +8,23 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 const NAME = 'Placeholder focus playlist';
 
 const makePlaylist = (win: Page, items = false) =>
-  win.evaluate(async ({ name, items }) => {
-    const d = (globalThis as PageGlobals).drashti;
-    const made = await d.playlists.create(name, null, false);
-    if (!made.ok) throw new Error(made.message);
-    const id = made.ids[0];
-    if (!id) throw new Error('No placeholder playlist');
-    if (items) {
-      const added = await d.playlists.addItems(id, null, [
-        { kind: 'header', label: 'Placeholder first' },
-        { kind: 'header', label: 'Placeholder second' },
-      ]);
-      if (!added.ok) throw new Error(added.message);
-    }
-  }, { name: NAME, items });
+  win.evaluate(
+    async ({ name, items }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const made = await d.playlists.create(name, null, false);
+      if (!made.ok) throw new Error(made.message);
+      const id = made.ids[0];
+      if (!id) throw new Error('No placeholder playlist');
+      if (items) {
+        const added = await d.playlists.addItems(id, null, [
+          { kind: 'header', label: 'Placeholder first' },
+          { kind: 'header', label: 'Placeholder second' },
+        ]);
+        if (!added.ok) throw new Error(added.message);
+      }
+    },
+    { name: NAME, items },
+  );
 
 for (const finish of ['Enter', 'Escape'])
   test(`finishing an existing playlist rename with ${finish} keeps focus in Playlists while the list remains`, async () => {
@@ -41,7 +44,11 @@ for (const finish of ['Enter', 'Escape'])
       await field.fill('Placeholder renamed playlist');
       await win.keyboard.press(finish);
       await expect(field).toHaveCount(0);
-      await expect(region.getByTestId('playlist-node').filter({ hasText: finish === 'Enter' ? 'Placeholder renamed playlist' : NAME })).toHaveCount(1);
+      await expect(
+        region
+          .getByTestId('playlist-node')
+          .filter({ hasText: finish === 'Enter' ? 'Placeholder renamed playlist' : NAME }),
+      ).toHaveCount(1);
       expect(await list?.evaluate((el) => el.isConnected)).toBe(true);
       await expect(region).toBeFocused();
       await expect(region).toHaveAttribute('data-focus-kept', '');
@@ -125,7 +132,10 @@ for (const media of [
       await app.evaluate(({ app: electronApp }) => {
         const g = globalThis as { drashtiFinishFocusPrint?: () => void };
         electronApp.on('browser-window-created', (_event, window) => {
-          window.webContents.print = (_options: unknown, callback?: (success: boolean, why: string) => void) => {
+          window.webContents.print = (
+            _options: unknown,
+            callback?: (success: boolean, why: string) => void,
+          ) => {
             g.drashtiFinishFocusPrint = () => {
               delete g.drashtiFinishFocusPrint;
               callback?.(true, '');
@@ -145,8 +155,16 @@ for (const media of [
       await expect(print).toBeDisabled();
       await expect(save).toBeDisabled();
       await expectKeptRing(manual);
-      await expect.poll(() => app.evaluate(() => typeof (globalThis as { drashtiFinishFocusPrint?: () => void }).drashtiFinishFocusPrint)).toBe('function');
-      await app.evaluate(() => (globalThis as { drashtiFinishFocusPrint?: () => void }).drashtiFinishFocusPrint?.());
+      await expect
+        .poll(() =>
+          app.evaluate(
+            () => typeof (globalThis as { drashtiFinishFocusPrint?: () => void }).drashtiFinishFocusPrint,
+          ),
+        )
+        .toBe('function');
+      await app.evaluate(() =>
+        (globalThis as { drashtiFinishFocusPrint?: () => void }).drashtiFinishFocusPrint?.(),
+      );
       await expect(print).toBeEnabled();
       await expectKeptRing(manual);
 

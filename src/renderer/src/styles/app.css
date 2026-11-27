@@ -467,9 +467,8 @@ body.web {
   }
 
   /* LIVE can have no room beyond its scroller's edge. Keep the whole ring inside the control there, even at the
-     end of the scroll, without moving its box or a show control. Kept landmarks use the same inset ring. */
-  [data-testid='live-scroll'] :focus-visible,
-  [data-focus-kept]:focus-visible {
+     end of the scroll, without moving its box or a show control. */
+  [data-testid='live-scroll'] :focus-visible {
     outline-offset: -2px;
   }
 
@@ -490,6 +489,13 @@ body.web {
   kbd {
     font-family: inherit;
   }
+}
+
+/* Kept places need the full inset ring, including dialogs with focus:outline-none. Unlayered so a normal focus
+   utility cannot suppress it; header colours below still apply, and forced colours keep the system's adjustment. */
+[data-focus-kept]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
 }
 
 /*

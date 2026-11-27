@@ -204,14 +204,18 @@ describe('the operator focus keeper', () => {
     expect(main.hasAttribute('tabindex')).toBe(false);
   });
 
-  it('leaves a list its own recovery while it exists, and recovers its region if the whole list goes', () => {
+  it('leaves a list’s usable recovery alone, and recovers its region if the whole list goes', () => {
     const main = page.node('main');
     const list = page.node('ul', { tabindex: '-1' }, main);
     const row = page.node('button', {}, list);
     keeper.installFocusKeeper();
     row.focus();
     row.setAttribute('disabled', '');
-    page.settle();
+    page.frame();
+    // A local handler makes the moved row usable and focuses it before the keeper's grace period ends.
+    row.removeAttribute('disabled');
+    row.focus();
+    page.frame();
     expect(page.activeElement).toBe(row);
     list.remove();
     page.settle();
