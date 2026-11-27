@@ -453,6 +453,41 @@ describe('a file played once to an end point', () => {
       expect(v.playbackRate, 'started at Go, in that check').toBe(1);
     } finally {
       vi.restoreAllMocks();
+      // The same Go moment comes again in the next test (each begins at the same set time): never left marked as held.
+      GO_HOLD_PAGE.lastGo = null;
+      stop();
+    }
+  });
+
+  // a24-review-goearly MUST-1: only a cue's Go is checked early. LIVE's ordinary later start (a time-bar start, asked to
+  // go first but no cue: prioritizeScheduledStart alone) keeps its one check at its moment, even on a visible page.
+  it("asks a visible page's later start that is no cue's Go (LIVE's own, put first) for its one check at its moment, none early", () => {
+    const tasks: { run: () => void; options: { delay: number; priority: string; signal: AbortSignal } }[] =
+      [];
+    vi.stubGlobal('scheduler', {
+      postTask: (run: () => void, options: { delay: number; priority: string; signal: AbortSignal }) => {
+        tasks.push({ run, options });
+        return Promise.resolve();
+      },
+    });
+    vi.stubGlobal('document', { visibilityState: 'visible' });
+    const v = new FakeMedia(8);
+    const timing = { loop: false, seek: { at: Date.now(), toMs: 1000, paused: true } };
+    const stop = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'later',
+      startedAt: Date.now(),
+      prioritizeScheduledStart: true,
+      timing: () => timing,
+    });
+    try {
+      vi.advanceTimersByTime(20);
+      timing.seek = { at: Date.now() + 120, toMs: 1000, paused: false };
+      stop.resync();
+      expect(tasks, 'one check, at its moment').toHaveLength(1);
+      expect(tasks[0]?.options.delay).toBe(120);
+      expect(tasks[0]?.options.priority).toBe('user-blocking');
+      expect(GO_HOLD_PAGE.lastGo, 'never held').toBeNull();
+    } finally {
       stop();
     }
   });

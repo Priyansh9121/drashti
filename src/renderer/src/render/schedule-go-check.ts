@@ -25,7 +25,12 @@ export interface GoHoldPage {
   now(): number;
   /** The page's own steady clock: how long the hold has lasted. */
   realNow(): number;
-  /** Whether the page is on a screen: a hidden one is never held. */
+  /**
+   * Whether the page counts as seen (document.visibilityState): a minimized or covered operator window, or a phone's page
+   * in the background, is never held. Electron reports every window kept unthrottled (backgroundThrottling: false) as
+   * visible even when never shown, so the hall's screens, the offscreen stream page and the hidden sound window are held
+   * at every cue Go; their timers are not throttled either.
+   */
   visible(): boolean;
   /** Whether the clock stands still (a test's hold, the warm-up's pause): it would never reach Go. */
   held(): boolean;
@@ -38,6 +43,7 @@ export const GO_HOLD_PAGE: GoHoldPage = {
   now: engineNow,
   // eslint-disable-next-line no-restricted-properties -- how long the hold has lasted, a length of time, never the time
   realNow: () => performance.now(),
+  // 'visible' for the hall's screens, the stream page and the sound window too (unthrottled windows: see above).
   visible: () => typeof document !== 'undefined' && document.visibilityState === 'visible',
   held: clockHeld,
   lastGo: null,
