@@ -53,23 +53,34 @@ const screenOf = async (page: Page) =>
 /** The fault: the screen's picture fails each time it draws while `mediaId` is up (said again every half second). */
 const failWhileUp = (app: ElectronApplication, screenId: string, mediaId: string) =>
   app.evaluate(
-    (_electron, { sid, id }) => {
-      const g = globalThis as {
-        drashtiTestRenderError?: (screenId?: string, whileUp?: string | null) => number;
-        x53Fault?: ReturnType<typeof setInterval>;
-      };
-      g.drashtiTestRenderError?.(sid, id);
-      g.x53Fault = setInterval(() => {
-        g.drashtiTestRenderError?.(sid, id);
-      }, 500);
-    },
+    (_electron, { sid, id }) =>
+      new Promise<void>((resolve) => {
+        // On Main's own turn: no Node timer made inside the call (src/main/e2e-main-evaluate.test.ts).
+        setImmediate(() => {
+          const g = globalThis as {
+            drashtiTestRenderError?: (screenId?: string, whileUp?: string | null) => number;
+            x53Fault?: ReturnType<typeof setInterval>;
+          };
+          g.drashtiTestRenderError?.(sid, id);
+          g.x53Fault = setInterval(() => {
+            g.drashtiTestRenderError?.(sid, id);
+          }, 500);
+          resolve();
+        });
+      }),
     { sid: screenId, id: mediaId },
   );
 
 const faultOff = (app: ElectronApplication) =>
-  app.evaluate(() => {
-    clearInterval((globalThis as { x53Fault?: ReturnType<typeof setInterval> }).x53Fault);
-  });
+  app.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        setImmediate(() => {
+          clearInterval((globalThis as { x53Fault?: ReturnType<typeof setInterval> }).x53Fault);
+          resolve();
+        });
+      }),
+  );
 
 test('a hall screen whose picture fails each time it draws while a video is up: the video comes off with its sound and a notice naming it and the screen, and the screen draws the Wallpaper within seconds, never left black', async () => {
   test.setTimeout(240_000);
