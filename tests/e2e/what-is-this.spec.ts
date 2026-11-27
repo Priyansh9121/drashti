@@ -383,3 +383,109 @@ test('the keyboard and a ? card: in and out of it beside its ?, a click elsewher
   await expect(card, 'a click elsewhere in the window closes it').toHaveCount(0);
   await app.close();
 });
+
+/** Stable identities for a full circuit; newly portalled card actions have their own names. */
+async function cardTabCircuit(win: Page, backward = false) {
+  const first = win.getByTestId('app-header').getByRole('button').first();
+  await first.focus();
+  const start = await first.getAttribute('data-helpcards-tab');
+  const stops: { id: string; region: string }[] = [];
+  for (let n = 0; n < 400; n++) {
+    await win.keyboard.press(backward ? 'Shift+Tab' : 'Tab');
+    const at = await win.evaluate(() => {
+      const el = document.activeElement;
+      if (!(el instanceof HTMLElement) || el === document.body) return null;
+      const card = el.closest('[data-testid="what-is-this"]');
+      const landmark = el.closest('header, nav, main, aside, footer, section[aria-label]');
+      return {
+        id: card ? `card: ${el.textContent.trim()}` : (el.dataset['helpcardsTab'] ?? 'unmarked'),
+        region: card
+          ? 'card'
+          : (landmark?.getAttribute('aria-label') ?? landmark?.tagName.toLowerCase() ?? 'none'),
+      };
+    });
+    if (!at) continue;
+    if (at.id === start) return stops;
+    stops.push(at);
+    // A repeated control means a loop, so report the actual circuit immediately.
+    if (stops.slice(0, -1).some((s) => s.id === at.id)) break;
+  }
+  throw new Error(`Tab circuit did not return to the header: ${JSON.stringify(stops)}`);
+}
+
+test('an open card has exactly one position in a whole Tab circuit, through every region in both directions (helpcards MUST-1)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize(CI_WINDOW);
+  await operatorReady(win);
+  await helpOn(win);
+  await setUpPlaceholderShow(win);
+  await showRunning(win);
+  await win.locator('button, a[href], input, select, textarea, [tabindex]').evaluateAll((els) => {
+    els.forEach((el, n) => el.setAttribute('data-helpcards-tab', String(n)));
+  });
+  const before = await cardTabCircuit(win);
+  const expectedRegions = ['header', 'Playlists', 'Slides', 'Live', 'Show controls', 'Status'];
+  expect(
+    [...new Set(before.map((s) => s.region.replace(/^Slides of .*/u, 'Slides')))].filter((r) =>
+      expectedRegions.includes(r),
+    ),
+  ).toEqual(expectedRegions);
+  const ask = win.getByTestId('what-is-this-live');
+  const askId = await ask.getAttribute('data-helpcards-tab');
+  await ask.focus();
+  await win.keyboard.press('Enter');
+  const card = win.getByTestId('what-is-this');
+  await expect(card.getByRole('button', { name: 'Got it' })).toBeFocused();
+  const forward = await cardTabCircuit(win);
+  const expected = [...before];
+  expected.splice(
+    before.findIndex((s) => s.id === askId) + 1,
+    0,
+    { id: 'card: Open the manual', region: 'card' },
+    { id: 'card: Got it', region: 'card' },
+  );
+  expect(forward).toEqual(expected);
+  expect(await cardTabCircuit(win, true)).toEqual(expected.toReversed());
+  await expect(card).toBeVisible();
+  await app.close();
+});
+
+test('keyboard opening an adjacent card closes the older card and keeps backward focus visible (helpcards MUST-2)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize(CI_WINDOW);
+  await operatorReady(win);
+  await helpOn(win);
+  const midi = win.getByTestId('what-is-this-midi');
+  const osc = win.getByTestId('what-is-this-osc');
+  await midi.focus();
+  await win.keyboard.press('Enter');
+  const card = win.getByTestId('what-is-this');
+  await expect(card).toContainText(PANEL_HELP.midi.text);
+  await win.keyboard.press('Tab');
+  await expect(osc).toBeFocused();
+  await win.keyboard.press('Enter');
+  await expect(card).toHaveCount(1);
+  await expect(card).toContainText(PANEL_HELP.osc.text);
+  await expect(midi).toHaveAttribute('aria-expanded', 'false');
+  await expect(card.getByRole('button', { name: 'Got it' })).toBeFocused();
+  for (const target of [card.getByRole('button', { name: 'Open the manual' }), osc, midi]) {
+    await win.keyboard.press('Shift+Tab');
+    await expect(target).toBeFocused();
+    expect(
+      await target.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        const style = getComputedStyle(el);
+        const ring =
+          (style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) >= 2) ||
+          (style.boxShadow !== '' && style.boxShadow !== 'none');
+        return at !== null && el.contains(at) && ring;
+      }),
+      'the focused action is visible with its ring',
+    ).toBe(true);
+  }
+  await expect(card).toHaveCount(1);
+  await app.close();
+});
