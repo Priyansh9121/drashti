@@ -87,6 +87,12 @@ export class ClipExports {
   private readonly entries: ExportEntry[] = [];
   private closed = false;
   private resumed = false;
+  /**
+   * The requests an earlier run kept, read once as this run starts, before it can keep anything (a22-vidparts): kept
+   * beside this run's until resume() takes them, so an export asked for before then is never read back as an earlier
+   * run's and exported twice, and a close before then keeps them. null: none, or not readable.
+   */
+  private earlierKept: z.infer<typeof pendingSchema> | null;
   /** Copies into Media going now (a copy of the same bytes takes up an earlier leftover's row): nothing is removed. */
   private copying = 0;
   /** The rows live exports hold (copied into Media, not listed yet): never removed. */
@@ -107,6 +113,19 @@ export class ClipExports {
         )
       : [];
     for (const file of files.slice(-ClipExports.LEFT_MOST)) this.unclean.add(file);
+    let kept: unknown;
+    try {
+      kept = deps.kept.load();
+    } catch {
+      kept = null;
+    }
+    const parsed = pendingSchema.safeParse(kept);
+    this.earlierKept = parsed.success ? parsed.data : null;
+  }
+  /** How many requests wait or go: this run's, and an earlier run's not resumed yet. */
+  private active(): number {
+    const own = this.entries.filter((e) => e.job.state === 'waiting' || e.job.state === 'preparing').length;
+    return own + (this.resumed ? 0 : (this.earlierKept?.length ?? 0));
   }
   /** The request no longer names `made` (it is in the list of what is left now). */
   private forget(entry: ExportEntry, made: string): void {
@@ -164,8 +183,8 @@ export class ClipExports {
   private keep(): boolean {
     if (this.closed) return true;
     try {
-      this.deps.kept.save(
-        this.entries
+      this.deps.kept.save([
+        ...this.entries
           .filter((e) => e.job.state === 'waiting' || e.job.state === 'preparing')
           .map((e) => ({
             request: e.request,
@@ -173,7 +192,9 @@ export class ClipExports {
             identity: e.source.identity,
             ...(e.made === null ? {} : { made: e.made }),
           })),
-      );
+        // Not resumed yet: still an earlier run's, kept as they were read.
+        ...(this.resumed ? [] : (this.earlierKept ?? [])),
+      ]);
       return true;
     } catch {
       return false;
@@ -184,7 +205,7 @@ export class ClipExports {
     const parsed = clipExportRequestSchema.safeParse(raw);
     if (!parsed.success)
       return { ok: false, message: 'Choose a start and end inside the video, then try Export again.' };
-    if (this.entries.filter((e) => e.job.state === 'waiting' || e.job.state === 'preparing').length >= 20)
+    if (this.active() >= 20)
       return {
         ok: false,
         message: 'Many clips are waiting. Let some finish or stop one, then export again.',
@@ -247,16 +268,18 @@ export class ClipExports {
   resume(): void {
     if (this.closed || this.resumed) return;
     this.resumed = true;
-    const parsed = pendingSchema.safeParse(this.deps.kept.load());
-    const requests = parsed.success ? parsed.data : [];
+    // As read when this run started, never this run's own (a22-vidparts).
+    const kept = this.earlierKept;
+    this.earlierKept = null;
+    const requests = kept ?? [];
     // What earlier runs left (their requests ended, or the request list unreadable), and what a request refused below
     // left: removed now if it may be, in one pass. A kept request's own file goes as it runs again.
     const earlier = [...this.unclean].filter((file) => !requests.some((saved) => saved.made === file));
-    if (!parsed.success) {
+    if (kept === null) {
       void this.removeLeft(earlier);
       return;
     }
-    for (const saved of parsed.data) {
+    for (const saved of kept) {
       const joinedEdited = saved.request.parts !== undefined && saved.request.frame === 'edited';
       const resolved = joinedEdited ? null : this.deps.resolve(saved.request);
       if (!resolved?.ok || resolved.source.identity !== saved.identity) {

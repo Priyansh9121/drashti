@@ -242,6 +242,9 @@ test('Edit Video…: two parts of one video, typed as seconds and as m:ss, expor
     const jobs = await win.evaluate(() =>
       (globalThis as unknown as ExportGlobals).drashti.media.clipExports(),
     );
+    // One press of Export clip… is one export, however soon after the start (a request kept then was once read back
+    // and exported again as "Placeholder joined (2).mp4": a22-vidparts' Mac run).
+    expect(jobs, 'one export').toHaveLength(1);
     expect(jobs.at(-1)).toMatchObject({ path: destination, added: true });
     await expect(dialog.locator('[data-testid="clip-export-job"][data-state="done"]')).toBeVisible();
     expect(existsSync(destination)).toBe(true);
