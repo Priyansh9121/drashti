@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { OperatorAction } from '../../../shared/keymap';
 import { PAGE_KEYMAP } from '../../../shared/keymap';
 import type { KeyPress } from './useKeymap';
-import { keyListener } from './useKeymap';
+import { keyListener, shortcutKey } from './useKeymap';
 
 /*
  * The operator window's keys as its listener takes them: a press runs its action once, and is taken; a held
@@ -190,4 +190,41 @@ describe('the operator window’s keys, as its listener takes them', () => {
       expect(f2.taken).toBe(false);
     },
   );
+});
+
+// A window's own keys outside the keymap (alpha.24, hunt S3-3: the slide editor's Save, Find, Undo and Redo, the
+// Access List's Find): with a Gujarati or Hindi layout, Ctrl with the S key says "સ"; read as the S in its place on the
+// keyboard, as the keymap's own keys are (keyplat), but never in a field, an editable box or an IME's composition, and
+// a Latin layout's press always as it is.
+describe('the key a window’s own shortcut reads (shortcutKey)', () => {
+  it('reads another script’s letter as the Latin one in its place, outside a field', () => {
+    expect(shortcutKey({ key: 'સ', code: 'KeyS', target: new StandInElement('DIV') })).toBe('S');
+    expect(shortcutKey({ key: 'ॆ', code: 'KeyZ', isComposing: false, target: new StandInElement('BODY') })).toBe(
+      'Z',
+    );
+    // React's event, whose native event says whether an IME is composing; and one with no target.
+    expect(shortcutKey({ key: 'ય', code: 'KeyY', nativeEvent: { isComposing: false } })).toBe('Y');
+    expect(shortcutKey({ key: 'અ', code: 'KeyA' })).toBe('A');
+  });
+
+  it('never in a field, an editable box or an IME’s composition', () => {
+    for (const tag of ['INPUT', 'TEXTAREA', 'SELECT'])
+      expect(shortcutKey({ key: 'સ', code: 'KeyS', target: new StandInElement(tag) }), tag).toBe('સ');
+    expect(shortcutKey({ key: 'સ', code: 'KeyS', target: new StandInElement('DIV', true) })).toBe('સ');
+    expect(shortcutKey({ key: 'સ', code: 'KeyS', isComposing: true })).toBe('સ');
+    expect(shortcutKey({ key: 'સ', code: 'KeyS', nativeEvent: { isComposing: true } })).toBe('સ');
+  });
+
+  it('leaves every Latin layout’s press as it is, in a field or not', () => {
+    for (const target of [new StandInElement('DIV'), new StandInElement('INPUT'), undefined])
+      for (const [key, code] of [
+        ['s', 'KeyS'],
+        ['S', 'KeyS'],
+        ['z', 'KeyY'],
+        ['y', 'KeyZ'],
+        ['é', 'Digit2'],
+        ['Enter', 'Enter'],
+      ] as const)
+        expect(shortcutKey({ key, code, target })).toBe(key);
+  });
 });

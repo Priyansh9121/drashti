@@ -42,6 +42,16 @@ describe('choosing many', () => {
     expect(isSelectAll(key({ metaKey: true, key: 'b' }), 'darwin')).toBe(false);
   });
 
+  it('Cmd-A or Ctrl-A with a Gujarati or Hindi layout too, by the A key’s place (hunt S3-3); a Latin layout as before', () => {
+    expect(isSelectAll(key({ ctrlKey: true, key: 'અ', code: 'KeyA' }), 'win32')).toBe(true);
+    expect(isSelectAll(key({ metaKey: true, key: 'ो', code: 'KeyA' }), 'darwin')).toBe(true);
+    expect(isSelectAll(key({ ctrlKey: true, key: 'અ', code: 'KeyS' }), 'win32')).toBe(false);
+    expect(isSelectAll(key({ ctrlKey: true, shiftKey: true, key: 'અ', code: 'KeyA' }), 'win32')).toBe(false);
+    // AZERTY: the A is where QWERTY's Q is; the key there types "a" and is Select all, as before.
+    expect(isSelectAll(key({ ctrlKey: true, key: 'a', code: 'KeyQ' }), 'win32')).toBe(true);
+    expect(isSelectAll(key({ ctrlKey: true, key: 'q', code: 'KeyA' }), 'win32')).toBe(false);
+  });
+
   it('Cmd-click adds or takes one away; Shift-click takes the range from the last one clicked', () => {
     const order = ['a', 'b', 'c', 'd', 'e'];
     expect(clickedMany(order, ['a'], 'a', 'c', { toggle: true, range: false })).toEqual({

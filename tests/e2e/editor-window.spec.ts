@@ -306,6 +306,57 @@ test('Undo and Redo for every change, by keys and by buttons, typing too; zoom t
   await app.close();
 });
 
+test('with a Gujarati or Hindi keyboard layout, the editor’s own keys act by their place on the keyboard: select all, duplicate, Undo, Redo, Find and Save (hunt S3-3)', async () => {
+  test.setTimeout(150_000);
+  const { app, win } = await start();
+  const presentationId = await importPlaceholder(win, 'Placeholder Layout Kirtan');
+  const { ed, editor } = await editSlides(app, win, /^Placeholder Layout Kirtan/u);
+  await sizeSlideEditor(app, ed, { width: 1280, height: 800 });
+  const command = process.platform === 'darwin' ? { metaKey: true } : { ctrlKey: true };
+  // A key press with Cmd (Ctrl) as a Gujarati or Devanagari layout makes it, on the slide: the layout's letter, and
+  // the key's place on the keyboard (Chromium on Windows names the letter even with Ctrl held).
+  const press = (key: string, code: string, more: { shiftKey?: boolean } = {}) =>
+    ed.evaluate(
+      ({ key: k, code: c, mods }) => {
+        document
+          .querySelector('[data-testid="editor-canvas"]')
+          ?.dispatchEvent(new KeyboardEvent('keydown', { key: k, code: c, bubbles: true, cancelable: true, ...mods }));
+      },
+      { key, code, mods: { ...command, ...more } },
+    );
+  const elements = editor.getByTestId('editor-slide').locator('[data-element]');
+  await expect(elements).toHaveCount(1);
+  await editor.getByTestId('editor-canvas').focus();
+  // Select all (the A key's અ), then duplicate (the D key's દ).
+  await press('અ', 'KeyA');
+  await expect(editor.getByTestId('editor-status')).toContainText('Text box');
+  await press('દ', 'KeyD');
+  await expect(elements).toHaveCount(2);
+  // Undo (the Z key's ઝ), then Redo: Shift with it on a Mac, the Y key (Devanagari's य) on Windows.
+  await press('ઝ', 'KeyZ');
+  await expect(elements).toHaveCount(1);
+  if (process.platform === 'darwin') await press('ઍ', 'KeyZ', { shiftKey: true });
+  else await press('य', 'KeyY');
+  await expect(elements).toHaveCount(2);
+  // Find (the F key's ફ): its words to find focused.
+  await press('ફ', 'KeyF');
+  const find = editor.getByTestId('find-panel').getByTestId('find-text');
+  await expect(find).toBeFocused();
+  await ed.keyboard.press('Escape');
+  await expect(editor.getByTestId('find-panel')).toHaveCount(0);
+  // Save (the S key's સ): the window closes, the duplicate saved.
+  await editor.getByTestId('editor-canvas').focus();
+  await press('સ', 'KeyS');
+  await slideEditorClosed(app);
+  const saved = await win.evaluate(
+    (id) => (globalThis as PageGlobals).drashti.library.slidesForEdit(id),
+    presentationId,
+  );
+  if (!saved.ok) throw new Error(saved.message);
+  expect(saved.doc.groups[0]?.slides[0]?.elements).toHaveLength(2);
+  await app.close();
+});
+
 test('closing the window with changes asks first; another presentation asked for while this one has changes asks first, then opens in the same window', async () => {
   test.setTimeout(150_000);
   const { app, win } = await start();
