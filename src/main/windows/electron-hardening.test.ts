@@ -1,12 +1,15 @@
-import type { App, Session, WebContents } from 'electron';
+import { BrowserWindow, type App, type Session, type WebContents, type WebFrameMain } from 'electron';
 import { EventEmitter } from 'node:events';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { applySessionSecurity, secureWebContents } from './security';
 import { installElectronHardening } from './electron-hardening';
-import { applyStreamSessionSecurity } from '../stream/program-window';
+import { applyStreamSessionSecurity, type StreamSessionRules } from '../stream/program-window';
 import { isAppUrl } from './navigation';
 
-vi.mock('electron', () => ({ app: { isPackaged: false }, BrowserWindow: { getAllWindows: () => [] } }));
+vi.mock('electron', () => ({
+  app: { isPackaged: false },
+  BrowserWindow: { getAllWindows: vi.fn(() => []) },
+}));
 
 const ROOT = 'file:///app/out/renderer/';
 const own = (url: string) => isAppUrl(url, { rendererDir: '/app/out/renderer' });
@@ -172,6 +175,104 @@ describe('E-01: permission decisions bind the app main frame as well as window i
     expect(stand.checks(stand.contents, 'media', { isMainFrame: false, mediaType: 'audio' })).toBe(false);
     expect(stand.checks(stand.contents, 'media', { mediaType: 'unknown' })).toBe(false);
   });
+});
+
+describe('E-01: Program display capture binds the window and its owned main frame', () => {
+  const streamUrl = `${ROOT}stream.html`;
+  const approvedWindow = { id: 'window:placeholder:0', name: 'Placeholder window' };
+
+  beforeEach(() => {
+    vi.mocked(BrowserWindow.getAllWindows).mockReset();
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([]);
+  });
+
+  function programCapture(url = streamUrl, currentUrl = url) {
+    const frame = { url, parent: null } as unknown as WebFrameMain;
+    const contents = { id: 1, getURL: () => currentUrl, mainFrame: frame } as unknown as WebContents;
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([{ webContents: contents } as BrowserWindow]);
+    const liveWindow = vi.fn<NonNullable<StreamSessionRules['liveWindow']>>(() => approvedWindow);
+    const stand = sessionStand();
+    applyStreamSessionSecurity(stand.session, {
+      isProgram: (c) => c === contents,
+      isOwnPage: own,
+      liveWindow,
+    });
+    return {
+      frame,
+      liveWindow,
+      capture(askingFrame: WebFrameMain | null = frame) {
+        const callback = vi.fn();
+        stand.handlers().capture?.({ frame: askingFrame } as Parameters<CaptureHandler>[0], callback);
+        expect(callback).toHaveBeenCalledOnce();
+        return callback;
+      },
+    };
+  }
+
+  function expectRefused(stand: ReturnType<typeof programCapture>, frame: WebFrameMain | null = stand.frame) {
+    expect(stand.capture(frame)).toHaveBeenCalledExactlyOnceWith({});
+    expect(stand.liveWindow).not.toHaveBeenCalled();
+  }
+
+  it('grants Program its own main-frame picture when no external window is selected', () => {
+    const stand = programCapture();
+    stand.liveWindow.mockReturnValue(null);
+    const callback = stand.capture();
+    expect(callback).toHaveBeenCalledExactlyOnceWith({ video: stand.frame });
+    expect(callback.mock.calls[0]?.[0].video).toBe(stand.frame);
+    expect(stand.liveWindow).toHaveBeenCalledExactlyOnceWith(stand.frame);
+  });
+
+  it('grants the approved external-window picture to Program’s own main frame', () => {
+    const stand = programCapture();
+    const callback = stand.capture();
+    expect(callback).toHaveBeenCalledExactlyOnceWith({ video: approvedWindow });
+    expect(callback.mock.calls[0]?.[0].video).toBe(approvedWindow);
+    expect(stand.liveWindow).toHaveBeenCalledExactlyOnceWith(stand.frame);
+  });
+
+  it('refuses a child frame even when it names the current stream page', () => {
+    const stand = programCapture();
+    const child = { url: streamUrl, parent: stand.frame } as unknown as WebFrameMain;
+    expectRefused(stand, child);
+  });
+
+  it.each(['https://example.invalid/stream.html', 'file:///elsewhere/stream.html', `${ROOT}index.html`])(
+    'refuses a known Program main frame showing %s',
+    (url) => {
+      expectRefused(programCapture(url));
+    },
+  );
+
+  it('refuses an unknown frame with the same URL as Program’s main frame', () => {
+    const stand = programCapture();
+    const unknown = { url: streamUrl, parent: null } as unknown as WebFrameMain;
+    expectRefused(stand, unknown);
+  });
+
+  it('refuses a frame whose window is not Program, even with the stream URL', () => {
+    const stand = programCapture();
+    const other = Object.assign(page('stream', 2), { mainFrame: stand.frame });
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([{ webContents: other } as BrowserWindow]);
+    expectRefused(stand);
+  });
+
+  it('refuses a frame that has no registered BrowserWindow', () => {
+    const stand = programCapture();
+    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([]);
+    expectRefused(stand);
+  });
+
+  it('refuses a missing frame', () => {
+    expectRefused(programCapture(), null);
+  });
+
+  it.each([`${ROOT}index.html`, 'file:///elsewhere/stream.html'])(
+    'refuses capture when Program’s current document is %s',
+    (currentUrl) => {
+      expectRefused(programCapture(streamUrl, currentUrl));
+    },
+  );
 });
 
 describe('E-02: renderers cannot change the document attached to a privileged WebContents', () => {
