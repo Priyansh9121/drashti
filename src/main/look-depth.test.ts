@@ -363,6 +363,37 @@ describe('B · Depth: styles/look-depth.css', () => {
           `${zone}: a pill off its column`,
         ).toBeGreaterThanOrEqual(1.1);
       }
+      // The sections under LIVE (the alpha.25 list's item 10, uilook's hands-on row 7): a pill on a section's row stands
+      // off the row, not only off its column, at rest and pressed (dark was 1.06:1 and 1.00:1), its three states apart,
+      // and every word at 4.5:1 on each.
+      const right: Record<string, string> = { ...a.colours, ...zones.right };
+      const row = drawn(own['--state-row'] ?? '', right, zones.right.panel);
+      const onRow = {
+        ...own,
+        ...block(`${SCOPE} [data-testid='live-rest'] > div > *`),
+        ...block(`${SCOPE}[data-base='${base}'] [data-testid='live-rest'] > div > *`),
+      };
+      const pill: Record<string, string> = {
+        rest: drawn(onRow['--state-fill'] ?? '', right, row),
+        hover: drawn(onRow['--state-hover'] ?? '', right, row),
+        press: drawn(onRow['--state-press'] ?? '', right, row),
+      };
+      for (const [place, bg] of Object.entries(pill))
+        for (const word of WORDS) {
+          const ratio = contrastRatio(a.colours[word], bg);
+          if (ratio < 4.5) low.push(`a section's row, ${place} (${bg}): ${word} ${ratio.toFixed(2)}:1`);
+        }
+      expect(contrastRatio(pill['rest'] ?? '', row), 'a pill off its section’s row').toBeGreaterThanOrEqual(1.1);
+      expect(contrastRatio(pill['press'] ?? '', row), 'a pressed pill off its row').toBeGreaterThanOrEqual(1.1);
+      expect(pill['hover'], 'on a row: hover').not.toBe(pill['rest']);
+      expect(pill['press'], 'on a row: press').not.toBe(pill['rest']);
+      expect(pill['press'], 'on a row: press').not.toBe(pill['hover']);
+      // LIVE's ring round the live picture by itself, as strong as its pin above (under 0.3) lets it be (item 10: it
+      // was 1.22:1 on a dark side column; LIVE itself is carried at 3:1 or more by its red frame).
+      const ring = drawn(look['--state-live-ring'] ?? '', right, zones.right.panel);
+      expect(contrastRatio(ring, zones.right.panel), 'LIVE’s ring by itself').toBeGreaterThanOrEqual(
+        base === 'dark' ? 1.28 : 1.5,
+      );
       expect(low).toEqual([]);
     });
 });
