@@ -143,7 +143,7 @@ function ImportStatus() {
           label="Import"
           className="w-24 shrink-0"
         />
-        <Button variant="ghost" size="sm" className="h-6" onClick={() => void cancelImport(active.runId)}>
+        <Button variant="ghost" size="sm" className="h-6!" onClick={() => void cancelImport(active.runId)}>
           Cancel
         </Button>
       </div>
@@ -157,7 +157,7 @@ function ImportStatus() {
       >
         {finished.totals.failed > 0 && <AlertTriangle size={13} aria-label="Problems" className="shrink-0" />}
         <Truncate text={describeRun(finished)} />
-        <Button variant="ghost" size="sm" className="h-6" onClick={dismissFinished}>
+        <Button variant="ghost" size="sm" className="h-6!" onClick={dismissFinished}>
           Dismiss
         </Button>
       </div>
@@ -186,7 +186,7 @@ function SaveStatus({ platform }: { platform: string }) {
         <Button
           variant="ghost"
           size="sm"
-          className="h-6"
+          className="h-6!"
           data-testid="save-stop"
           onClick={() => void stopSave(going.id)}
         >
@@ -218,11 +218,11 @@ function SaveStatus({ platform }: { platform: string }) {
         }
       />
       {last.state === 'done' && (
-        <Button variant="secondary" size="sm" className="h-6" onClick={() => void showSave(last.id)}>
+        <Button variant="secondary" size="sm" className="h-6!" onClick={() => void showSave(last.id)}>
           {platform === 'darwin' ? 'Show in Finder' : 'Show in Explorer'}
         </Button>
       )}
-      <Button variant="ghost" size="sm" className="h-6" onClick={dismiss}>
+      <Button variant="ghost" size="sm" className="h-6!" onClick={dismiss}>
         Dismiss
       </Button>
     </div>
@@ -380,7 +380,7 @@ function LinkConversionStatus() {
       <Truncate text={text} />
       <Button
         size="sm"
-        className="h-6 shrink-0"
+        className="h-6! shrink-0"
         aria-label={`Stop converting ${job.name}`}
         onClick={() => void cancelLinkConversion(job.id)}
       >

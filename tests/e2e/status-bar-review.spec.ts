@@ -27,7 +27,9 @@ const bar = (win: Page) => win.locator('footer[aria-label="Status"]');
 async function tell<C extends EventChannel>(app: ElectronApplication, channel: C, value: EventContract[C]) {
   await app.evaluate(
     ({ BrowserWindow }, { channel, value }) => {
-      const operator = BrowserWindow.getAllWindows().find((w) => /index\.html/u.test(w.webContents.getURL()));
+      const operator = BrowserWindow.getAllWindows().find((w) =>
+        w.webContents.getURL().includes('index.html'),
+      );
       if (!operator) throw new Error('no operator window');
       operator.webContents.send(channel, value);
     },
@@ -197,13 +199,22 @@ for (const mode of ['pro', 'simple'] as const)
           { screenId: 'placeholder-2', state: 'showing', displayId: 2, restarts: 4 },
         ];
         for (const fault of faults) {
-          await tell(app, IPC.screens.changed, { ...snapshot, status: [showing[0]!, fault] });
+          await tell(app, IPC.screens.changed, {
+            ...snapshot,
+            status: [{ screenId: 'placeholder-1', state: 'showing', displayId: 1 }, fault],
+          });
           const words = fault.restarts
             ? 'keeps restarting'
             : fault.state === 'stopped'
               ? 'stopped'
               : 'display not connected';
           await expect(win.getByTestId('screens-summary')).toContainText(words);
+          // The separate, existing top-of-window stopped-screen notice is outside this footer regression.
+          // Close it as an operator may, leaving the stopped state and every position/fit assertion intact.
+          if (fault.state === 'stopped') {
+            await win.getByTestId('screen-stopped-notice').getByRole('button', { name: 'Dismiss' }).click();
+            await expect(win.getByTestId('screen-stopped-notice')).toHaveCount(0);
+          }
           const where = `${mode} ${size.width}, ${words}`;
           expect.soft(await steady(win), where).toEqual(before);
           await fits(win, where);
@@ -250,84 +261,89 @@ async function ring(win: Page, button: Locator, where: string) {
   expect.soft(faults, where).toEqual([]);
 }
 
-test('MUST-3: import Cancel/Dismiss, MP4 Stop/Show/Dismiss and conversion Stop are exactly 24 px with their edge and keyboard ring whole', async () => {
-  const { app, userData } = await launchApp({ DRASHTI_TEST_STAGE_AT_START: '' });
-  try {
-    const win = await operatorPage(app);
-    await operatorReady(win);
-    const file = join(userData, 'Placeholder status task.txt');
-    writeFileSync(file, 'title: Placeholder task\n\nPlaceholder first line\nPlaceholder second line\n');
-    await openLibrary(win);
-    await dropFiles(win, win.getByTestId('library-drop'), [file]);
-    const result = win.getByTestId('import-result');
-    await expect(result).toBeVisible();
-    for (const size of [CI_WINDOW, WIDE]) {
-      await sizeOperatorWindow(app, win, size);
-      await ring(win, result.getByRole('button', { name: 'Dismiss' }), `import result ${size.width}`);
-      await tell(app, IPC.library.importProgress, {
-        runId: 'placeholder-import',
-        phase: 'importing',
-        done: 1,
-        total: 2,
-        current: 'Placeholder task.txt',
-      });
-      await expect(win.getByTestId('import-progress')).toBeVisible();
-      await ring(
-        win,
-        win.getByTestId('import-progress').getByRole('button', { name: 'Cancel' }),
-        `import Cancel ${size.width}`,
-      );
-      await tell(app, IPC.library.importProgress, {
-        runId: 'placeholder-import',
-        phase: 'finished',
-        done: 2,
-        total: 2,
-        current: null,
-      });
+for (const mode of ['pro', 'simple'] as const)
+  test(`MUST-3 ${mode}: import Cancel/Dismiss, MP4 Stop/Show/Dismiss and conversion Stop are exactly 24 px with their edge and keyboard ring whole`, async () => {
+    const { app, userData } = await launchApp({ DRASHTI_TEST_STAGE_AT_START: '' });
+    try {
+      const win = await operatorPage(app);
+      await operatorReady(win);
+      const file = join(userData, 'Placeholder status task.txt');
+      writeFileSync(file, 'title: Placeholder task\n\nPlaceholder first line\nPlaceholder second line\n');
+      await openLibrary(win);
+      await dropFiles(win, win.getByTestId('library-drop'), [file]);
+      const result = win.getByTestId('import-result');
       await expect(result).toBeVisible();
-      const job: SaveJob = {
-        id: `placeholder-save-${size.width}`,
-        mediaId: 'placeholder-media',
-        name: 'Placeholder MP4',
-        state: 'saving',
-        progress: 0.5,
-        note: null,
-        message: null,
-        path: null,
-        added: false,
-      };
-      await tell(app, IPC.media.savesChanged, [job]);
-      await expect(win.getByTestId('save-progress')).toBeVisible();
-      await ring(win, win.getByTestId('save-stop'), `save Stop ${size.width}`);
-      await tell(app, IPC.media.savesChanged, [{ ...job, state: 'done', progress: 1 }]);
-      const save = win.getByTestId('save-result');
-      await expect(save).toBeVisible();
-      for (const button of await save.getByRole('button').all())
-        await ring(win, button, `save result ${size.width}`);
-      await tell(app, IPC.media.savesChanged, []);
-      await tell(app, IPC.media.conversionsChanged, [
-        {
-          id: 'placeholder-conversion',
+      if (mode === 'simple') {
+        await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+        await expect(win.getByTestId('simple-mode')).toBeVisible();
+      }
+      for (const size of [CI_WINDOW, WIDE]) {
+        await sizeOperatorWindow(app, win, size);
+        await ring(win, result.getByRole('button', { name: 'Dismiss' }), `import result ${size.width}`);
+        await tell(app, IPC.library.importProgress, {
+          runId: 'placeholder-import',
+          phase: 'importing',
+          done: 1,
+          total: 2,
+          current: 'Placeholder task.txt',
+        });
+        await expect(win.getByTestId('import-progress')).toBeVisible();
+        await ring(
+          win,
+          win.getByTestId('import-progress').getByRole('button', { name: 'Cancel' }),
+          `import Cancel ${size.width}`,
+        );
+        await tell(app, IPC.library.importProgress, {
+          runId: 'placeholder-import',
+          phase: 'finished',
+          done: 2,
+          total: 2,
+          current: null,
+        });
+        await expect(result).toBeVisible();
+        const job: SaveJob = {
+          id: `placeholder-save-${size.width}`,
           mediaId: 'placeholder-media',
-          name: 'Placeholder link',
-          state: 'converting',
+          name: 'Placeholder MP4',
+          state: 'saving',
           progress: 0.5,
           note: null,
           message: null,
-          maxHeight: 720,
-          convertedId: null,
-          convertedName: null,
-          conversionId: null,
-        },
-      ]);
-      const stop = win
-        .getByTestId('link-conversion-status')
-        .getByRole('button', { name: 'Stop converting Placeholder link' });
-      await expect(stop).toBeVisible();
-      await ring(win, stop, `conversion Stop ${size.width}`);
-      await tell(app, IPC.media.conversionsChanged, []);
+          path: null,
+          added: false,
+        };
+        await tell(app, IPC.media.savesChanged, [job]);
+        await expect(win.getByTestId('save-progress')).toBeVisible();
+        await ring(win, win.getByTestId('save-stop'), `save Stop ${size.width}`);
+        await tell(app, IPC.media.savesChanged, [{ ...job, state: 'done', progress: 1 }]);
+        const save = win.getByTestId('save-result');
+        await expect(save).toBeVisible();
+        for (const button of await save.getByRole('button').all())
+          await ring(win, button, `save result ${size.width}`);
+        await tell(app, IPC.media.savesChanged, []);
+        await tell(app, IPC.media.conversionsChanged, [
+          {
+            id: 'placeholder-conversion',
+            mediaId: 'placeholder-media',
+            name: 'Placeholder link',
+            state: 'converting',
+            progress: 0.5,
+            note: null,
+            message: null,
+            maxHeight: 720,
+            convertedId: null,
+            convertedName: null,
+            conversionId: null,
+          },
+        ]);
+        const stop = win
+          .getByTestId('link-conversion-status')
+          .getByRole('button', { name: 'Stop converting Placeholder link' });
+        await expect(stop).toBeVisible();
+        await ring(win, stop, `conversion Stop ${size.width}`);
+        await tell(app, IPC.media.conversionsChanged, []);
+      }
+    } finally {
+      await app.close();
     }
-  } finally {
-    await app.close();
-  }
-});
+  });
