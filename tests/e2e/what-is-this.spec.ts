@@ -292,6 +292,19 @@ test('every ? card is drawn over the window, not in it: nothing moves as it open
       await expect(ask, `${where}: the keyboard back on its ?`).toBeFocused();
     }
   }
+  // Keep the same card open while the columns apply their new widths after each native resize event.
+  await win.getByTestId('what-is-this-live').click();
+  await expect(card).toBeVisible();
+  for (const size of [CI_WINDOW, { width: 1410, height: 900 }]) {
+    await win.setViewportSize(size);
+    await settledRead(win, size, () => layout(win), 'the resized window with its card still open');
+    await expect
+      .poll(() => cardFaults(win), { message: 'the open card follows the resized columns' })
+      .toEqual([]);
+    await expect(card.getByRole('button', { name: 'Got it' })).toBeFocused();
+  }
+  await win.keyboard.press('Escape');
+  await expect(card).toHaveCount(0);
   await app.close();
 });
 

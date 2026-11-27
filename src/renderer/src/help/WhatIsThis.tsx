@@ -209,6 +209,13 @@ export function useWhatIsThis(
       if (!(at instanceof Node) || card.contains(at) || ask.contains(at)) return;
       if (windowPartOf(ask).contains(at)) setOpenIn(null);
     };
+    // Columns can apply their new widths after the native resize event. Follow the laid-out sizes too, including
+    // a hidden ? or words wrapping in the card, so an open card stays clear of LIVE as the window changes.
+    const resize = new ResizeObserver(put);
+    resize.observe(ask);
+    resize.observe(card);
+    const middle = ask.ownerDocument.querySelector('[data-zone="middle"]');
+    if (middle) resize.observe(middle);
     const stop = new AbortController();
     const { signal } = stop;
     window.addEventListener('resize', put, { signal });
@@ -218,6 +225,7 @@ export function useWhatIsThis(
     document.addEventListener('pointerdown', pointer, { capture: true, signal });
     return () => {
       stop.abort();
+      resize.disconnect();
     };
   }, [shown]);
 
