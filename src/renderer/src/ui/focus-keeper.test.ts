@@ -218,6 +218,52 @@ describe('the operator focus keeper', () => {
     expect(page.activeElement).toBe(main);
   });
 
+  it('recovers a removed rename field in its region while its focusable list remains', () => {
+    const region = page.node('section', { 'aria-label': 'Playlists' });
+    const list = page.node('ul', { tabindex: '-1' }, region);
+    const field = page.node('input', { 'data-testid': 'rename-field' }, list);
+    keeper.installFocusKeeper();
+    field.focus();
+    field.remove();
+    page.frame();
+    expect(page.activeElement).toBe(page.body);
+    page.frame();
+    expect(list.isConnected).toBe(true);
+    expect(page.activeElement).toBe(region);
+    expect(region.hasAttribute('data-focus-kept')).toBe(true);
+  });
+
+  it('recovers a removed item action in its region while its list and other items remain', () => {
+    const region = page.node('section', { 'aria-label': 'Playlist: Placeholder' });
+    const list = page.node('ul', { tabindex: '-1' }, region);
+    const row = page.node('li', {}, list);
+    const remove = page.node('button', {}, row);
+    const other = page.node('button', {}, page.node('li', {}, list));
+    keeper.installFocusKeeper();
+    remove.focus();
+    row.remove();
+    page.settle();
+    expect(list.isConnected).toBe(true);
+    expect(other.isConnected).toBe(true);
+    expect(page.activeElement).toBe(region);
+    expect(list.hasAttribute('data-focus-kept')).toBe(false);
+  });
+
+  it('leaves a moved item the usable focus its list restores during the grace period', () => {
+    const region = page.node('main');
+    const list = page.node('ul', { tabindex: '-1' }, region);
+    const old = page.node('button', {}, list);
+    keeper.installFocusKeeper();
+    old.focus();
+    old.remove();
+    page.frame();
+    const moved = page.node('button', {}, list);
+    moved.focus();
+    page.frame();
+    expect(page.activeElement).toBe(moved);
+    expect(region.hasAttribute('data-focus-kept')).toBe(false);
+  });
+
   it('keeps focus in the new header when the old mode and its header go together', () => {
     const mode = page.node('div');
     const header = page.node('header', {}, mode);
