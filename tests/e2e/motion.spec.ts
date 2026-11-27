@@ -1056,7 +1056,9 @@ test('a show control near a fold: insides holding one are there at once, nothing
     // rectangle can reach the footer even though the copy is clipped to the column (Windows red 46036239333).
     const whole = win.getByTestId(`group-${SECTION}-toggle`).locator('xpath=ancestor::section[1]');
     await whole.scrollIntoViewIfNeeded();
-    await expect(whole, `${motion}: the heading and insides wholly in the column`).toBeInViewport({ ratio: 1 });
+    await expect(whole, `${motion}: the heading and insides wholly in the column`).toBeInViewport({
+      ratio: 1,
+    });
     const drawn = !noChip && (await standing(win)) && !(await willScrollBack(win));
     const show = win.getByTestId('lower-third-show').first();
     const showAt = await show.boundingBox();
