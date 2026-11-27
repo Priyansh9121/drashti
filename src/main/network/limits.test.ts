@@ -92,7 +92,6 @@ describe('the pages’ files', () => {
   });
 });
 
-
 it('SECNET-L01: sweeps refilled idle buckets without refreshing an active abusive key', () => {
   let t = 0;
   const limit = new RateLimiter(2, 3, () => t);
@@ -100,7 +99,7 @@ it('SECNET-L01: sweeps refilled idle buckets without refreshing an active abusiv
   t = 1000;
   expect(limit.take('active', 3)).toBe(true);
   expect(limit.take('active')).toBe(false);
-  expect(limit['buckets'].size).toBe(1);
+  expect((Reflect.get(limit, 'buckets') as Map<string, unknown>).size).toBe(1);
   t += 500;
   expect(limit.take('active')).toBe(true);
   expect(limit.take('active')).toBe(false);

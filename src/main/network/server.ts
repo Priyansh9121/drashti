@@ -1,3 +1,4 @@
+import { deviceMessage } from './feed-message';
 import { randomUUID } from 'node:crypto';
 import { createReadStream, type ReadStream } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -1113,15 +1114,19 @@ export class NetworkServer {
         ws.terminate();
         return;
       }
-      let message: FromDevice;
+      let message: unknown;
       try {
         const bytes = Array.isArray(data)
           ? Buffer.concat(data)
           : Buffer.isBuffer(data)
             ? data
             : Buffer.from(data);
-        message = JSON.parse(bytes.toString('utf8')) as FromDevice;
+        message = JSON.parse(bytes.toString('utf8'));
       } catch {
+        ws.terminate();
+        return;
+      }
+      if (!deviceMessage(message)) {
         ws.terminate();
         return;
       }
@@ -1132,6 +1137,7 @@ export class NetworkServer {
     });
     ws.on('close', () => {
       clearTimeout(hello);
+      this.feedMessages.forget(client.id);
       this.clients.delete(client);
       this.updateConnected();
     });

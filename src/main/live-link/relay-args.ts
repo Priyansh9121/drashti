@@ -1,3 +1,4 @@
+import type { Authority } from '../network/outbound-policy';
 import { join } from 'node:path';
 
 /*
@@ -21,7 +22,17 @@ const SEGMENT_PATTERN = 'seg-%06d.ts';
 /** The protocols FFmpeg may use for the link and everything its playlists name (HLS's encrypted segments too). */
 export const RELAY_PROTOCOLS = 'http,https,tcp,tls,crypto';
 
+interface RelayPolicy {
+  authority: Authority;
+  guard: boolean;
+}
+const checkedInputs = new WeakMap<string[], RelayPolicy>();
+/** Only the trusted playlist reader can authorize a relay input. */
+export const relayPolicy = (args: string[]): RelayPolicy | null => checkedInputs.get(args) ?? null;
+
 export interface RelayInput {
+  authority?: Authority;
+  guard?: boolean;
   /** The playlist to receive: a master playlist (with `program`) or a media playlist. */
   url: string;
   /** A master playlist's variant to take (FFmpeg's program for it: its place in the master); null for a media playlist. */
@@ -36,7 +47,7 @@ export interface RelayInput {
 
 export function relayArgs(input: RelayInput): string[] {
   const p = input.program;
-  return [
+  const args = [
     ...['-hide_banner', '-loglevel', 'error', '-nostdin'],
     // Only the web, for the link and anything its playlists name.
     ...['-protocol_whitelist', RELAY_PROTOCOLS],
@@ -60,4 +71,6 @@ export function relayArgs(input: RelayInput): string[] {
     ...['-hls_segment_filename', join(input.dir, SEGMENT_PATTERN)],
     join(input.dir, LOCAL_PLAYLIST),
   ];
+  if (input.authority) checkedInputs.set(args, { authority: input.authority, guard: input.guard === true });
+  return args;
 }

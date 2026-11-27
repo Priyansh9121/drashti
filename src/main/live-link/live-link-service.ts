@@ -1,3 +1,4 @@
+import type { Authority } from '../network/outbound-policy';
 import { join } from 'node:path';
 import type { CommandResult } from '../../shared/engine/commands';
 import type { EngineState } from '../../shared/engine/state';
@@ -11,7 +12,7 @@ import {
   type StreamLinkState,
   type StreamLinkStatus,
 } from '../../shared/live-link';
-import { guardAllows, type PlaylistFetch } from './fetch-playlist';
+import { guardAllows, requirePublicPlaylist, type PlaylistFetch } from './fetch-playlist';
 import { chooseVariant, readPlaylist } from './hls-playlist';
 import { relayArgs } from './relay-args';
 import { youtubeLiveStream } from './youtube-live';
@@ -179,6 +180,7 @@ const pipKey = (s: EngineState): string | null =>
   s.layers.pip ? `${s.layers.pip.source.kind}@${String(s.layers.pip.shownAt)}` : null;
 
 interface Source {
+  authority?: Authority;
   /** What FFmpeg receives: a media playlist, or a master playlist with its variant's program. */
   url: string;
   program: number | null;
@@ -407,6 +409,7 @@ export class LiveLinkService {
   ): Promise<{ ok: true; source: Source } | { ok: false; message: string; ended?: boolean }> {
     let url = link.link;
     if (link.kind === 'youtube') {
+      if (!this.deps.guard) requirePublicPlaylist(link.abort.signal);
       // Started again: the stream yt-dlp gave first, while it still answers.
       if (again && link.source) {
         const kept = await this.read(link.source.url, link);
@@ -435,10 +438,20 @@ export class LiveLinkService {
     if (read.kind === 'master') {
       const variant = chooseVariant(read.variants);
       if (!variant) return { ok: false, message: 'That stream has no picture Drashti can show.' };
-      return { ok: true, source: { url: got.url, program: variant.index } };
+      return {
+        ok: true,
+        source: {
+          url: got.url,
+          program: variant.index,
+          ...(got.authority ? { authority: got.authority } : {}),
+        },
+      };
     }
     if (read.ended) return { ok: false, message: 'That stream has ended.', ended: true };
-    return { ok: true, source: { url: got.url, program: null } };
+    return {
+      ok: true,
+      source: { url: got.url, program: null, ...(got.authority ? { authority: got.authority } : {}) },
+    };
   }
 
   // ---- the relay ----------------------------------------------------------------------------------------------------
@@ -446,7 +459,14 @@ export class LiveLinkService {
   private startRelay(link: Link): boolean {
     if (!link.source) return false;
     const run = this.deps.startRelay(
-      relayArgs({ url: link.source.url, program: link.source.program, dir: link.dir, again: link.written }),
+      relayArgs({
+        url: link.source.url,
+        program: link.source.program,
+        dir: link.dir,
+        again: link.written,
+        authority: link.source.authority,
+        guard: this.deps.guard,
+      }),
     );
     if (!run) return false;
     link.relay = run;

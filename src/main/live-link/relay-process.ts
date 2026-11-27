@@ -3,7 +3,8 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { constants, setPriority } from 'node:os';
 import type { LocalProgress, RelayRun } from './live-link-service';
-import { LOCAL_PLAYLIST } from './relay-args';
+import { LOCAL_PLAYLIST, relayPolicy } from './relay-args';
+import { CheckedHls } from './checked-hls';
 
 /*
  * The stream link's FFmpeg as a process (alpha.20, slice 8): below normal priority, so the show always comes first,
@@ -18,32 +19,58 @@ export function startRelay(
   args: string[],
   children: { started(pid: number): void; ended(pid: number): void },
 ): RelayRun | null {
-  if (!ffmpeg) return null;
-  const child = spawn(ffmpeg, args, { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
-  const pid = child.pid;
-  if (pid !== undefined) {
+  const policy = relayPolicy(args);
+  const inputAt = args.indexOf('-i');
+  const url = args[inputAt + 1];
+  if (!ffmpeg || !policy || inputAt < 0 || !url) return null;
+  const proxy = new CheckedHls(policy.authority, { guard: policy.guard });
+  let child: ReturnType<typeof spawn> | null = null;
+  const stopped = new AbortController();
+  const done = (async (): Promise<{ code: number | null }> => {
     try {
-      setPriority(pid, constants.priority.PRIORITY_BELOW_NORMAL);
+      const input = await proxy.start(url);
+      stopped.signal.throwIfAborted();
+      const checked = [...args];
+      checked[inputAt + 1] = input;
+      const protocols = checked.indexOf('-protocol_whitelist');
+      if (protocols < 0) return { code: null };
+      // HTTPS and TLS are handled only by the gateway. No raw remote playlist reaches FFmpeg.
+      checked[protocols + 1] = 'http,tcp,crypto';
+      checked.splice(inputAt, 0, '-format_whitelist', 'hls,mpegts,mov,aac,mp3,webvtt');
+      const env = Object.fromEntries(
+        Object.entries(process.env).filter(([key]) => !/^(http|https|all|no)_proxy$/iu.test(key)),
+      );
+      child = spawn(ffmpeg, checked, { env, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+      const running = child;
+      const pid = running.pid;
+      if (pid !== undefined) {
+        try {
+          setPriority(pid, constants.priority.PRIORITY_BELOW_NORMAL);
+        } catch {
+          /* Same priority policy. */
+        }
+        children.started(pid);
+      }
+      running.stderr?.resume();
+      return await new Promise<{ code: number | null }>((resolve) => {
+        running.once('error', () => resolve({ code: null }));
+        running.once('close', (code) => {
+          if (pid !== undefined) children.ended(pid);
+          resolve({ code });
+        });
+      });
     } catch {
-      // Not allowed here: it runs as Drashti does, and copies only.
+      return { code: null };
+    } finally {
+      await proxy.close();
     }
-    children.started(pid);
-  }
-  // Read and let go (never logged), so its error output never fills and holds it up.
-  child.stderr.resume();
-  const done = new Promise<{ code: number | null }>((resolve) => {
-    child.once('error', () => {
-      resolve({ code: null });
-    });
-    child.once('close', (code) => {
-      if (pid !== undefined) children.ended(pid);
-      resolve({ code });
-    });
-  });
+  })();
   return {
     done,
     stop: () => {
-      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+      stopped.abort();
+      if (child?.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+      void proxy.close();
     },
   };
 }
