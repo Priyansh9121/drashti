@@ -89,25 +89,60 @@ const asksInSight = (win: Page) =>
 
 /**
  * A ? lying over another target, in words (more than half a pixel each way, as fit.ts counts it): a 24 px ? in a 20 px
- * room reaches into the gaps beside it, never onto what is past them.
+ * room reaches into the gaps beside it, never onto what is past them. What is in sight of each is compared (cut by
+ * every box around it that hides its overflow or scrolls, and by the window, as fit.ts's inSight): a section under LIVE
+ * scrolled past the column's end lies under the bar along the bottom, out of sight, and is no target there.
  */
 const asksOverOthers = (win: Page) =>
   win.evaluate((controls) => {
+    interface Box {
+      left: number;
+      top: number;
+      right: number;
+      bottom: number;
+    }
+    const meet = (a: Box, b: Box): Box | null => {
+      const m = {
+        left: Math.max(a.left, b.left),
+        top: Math.max(a.top, b.top),
+        right: Math.min(a.right, b.right),
+        bottom: Math.min(a.bottom, b.bottom),
+      };
+      return m.right - m.left > 0.5 && m.bottom - m.top > 0.5 ? m : null;
+    };
+    /** What of `el` is in sight: its box cut by the window and by every box around it that does not show overflow. */
+    const seen = (el: Element): Box | null => {
+      if (el.getClientRects().length === 0) return null;
+      let box: Box | null = meet(el.getBoundingClientRect(), {
+        left: 0,
+        top: 0,
+        right: innerWidth,
+        bottom: innerHeight,
+      });
+      for (let at = el.parentElement; at && box; at = at.parentElement) {
+        const style = getComputedStyle(at);
+        const r = at.getBoundingClientRect();
+        if (style.overflowX !== 'visible') box = meet(box, { ...box, left: r.left, right: r.right });
+        if (box && style.overflowY !== 'visible') box = meet(box, { ...box, top: r.top, bottom: r.bottom });
+      }
+      return box;
+    };
     const out: string[] = [];
-    const inSight = (el: Element) => el.getClientRects().length > 0;
-    const others = [...document.querySelectorAll(controls)].filter(inSight);
-    for (const ask of [...document.querySelectorAll('[data-what-is-this]')].filter(inSight)) {
-      const a = ask.getBoundingClientRect();
-      for (const other of others) {
+    const others = [...document.querySelectorAll(controls)].flatMap((el) => {
+      const box = seen(el);
+      return box ? [{ el, box }] : [];
+    });
+    for (const ask of document.querySelectorAll('[data-what-is-this]')) {
+      const a = seen(ask);
+      if (!a) continue;
+      for (const { el: other, box: b } of others) {
         if (other === ask || other.contains(ask) || ask.contains(other)) continue;
-        const b = other.getBoundingClientRect();
-        const across = Math.min(a.right, b.right) - Math.max(a.left, b.left);
-        const down = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
-        if (across > 0.5 && down > 0.5) {
+        const both = meet(a, b);
+        if (both) {
           const name =
             other.getAttribute('data-testid') ?? other.getAttribute('aria-label') ?? other.textContent.trim();
           out.push(
-            `${ask.getAttribute('aria-label') ?? ''} over ${name.slice(0, 40)} (${across.toFixed(1)} × ${down.toFixed(1)} px)`,
+            `${ask.getAttribute('aria-label') ?? ''} over ${name.slice(0, 40)} (${(both.right - both.left).toFixed(1)} × ${(both.bottom - both.top).toFixed(1)} px)`,
           );
         }
       }
