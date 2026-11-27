@@ -212,8 +212,9 @@ export function ZoomablePreview({
 }
 
 /**
- * Under the LIVE preview, while a picture is up: + / − / Reset, and Keep this zoom once it is zoomed live (Pro Mode's:
- * Simple Mode zooms the screens and never changes the library, Session 55).
+ * Under Next, Back and the time bars (since alpha.24, lead 2's cuestill: under the LIVE preview before, so they moved
+ * Next and Back), while a picture is up: + / − / Reset, and Keep this zoom once it is zoomed live (Pro Mode's: Simple
+ * Mode zooms the screens and never changes the library, Session 55).
  */
 export function LiveZoomControls() {
   const state = useEngine((s) => s.state);

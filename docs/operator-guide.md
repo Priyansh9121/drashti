@@ -233,7 +233,7 @@ In the studio, **Save** keeps it, **Show** puts it up (**Save and show** when it
 
 ![A playlist's menu, with Share with Phones and Tablets](screenshots/share-with-phones.png)
 
-**Zooming the picture on the screens.** While a picture is up (a picture item, or a slide that is a picture, such as a PDF or PowerPoint page), scroll or pinch over the **LIVE** picture to zoom it and drag it to move it, or use **+** and **−** under it; on a touch screen, two fingers pinch and move it. The picture moves with the pointer, on a turned or cropped PDF page too. Every screen follows smoothly, together. It lasts for that showing: the next slide comes up as it is kept. **Reset**, or a double click (or a double tap) on the picture, goes back; **Keep this zoom** (Pro Mode only) saves it with the picture, so it shows that way wherever it shows from then on. Simple Mode zooms too. A picture's zoom and enhancements are set once in the **Picture editor** (`docs/admin-guide.md`, section 10).
+**Zooming the picture on the screens.** While a picture is up (a picture item, or a slide that is a picture, such as a PDF or PowerPoint page), scroll or pinch over the **LIVE** picture to zoom it and drag it to move it, or use **+** and **−** under **Back** and **Next**; on a touch screen, two fingers pinch and move it. The picture moves with the pointer, on a turned or cropped PDF page too. Every screen follows smoothly, together. It lasts for that showing: the next slide comes up as it is kept. **Reset**, or a double click (or a double tap) on the picture, goes back; **Keep this zoom** (Pro Mode only) saves it with the picture, so it shows that way wherever it shows from then on. Simple Mode zooms too. A picture's zoom and enhancements are set once in the **Picture editor** (`docs/admin-guide.md`, section 10).
 
 ![The picture on the screens zoomed from LIVE, with Keep this zoom](screenshots/live-zoom.png)
 
@@ -608,7 +608,7 @@ To keep it as a file too, tick **Also save a copy to a file** before **Combine**
 
 ## 15. Cue a video
 
-In Pro Mode, right-click a ready video row and choose **Cue**. LIVE keeps showing the current scene while the video loads paused at its first start point. The cue card shows its first frame and **Preparing first frame…**, then **Cue ready**. Press **Go** to start it on the screens at one shared moment, or **Cancel** to remove it. Go uses the file and points selected when you cued it. A screen that reloads must get ready again. After an unexpected restart, a manual cue waits paused for another Go.
+In Pro Mode, right-click a ready video row and choose **Cue**. LIVE keeps showing the current scene while the video loads paused at its first start point. The cue card, under **Back**, **Next** and **Oops** (and the time bars while something plays), shows its first frame and **Preparing first frame…**, then **Cue ready**. Press **Go** to start it on the screens at one shared moment, or **Cancel** to remove it. Go uses the file and points selected when you cued it. A screen that reloads must get ready again. After an unexpected restart, a manual cue waits paused for another Go.
 
 Cue waits for the desired **Edit Video…** copy to be **Ready for next showing**. Saving new edits cancels that video’s private cue; cue it again after the copy is ready. A video already up keeps its file. Prepare edits before starting the show, stream or recording.
 

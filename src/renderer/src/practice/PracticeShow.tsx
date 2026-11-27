@@ -10,6 +10,7 @@ import { openWelcome } from '../setup/Welcome';
 import { Columns } from '../operator/Layout';
 import { LivePreview } from '../operator/LivePreview';
 import { NextBack } from '../operator/NextBack';
+import { VideoCueStrip } from '../operator/VideoCueStrip';
 import type { OperatorAction } from '../../../shared/keymap';
 import { runPractice, stopPractice, usePractice } from './practice-store';
 
@@ -60,6 +61,11 @@ export function PracticeShow({ platform, run }: { platform: string; run: (action
           <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
             <LivePreview />
             <NextBack platform={platform} run={run} />
+            {/* The cued video's card, as LIVE drew it here before alpha.24 (lead 2's cuestill: now under Next and Back,
+            as in a show); the live zoom's buttons are the show's, never here. */}
+            <div className="px-3 pt-2 empty:hidden">
+              <VideoCueStrip />
+            </div>
           </aside>
         }
       />

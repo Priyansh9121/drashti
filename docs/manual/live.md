@@ -170,7 +170,7 @@ This is offered in Simple Mode too. For an audio playlist that carries on from i
 **How:**
 
 1. Put a picture up.
-2. Scroll or pinch over **LIVE** to zoom; drag to move it. Or use **+** and **−** under it.
+2. Scroll or pinch over **LIVE** to zoom; drag to move it. Or use **+** and **−** under **Back** and **Next**.
 3. Double-click it (or press **Reset**) to go back.
 4. **Keep this zoom** saves it with the picture for next time.
 
