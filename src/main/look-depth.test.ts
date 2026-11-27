@@ -285,16 +285,21 @@ describe('B · Depth: styles/look-depth.css', () => {
     // Library sheet and an Undo line have backgrounds of their own over the ring, so their bottom corners are the
     // panel's (a rounded background, no clip), and the sheet draws no line along the foot.
     for (const id of ['library-sheet', 'undo-removal']) {
-      const foot = rules.find((r) => r.selector === `${SCOPE} [data-testid='${id}']`);
+      const foot = rules.find(
+        (r) => r.selector.startsWith(SCOPE) && r.selector.endsWith(`[data-testid='${id}']`),
+      );
       expect(foot?.decls, id).toMatchObject({
         'border-bottom-left-radius': 'var(--radius-panel)',
         'border-bottom-right-radius': 'var(--radius-panel)',
       });
       expect(foot?.decls['overflow'], id).toBeUndefined();
     }
-    expect(rules.find((r) => r.selector === `${SCOPE} [data-testid='library-sheet']`)?.decls).toMatchObject({
-      'border-bottom-color': 'transparent',
-    });
+    // The sheet only while it reaches the foot: an Undo line (or its room) under it is the foot then.
+    const sheet = rules.find((r) => r.selector.endsWith("[data-testid='library-sheet']"));
+    expect(sheet?.selector).toBe(
+      `${SCOPE} [data-testid='column-left']:not(:has([data-testid='undo-removal'], [data-testid='undo-room'])) [data-testid='library-sheet']`,
+    );
+    expect(sheet?.decls).toMatchObject({ 'border-bottom-color': 'transparent' });
   });
 
   it('LIVE is a red ring and a light red tint, never a glow: the live picture and the live row', () => {
