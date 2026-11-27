@@ -283,6 +283,33 @@ describe('B · Depth: styles/look-depth.css', () => {
     expect(block(`${SCOPE} [data-testid='column-right'] [data-testid='live-preview']`)['margin-inline']).toBe(
       'calc(-1 * var(--depth-gap))',
     );
+    // Back, Next and the next picture's row and Oops's line with it, so they line up with the picture's edges as in a
+    // flat look (lead 2's lookcheck of a24-lookgap: they were 4 px inside them; look-depth.spec measures it): by their
+    // own padding (px-3) less the gap, never a margin past the column's room.
+    expect(
+      block(
+        `${SCOPE} [data-testid='column-right'] :is(:has(> [data-testid='show-back']), :has(> [data-testid='show-oops']))`,
+      )['padding-inline'],
+    ).toBe('calc(var(--spacing) * 3 - var(--depth-gap))');
+  });
+
+  it('Follow the computer’s picture in the Appearance window draws in Depth’s own colours, this file’s', () => {
+    // The alpha.25 list's item 9: appearance/DepthPreview.tsx draws Follow the computer's picture as Depth draws the
+    // window (follow-preview.test.ts reads what it draws); its ground, a panel's light and LIVE's ring are these.
+    const file = join(renderer, 'appearance', 'DepthPreview.tsx');
+    const preview = existsSync(file) ? readFileSync(file, 'utf8') : '';
+    for (const base of ['dark', 'light'] as const) {
+      const look = block(`${SCOPE}[data-base='${base}']`);
+      const own = new RegExp(
+        `\\b${base}: \\{ ground: '(#[0-9a-f]+)', light: '(#[0-9a-f]+)', ring: '(#[0-9a-f]+)' \\}`,
+        'u',
+      ).exec(preview);
+      expect(own?.slice(1), `${base}: DepthPreview.tsx's colours`).toEqual([
+        look['--depth-ground'],
+        look['--elev-light'],
+        look['--state-live-ring'],
+      ]);
+    }
   });
 
   it('LIVE is a red ring and a light red tint, never a glow: the live picture and the live row', () => {
@@ -363,6 +390,41 @@ describe('B · Depth: styles/look-depth.css', () => {
           `${zone}: a pill off its column`,
         ).toBeGreaterThanOrEqual(1.1);
       }
+      // The sections under LIVE (the alpha.25 list's item 10, uilook's hands-on row 7): a pill on a section's row stands
+      // off the row, not only off its column, at rest and pressed (dark was 1.06:1 and 1.00:1), its three states apart,
+      // and every word at 4.5:1 on each.
+      const right: Record<string, string> = { ...a.colours, ...zones.right };
+      const row = drawn(own['--state-row'] ?? '', right, zones.right.panel);
+      const onRow = {
+        ...own,
+        ...block(`${SCOPE} [data-testid='live-rest'] > div > *`),
+        ...block(`${SCOPE}[data-base='${base}'] [data-testid='live-rest'] > div > *`),
+      };
+      const pill: Record<string, string> = {
+        rest: drawn(onRow['--state-fill'] ?? '', right, row),
+        hover: drawn(onRow['--state-hover'] ?? '', right, row),
+        press: drawn(onRow['--state-press'] ?? '', right, row),
+      };
+      for (const [place, bg] of Object.entries(pill))
+        for (const word of WORDS) {
+          const ratio = contrastRatio(a.colours[word], bg);
+          if (ratio < 4.5) low.push(`a section's row, ${place} (${bg}): ${word} ${ratio.toFixed(2)}:1`);
+        }
+      expect(contrastRatio(pill['rest'] ?? '', row), 'a pill off its section’s row').toBeGreaterThanOrEqual(
+        1.1,
+      );
+      expect(contrastRatio(pill['press'] ?? '', row), 'a pressed pill off its row').toBeGreaterThanOrEqual(
+        1.1,
+      );
+      expect(pill['hover'], 'on a row: hover').not.toBe(pill['rest']);
+      expect(pill['press'], 'on a row: press').not.toBe(pill['rest']);
+      expect(pill['press'], 'on a row: press').not.toBe(pill['hover']);
+      // LIVE's ring round the live picture by itself, as strong as its pin above (under 0.3) lets it be (item 10: it
+      // was 1.22:1 on a dark side column; LIVE itself is carried at 3:1 or more by its red frame).
+      const ring = drawn(look['--state-live-ring'] ?? '', right, zones.right.panel);
+      expect(contrastRatio(ring, zones.right.panel), 'LIVE’s ring by itself').toBeGreaterThanOrEqual(
+        base === 'dark' ? 1.28 : 1.5,
+      );
       expect(low).toEqual([]);
     });
 });
