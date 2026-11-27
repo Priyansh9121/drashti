@@ -969,7 +969,6 @@ const switchAtOnce = (win: Page, id: string, motions: readonly string[]) =>
   );
 
 test('a change of motion just after a section opens never plays its arrival again: Calm, Off and back; Lively, Calm and back (alpha.24, lead 2’s item 8; the review of uimotion, NOTE-4)', async () => {
-  test.setTimeout(120_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
