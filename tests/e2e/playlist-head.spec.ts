@@ -14,7 +14,9 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * columns as they open, at their least and at their most: the header's controls on one row, and in Pro Mode the chosen
  * presentation's Order, Up and Down on one row (their middles within 1 px: each row centres them, and the ? is smaller
  * than the buttons beside it); nothing cut anywhere in the window (fit.ts's fitFaults); every name, title and test id
- * as before; and nothing in either row moves when the row goes live. Placeholder names only.
+ * as before; the words in sight where they fit (lead 2's ask: From a Link…'s go before Add files…'s, Simple Mode's Add
+ * files… always says its words, both say them in the owner's window as it opens); and nothing in either row moves when
+ * the row goes live. Placeholder names only.
  */
 
 /** The owner's own window (22 Nov 2026, alpha.20.1 on his Mac), in CSS pixels (operator-fit.spec.ts's). */
@@ -148,10 +150,13 @@ for (const mode of ['pro', 'simple'] as const)
         );
         await expect(moves.getByRole('combobox', { name: 'Order', exact: true })).toBeVisible();
       }
-      // Where there is room (the owner's window as it opens) they say their words.
+      // Their words in sight wherever the row has room for them (lead 2: keep the words where they fit): both in the
+      // owner's window as it opens. In sight, not only there: a button showing its icon alone keeps its words unseen.
+      const addWords = addFiles.getByText('Add files…', { exact: true });
+      const linkWords = fromLink.getByText('From a Link…', { exact: true });
       if (size === OWNERS_WINDOW) {
-        await expect(addFiles).toHaveText('Add files…');
-        await expect(fromLink).toHaveText('From a Link…');
+        await expect(addWords).toBeVisible();
+        await expect(linkWords).toBeVisible();
       }
 
       // The row goes live (the kirtan's first slide up): nothing in the header or Order's line moves.
@@ -187,9 +192,15 @@ for (const mode of ['pro', 'simple'] as const)
         const width = Math.round((await header.boundingBox())?.width ?? 0);
         const headerParts = await partsOf(header, HEADER_PARTS);
         const orderParts = mode === 'pro' ? await partsOf(moves, ORDER_PARTS) : [];
+        const words = { addFiles: await addWords.isVisible(), fromLink: await linkWords.isVisible() };
         console.log(
-          `${mode} ${String(size.width)} × ${String(size.height)}, the columns ${state}: the header ${String(width)} px ${JSON.stringify(headerParts)}; Order's line ${JSON.stringify(orderParts)}`,
+          `${mode} ${String(size.width)} × ${String(size.height)}, the columns ${state}: the header ${String(width)} px, words ${JSON.stringify(words)} ${JSON.stringify(headerParts)}; Order's line ${JSON.stringify(orderParts)}`,
         );
+        // From a Link…'s words go first, then Add files…'s; Simple Mode's Add files… says its words at every size.
+        if (words.fromLink && !words.addFiles)
+          findings.push(`the columns ${state}: From a Link… says its words, Add files… not`);
+        if (mode === 'simple' && !words.addFiles)
+          findings.push(`the columns ${state}: Simple Mode's Add files… shows its icon alone`);
         expect(headerParts.length, `${state}: the header's parts`).toBeGreaterThanOrEqual(
           mode === 'pro' ? 7 : 4,
         );
