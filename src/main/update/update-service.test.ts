@@ -450,9 +450,10 @@ it.each(['http://github.com/plain', 'https://127.0.0.1/private', 'https://10.0.0
     }
     return Promise.resolve(new Response(null, { status: 302, headers: { Location: destination } }));
   } });
+  const u = h.make();
   try {
-    await h.service.check();
+    await u.check();
     expect(followed).toBe(false);
-    expect(h.service.view().phase).toBe('error');
-  } finally { h.service.close(); }
+    expect(u.view().phase).toBe('error');
+  } finally { u.close(); }
 });
