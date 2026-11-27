@@ -94,15 +94,13 @@ import { keepMoves, keepRepeat, learnedFiles, pointsAside, resolvePlaying, video
 import { type Playing, type PlayingRef, playingNow, playingOf } from '../../shared/engine/playing';
 import {
   type CannotPlayTook,
-  type Covers,
   cannotPlayOff,
   coversBack,
-  coversOf,
   noPictureOff,
   oneAtATime,
   putsUp,
-  seenIn,
 } from './one-at-a-time';
+import { type Covers, coversOf, seenIn } from '../../shared/engine/covers';
 import {
   clipLeftMs,
   type DeckEntry,

@@ -1,6 +1,7 @@
 import { type Playing, playingNow } from '../../shared/engine/playing';
 import type { EngineState, VideoSeeks } from '../../shared/engine/state';
 import { type PlaybackSeek, playbackAtMs, playbackSpanMs } from '../../shared/media';
+import { type Covers, coversPutBack, seenIn } from '../../shared/engine/covers';
 import type { EngineAction } from './actions';
 
 /*
@@ -114,42 +115,15 @@ export function putsUp(actions: readonly EngineAction[], next: EngineState): boo
   return seenIn(next.layers) && actions.some((a) => PUTS_UP.has(a.type));
 }
 
-/** Whether these layers have anything seen on the audience's picture: a slide or a background (as putsUp has it). */
-export function seenIn(layers: EngineState['layers']): boolean {
-  return layers.slide !== null || layers.background !== null;
-}
-
-/** Black-out and the Wallpaper, each on or off. */
-export interface Covers {
-  blackout: boolean;
-  wallpaper: boolean;
-}
-
-export const coversOf = (state: EngineState): Covers => ({
-  blackout: state.blackout,
-  wallpaper: state.wallpaper,
-});
-
 /**
- * The covers as Oops and Put it back leave them (alpha.24 bug hunt S2-2; QA24-OOPS-COVERS, the owner's "Restore covers":
- * as they were before the mistake), from the covers just `before` and just `after` the change they take back, as they
- * are `now`, and whether what they put back has anything `seen` (a slide or a background). A cover that was on before
- * that change stays on while it still is (a message taken back under Black-out leaves it black), and comes back on when
- * that change took it off (a wrong row's click under Black-out: black again, the slide that was under it under it
- * again). A cover put on since stays on when nothing seen comes back (the oopsfix review's SHOULD-2: a hall cover never
- * comes off with nothing to see), and comes off when something does, so it is seen (Session 56); one the operator took
- * off since stays off. One cover at a time: with both, the one on before the change. What Oops and Put it back put back
- * under a cover is what was under it then, so nothing plays there.
+ * The covers as Oops and Put it back leave them, as actions (alpha.24 bug hunt S2-2; QA24-OOPS-COVERS): the rule is
+ * shared/engine/covers.ts's coversPutBack, the practice show's too.
  */
 export function coversBack(before: Covers, after: Covers, now: Covers, seen: boolean): EngineAction[] {
-  const on = (cover: keyof Covers) => (before[cover] ? !after[cover] || now[cover] : now[cover] && !seen);
-  const blackout = on('blackout');
-  const wallpaper = on('wallpaper');
-  // Both: the one on before (Black-out when both were, as an older save with both recovers it).
-  const both = blackout && wallpaper;
+  const covers = coversPutBack(before, after, now, seen);
   return [
-    { type: 'blackout/set', on: blackout && !(both && !before.blackout) },
-    { type: 'wallpaper/set', on: wallpaper && !(both && before.blackout) },
+    { type: 'blackout/set', on: covers.blackout },
+    { type: 'wallpaper/set', on: covers.wallpaper },
   ];
 }
 
