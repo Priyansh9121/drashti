@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { idSchema } from './model-schema';
+import { CLIP_PARTS_MOST, clipPartsInOrder, type ClipPart } from './clip-parts';
 export interface VideoProxy {
   mediaId: string;
   state: 'checking' | 'waiting' | 'preparing' | 'ready' | 'not-needed' | 'failed' | 'stopped';
@@ -22,6 +23,12 @@ export interface ClipExportRequest {
   addToLibrary: boolean;
   /** An edited export must match the editor's saved revision. */
   revision: number | null;
+  /**
+   * Two or more parts of the video joined into one clip, in time order, from the original picture and sound
+   * (alpha.24, shared/clip-parts.ts); startMs is then the first one's start and endMs the last one's end. Left out for
+   * one part, as before.
+   */
+  parts?: ClipPart[];
 }
 const ms = z.number().int().min(0).max(86_400_000);
 export const clipExportRequestSchema: z.ZodType<ClipExportRequest> = z
@@ -34,9 +41,21 @@ export const clipExportRequestSchema: z.ZodType<ClipExportRequest> = z
     container: z.enum(['mp4', 'webm']),
     addToLibrary: z.boolean(),
     revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).nullable(),
+    parts: z
+      .array(z.object({ startMs: ms, endMs: ms }).strict())
+      .min(2)
+      .max(CLIP_PARTS_MOST)
+      .optional(),
   })
   .strict()
-  .refine((r) => r.endMs > r.startMs);
+  .refine((r) => r.endMs > r.startMs)
+  .refine(
+    (r) =>
+      r.parts === undefined ||
+      (clipPartsInOrder(r.parts) &&
+        r.parts[0]?.startMs === r.startMs &&
+        r.parts[r.parts.length - 1]?.endMs === r.endMs),
+  );
 export interface ClipExportJob {
   id: string;
   mediaId: string;

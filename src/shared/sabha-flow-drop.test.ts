@@ -6,6 +6,7 @@ import {
   flowDrop,
   isPdfPath,
   ONLY_A_PDF,
+  panelTakes,
 } from './sabha-flow-drop';
 
 /*
@@ -145,5 +146,47 @@ describe('a drop on the Sabha flow panel', () => {
     expect(FLOW_CHOSEN_IN_PRO).toBe(
       'The sabha’s running order is chosen in Pro Mode, with Choose PDF… in its Sabha flow.',
     );
+  });
+});
+
+describe('which drags and drops the panel takes, and which go by to the window’s import (bughunt S2-1)', () => {
+  const PDF = 'application/pdf';
+  const VIDEO = 'video/mp4';
+
+  it('while a drag is under way (only the files’ kinds can be read): in Pro Mode one holding a PDF', () => {
+    expect(panelTakes({ types: [PDF] }, PRO)).toBe(true);
+    expect(panelTakes({ types: [VIDEO, PDF] }, PRO)).toBe(true);
+    expect(panelTakes({ types: [VIDEO] }, PRO)).toBe(false);
+    expect(panelTakes({ types: ['image/png', 'text/plain'] }, PRO)).toBe(false);
+    // A file whose kind the system does not say: the window’s, until its name says otherwise at the drop.
+    expect(panelTakes({ types: [''] }, PRO)).toBe(false);
+    expect(panelTakes({ types: [] }, PRO)).toBe(false);
+  });
+
+  it('at the drop: in Pro Mode, files with a PDF among them by name; anything else is the window’s to import', () => {
+    expect(panelTakes({ types: [PDF], paths: [mac('Placeholder order.pdf')] }, PRO)).toBe(true);
+    expect(panelTakes({ types: [''], paths: [win('Placeholder order.PDF')] }, PRO)).toBe(true);
+    expect(
+      panelTakes(
+        { types: [VIDEO, PDF], paths: [mac('Placeholder clip.mp4'), mac('Placeholder order.pdf')] },
+        PRO,
+      ),
+    ).toBe(true);
+    expect(panelTakes({ types: [VIDEO], paths: [mac('Placeholder clip.mp4')] }, PRO)).toBe(false);
+    expect(
+      panelTakes(
+        { types: ['', ''], paths: [win('Placeholder deck.pptx'), win('Placeholder notes.txt')] },
+        PRO,
+      ),
+    ).toBe(false);
+    // A PDF Drashti cannot tell the place of (dragged from somewhere that is not a folder): the panel says so.
+    expect(panelTakes({ types: [PDF], paths: [] }, PRO)).toBe(true);
+    expect(panelTakes({ types: [VIDEO], paths: [] }, PRO)).toBe(false);
+  });
+
+  it('Simple Mode’s panel takes none: everything goes into its playlist, as dropped anywhere on its window', () => {
+    expect(panelTakes({ types: [PDF] }, SIMPLE)).toBe(false);
+    expect(panelTakes({ types: [PDF], paths: [mac('Placeholder order.pdf')] }, SIMPLE)).toBe(false);
+    expect(panelTakes({ types: [VIDEO], paths: [mac('Placeholder clip.mp4')] }, SIMPLE)).toBe(false);
   });
 });

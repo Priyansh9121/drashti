@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useId } from 'react';
 import { create } from 'zustand';
-import { KEY_GROUPS, KEYMAP, keyText, SINGLE_KEYS_TEXT } from '../../../shared/keymap';
+import { fKeyHint, KEY_GROUPS, KEYMAP, keyText, SINGLE_KEYS_TEXT } from '../../../shared/keymap';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Kbd } from '../ui/Kbd';
@@ -133,6 +133,10 @@ export function KeysSheet({ platform }: { platform: string }) {
         ))}
         <p className="text-xs text-muted [column-span:all]" data-testid="keys-follow">
           These keys follow what the operators already press.
+        </p>
+        {/* What this computer's F-keys need (alpha.24, keyplat R4): a Mac's fn and Touch Bar, Windows' Fn Lock. */}
+        <p className="mt-1 text-xs text-muted [column-span:all]" data-testid="keys-fkeys">
+          {fKeyHint(platform)}
         </p>
       </div>
     </Dialog>

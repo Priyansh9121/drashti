@@ -20,8 +20,11 @@ export function hearRenderErrors(o: {
   watchdog: RendererWatchdog;
   /** Which window sent it: its name, and for an output, the page to reload. */
   windowOf: (sender: WebContents) => { name: string; output: WatchTarget | null };
-  /** An output's scene failed: true when what it keeps failing on was taken off (nothing more is done then). */
-  failed?: (name: string) => boolean;
+  /**
+   * An output's scene failed: true when what it keeps failing on was taken off (nothing more is done then). Told the
+   * output's own page, never only its name, which two outputs may share (S1-1).
+   */
+  failed?: (window: { name: string; output: WatchTarget }) => boolean;
 }): void {
   const lines = new RenderErrorLog(o.log);
   const warmUps = new RenderErrorLog(o.log);
@@ -34,7 +37,7 @@ export function hearRenderErrors(o: {
       return null;
     }
     lines.report(name, report);
-    if (output && o.failed?.(name) !== true) o.watchdog.renderError(output, name, report.message);
+    if (output && o.failed?.({ name, output }) !== true) o.watchdog.renderError(output, name, report.message);
     return null;
   });
 }

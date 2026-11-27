@@ -118,4 +118,25 @@ describe('Record sound as Drashti quits (Session 58, X2: the alpha.16 review’s
     expect(wave.toString('ascii', 0, 4)).toBe('RIFF');
     expect(wave.readUInt32LE(40)).toBe(2 * SPEECH_RATE * 2);
   });
+
+  it('after a refused quit (bughunt S3-2), a recording made then is waited for again by the next quit', async () => {
+    const rec = recording();
+    for (let i = 0; i < 5; i++) heard(rec);
+    await expect(rec.quitting()).resolves.toBe('finished');
+    expect(rec.quitting()).toBeNull();
+    // The quit did not go ahead (a source that would not stop in time): Drashti runs on, and records again later.
+    rec.cancelQuitting();
+    clock += 60_000;
+    rec.start(dir);
+    for (let i = 0; i < 5; i++) heard(rec);
+    const again = rec.quitting();
+    expect(again).not.toBeNull();
+    await expect(again).resolves.toBe('finished');
+    const files = await readdir(dir);
+    expect(files).toHaveLength(2);
+    for (const file of files) {
+      const wave = await readFile(join(dir, file));
+      expect(wave.readUInt32LE(40)).toBe(5 * TONE.byteLength);
+    }
+  });
 });

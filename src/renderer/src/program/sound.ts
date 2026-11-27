@@ -7,7 +7,7 @@ import { bandsText, type ToneChain, toneThrough } from '../audio/tone-chain';
 import type { EngineState } from '../../../shared/engine/state';
 import { SOUND_LIMITS } from '../../../shared/media';
 import { musicAside, soundGain, StepAside } from '../../../shared/sound';
-import type { DeviceChoice } from '../../../shared/stream';
+import type { DeviceChoice, StreamTestSound } from '../../../shared/stream';
 import type { Sound } from '../audio/sounds';
 import { soundMoved, soundsOf } from '../audio/sounds';
 import { engineNow } from '../render/clock';
@@ -47,6 +47,13 @@ interface OwnSound {
   resync: () => void;
 }
 
+/** Tests only (alpha.23, the stream-clock seam): Main's clip in place of the sound input, asked once; null packaged. */
+let testClip: Promise<StreamTestSound | null> | null = null;
+const streamTestSound = (): Promise<StreamTestSound | null> =>
+  (testClip ??= Promise.resolve()
+    .then(() => window.drashti.stream.page.testSound())
+    .catch(() => null));
+
 export class StreamSound {
   readonly ctx = new AudioContext({ sampleRate: STREAM_SAMPLE_RATE, latencyHint: 'playback' });
   /** Everything the stream hears. */
@@ -54,7 +61,7 @@ export class StreamSound {
   private readonly delay = this.ctx.createDelay(1.5);
   private readonly meter = this.ctx.createAnalyser();
   private readonly out = this.ctx.createMediaStreamDestination();
-  private input: { key: string; stream: MediaStream; source: MediaStreamAudioSourceNode } | null = null;
+  private input: { key: string; stream: MediaStream; source: AudioNode; stop?: () => void } | null = null;
   private own = new Map<string, OwnSound>();
   private ownOn = false;
   private readonly samples = new Float32Array(2048);
@@ -125,6 +132,15 @@ export class StreamSound {
     }
     setSoundState('starting');
     try {
+      // Tests only (alpha.23, the stream-clock seam): Main's generated clip in place of the device, played on this
+      // graph's own clock. Main never has one in a packaged Drashti.
+      const clip = await streamTestSound();
+      if (clip) {
+        if (this.input) return;
+        this.playClip(key, clip);
+        setSoundState('on');
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: { exact: device.id },
@@ -153,9 +169,39 @@ export class StreamSound {
 
   private closeInput(): void {
     if (!this.input) return;
+    this.input.stop?.();
     this.input.source.disconnect();
     for (const t of this.input.stream.getTracks()) t.stop();
     this.input = null;
+  }
+
+  /**
+   * Tests only (the stream-clock seam): the clip as the sound input, from its first sample now, on this graph's clock.
+   * Into the delay as a device's sound goes, and its own silent track for the speech tap's checks.
+   */
+  private playClip(key: string, clip: StreamTestSound): void {
+    const buffer = this.ctx.createBuffer(1, Math.max(1, clip.samples.length), clip.rate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < clip.samples.length; i++) data[i] = (clip.samples[i] ?? 0) / 32768;
+    const player = this.ctx.createBufferSource();
+    player.buffer = buffer;
+    const track = this.ctx.createMediaStreamDestination();
+    player.connect(track);
+    player.connect(this.delay);
+    player.start();
+    this.input = {
+      key,
+      stream: track.stream,
+      source: player,
+      stop: () => {
+        try {
+          player.stop();
+        } catch {
+          // Already ended.
+        }
+        player.disconnect(track);
+      },
+    };
   }
 
   /** Drashti's own sound in the stream: what the audio player plays, in step with it. */
