@@ -2,12 +2,14 @@ import { create } from 'zustand';
 import type { TaskProgress } from '../../../shared/app-info';
 import type { EngineCommand } from '../../../shared/engine/commands';
 import type { PlaylistCursor } from '../../../shared/engine/state';
-import { useEngine } from '../engine/engine-store';
+import { getCurrentEngineState, useEngine } from '../engine/engine-store';
 import { requestRemoval } from '../library/import-store';
 import { undoRemoval } from '../library/undo';
 import { openLibrary, selectPresentation, useLibrary } from '../library/library-store';
 import { playOrder } from '../../../shared/order';
 import type { OperatorAction } from '../../../shared/keymap';
+import { SIMPLE_IDLE } from '../../../shared/keymap';
+import { showKeysSheet } from './keys-sheet-store';
 // logo-store uses dispatch from here; both only call each other when an action runs.
 import { toggleSwitch, turnOnIfOff } from './screen-switches-store';
 
@@ -137,7 +139,7 @@ export function runAction(action: OperatorAction, ui: OperatorUi): Promise<void>
 async function perform(action: OperatorAction, ui: OperatorUi): Promise<void> {
   // The quick bar's keys (Session 55, Part 8) are its own (quick-bar-store.ts): Pro Mode's window sends them there.
   if (action === 'quickBar') return;
-  const live = useEngine.getState().state?.live;
+  const live = getCurrentEngineState()?.live;
   const { selectedId, doc, item } = useLibrary.getState();
   const somethingLive = live?.presentationId != null || live?.playlist != null;
   const itemIsLive =
@@ -196,7 +198,7 @@ async function perform(action: OperatorAction, ui: OperatorUi): Promise<void> {
       return dispatch({ type: 'oops' });
     // Esc does nothing when nothing is repeating.
     case 'stopRepeat':
-      if (useEngine.getState().state?.repeat) return dispatch({ type: 'stopRepeat' });
+      if (getCurrentEngineState()?.repeat) return dispatch({ type: 'stopRepeat' });
       return;
     case 'openScreens':
       ui.openScreens();
@@ -246,7 +248,7 @@ export function runBack(): Promise<void> {
  * Pro Mode's history stays available when the operator returns there.
  */
 export async function undoSimple(): Promise<void> {
-  if (useEngine.getState().state?.canPutBack === true) return dispatch({ type: 'putBack' });
+  if (getCurrentEngineState()?.canPutBack === true) return dispatch({ type: 'putBack' });
   await undoRemoval('simple');
 }
 
@@ -255,7 +257,7 @@ export function runSimpleAction(action: OperatorAction, start: () => Promise<voi
 }
 
 async function performSimple(action: OperatorAction, start: () => Promise<void>): Promise<void> {
-  const state = useEngine.getState().state;
+  const state = getCurrentEngineState();
   const live = state?.live;
   // Next plays what is cued (the arti), else goes on, else starts the playlist.
   const somethingLive = live?.presentationId != null || live?.playlist != null || state?.cue != null;
@@ -273,15 +275,14 @@ async function performSimple(action: OperatorAction, start: () => Promise<void>)
       if (problem) useNotice.setState({ text: problem });
       return;
     }
-    // The keys sheet is Pro Mode's (Simple Mode's buttons show their keys).
-    case 'openScreens':
-    case 'findInLibrary':
-    case 'removeSelected':
-    case 'moveItemUp':
-    case 'moveItemDown':
+    // Simple Mode's own keys sheet (a25 item 3, alpha.24): the keys that act here.
     case 'showKeys':
+      showKeysSheet();
       return;
     default:
+      // Screens, Search and a list's keys: Simple Mode changes no screen setup and no library (SIMPLE_IDLE, which its
+      // keys sheet leaves out).
+      if (SIMPLE_IDLE.includes(action)) return;
       return perform(action, { openScreens: () => undefined, showKeys: () => undefined });
   }
 }

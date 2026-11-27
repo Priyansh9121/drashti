@@ -9,7 +9,7 @@ import type {
 import { itemsMadeBy } from '../../../shared/import-items';
 import type { NewItem } from '../../../shared/playlists';
 import type { UsedIn } from '../../../shared/media-removal';
-import { useEngine } from '../engine/engine-store';
+import { getCurrentEngineState } from '../engine/engine-store';
 import { openImportDestination, usePlaylists } from '../playlists/playlist-store';
 import { showImportFailures, showImportNotice, showRefusedImports } from './import-notices';
 import type { ShownItem } from './library-store';
@@ -227,7 +227,7 @@ export function requestRemoval(of?: string): Promise<void> {
  */
 async function askIfUsed(pending: NonNullable<ImportView['confirmRemove']>): Promise<void> {
   const usage = await window.drashti.library.presentationUsage(pending.ids).catch(() => null);
-  const liveId = useEngine.getState().state?.live.presentationId ?? null;
+  const liveId = getCurrentEngineState()?.live.presentationId ?? null;
   const live = (usage?.live ?? false) || (liveId !== null && pending.ids.includes(liveId));
   const playlists = usage?.playlists ?? { names: [], count: 0 };
   useImports.setState({ confirmRemove: { ...pending, live, playlists } });

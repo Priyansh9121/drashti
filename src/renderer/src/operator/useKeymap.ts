@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { KeyBinding, KeyInput, OperatorAction } from '../../../shared/keymap';
 import { actionFor, latinKey, PAGE_KEYMAP, quickSlotFor } from '../../../shared/keymap';
+import { connectFocusOrigin, isKeyboardFocused } from './focus-origin';
 import { useKeymapNow } from './single-keys-store';
 
 export function isTyping(target: unknown): boolean {
@@ -58,22 +59,52 @@ export interface KeyPress extends KeyInput {
 }
 
 /**
+ * Whether Space presses this focused control itself rather than running Next (a25 item 1, in alpha.24 by the owner's
+ * 48-item list: the release lead's B, as lead 2 scoped it): a button the keyboard put the focus on (focus-origin.ts), as
+ * on any page, so Space on a Tab-focused "?" opens it. Never a show control (data-show-control: a slide's row, a
+ * playlist's item, Next and Back, Black-out, the clears, a cue's Go): Space stays Next there, as the operators press it.
+ * The mute and Simple/Pro switches opt out with data-space-next too (lead 2's exceptions). A button a click focused
+ * keeps Space = Next too, so Space never presses Black-out, Clear all or Oops again.
+ */
+function pressesItself(target: unknown, keyboardFocused: (target: unknown) => boolean): boolean {
+  if (!(target instanceof HTMLElement) || target.tagName !== 'BUTTON') return false;
+  const button = target as HTMLElement & { disabled?: boolean; closest?: (selector: string) => unknown };
+  if (button.disabled === true || typeof button.closest !== 'function') return false;
+  return (
+    button.closest('[data-show-control]') === null &&
+    button.closest('[data-space-next]') === null &&
+    keyboardFocused(target)
+  );
+}
+
+/** Space alone (no Cmd, Ctrl, Alt or Shift), as Next's key. */
+const plainSpace = (event: KeyPress) =>
+  (event.key === ' ' || event.key === 'Spacebar') &&
+  !event.metaKey &&
+  !event.ctrlKey &&
+  !event.altKey &&
+  !event.shiftKey;
+
+/**
  * The window's keydown listener: a press runs its action once, and is taken (its default prevented) when it
  * does. Ignores key repeats (a held key never skips slides), typing in fields, keys a control has used itself
- * (the arrows between tabs or through a menu: Session 15, they also moved the slide on the screens), and
- * anything while a dialog is open but Screens and Uncover the controls. A key the application menu shows (the
- * keymap's shownInMenu: ⌘1 and ⌘2, Session 51) is taken even when it is let go by, so the Mac's menu, which acts
- * on any key it shows that the page leaves alone, never acts on it as well.
+ * (the arrows between tabs or through a menu: Session 15, they also moved the slide on the screens), Space on a
+ * button the keyboard put the focus on (pressesItself: the button's own press, a25 item 1), and anything while a
+ * dialog is open but Screens and Uncover the controls. A key the application menu shows (the keymap's shownInMenu:
+ * ⌘1 and ⌘2, Session 51) is taken even when it is let go by, so the Mac's menu, which acts on any key it shows that
+ * the page leaves alone, never acts on it as well. `keyboardFocused` says which focus the keyboard gave (a test's own).
  */
 export function keyListener(
   platform: string,
   keymap: readonly KeyBinding[],
   run: (action: OperatorAction, slot?: number) => void,
+  keyboardFocused: (target: unknown) => boolean = isKeyboardFocused,
 ): (event: KeyPress) => void {
   return (event) => {
     if (event.defaultPrevented) return;
     const action = actionFor(event, platform, keymap);
     if (!action) return;
+    if (action === 'next' && plainSpace(event) && pressesItself(event.target, keyboardFocused)) return;
     const dialogOpen = () => document.querySelector('[aria-modal="true"]') !== null;
     const letGo =
       event.repeat ||
@@ -105,6 +136,8 @@ export function useKeymap(
     runRef.current = run;
   });
   const keys = useKeymapNow(keymap);
+  // Where the focus came from (a25 item 1), heard while the window has its keys.
+  useEffect(() => connectFocusOrigin(window), []);
   useEffect(() => {
     const onKey = keyListener(platform, keys, (action, slot) => {
       runRef.current(action, slot);
