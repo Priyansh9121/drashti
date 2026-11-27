@@ -12,7 +12,9 @@ describe('the screens’ line in short words', () => {
   it('says each kind in a few words, whole', () => {
     expect(saidShort({ kind: 'no-stage', displayIds: [1, 2] })).toBe('No Stage screen');
     expect(saidShort({ kind: 'set', displayIds: [1] })).toBe('New screen set up');
-    expect(saidShort({ kind: 'set', displayIds: [1, 2] })).toBe('2 new screens set up');
+    // The plural without "new" (saidwords, lead 2): the count says it, and Simple Mode's line fits at 1024 × 645.
+    expect(saidShort({ kind: 'set', displayIds: [1, 2] })).toBe('2 screens set up');
+    expect(saidShort({ kind: 'set', displayIds: [1, 2, 3] })).toBe('3 screens set up');
     expect(saidShort({ kind: 'mirroring', displayIds: [] })).toBe('Screen mirrored');
     for (const kind of ['no-stage', 'set', 'mirroring'] as const)
       for (const displayIds of [[], [1], [1, 2, 3]]) {
