@@ -24,4 +24,6 @@ export function drawAppearance(root: AppearanceRoot, now: AppearanceNow): void {
   root.dataset['lookMotion'] = now.look.join(' ');
   root.dataset['slow'] = now.slow ? 'true' : 'false';
   root.dataset['chip'] = now.chip;
+  // The window's look (alpha.24, QA24-UI-4): "depth" while following the computer (styles/look-depth.css), else "flat".
+  root.dataset['windowLook'] = now.depth ? 'depth' : 'flat';
 }

@@ -186,7 +186,8 @@ function AppearanceSheet({ view }: { view: AppearanceView | null }) {
   const follow: Choice = {
     id: FOLLOW,
     name: 'Follow the computer',
-    note: `Black or White, as this computer is set${following && shown ? ` (now ${shown.name})` : ''}`,
+    // Drawn in Depth (alpha.24, styles/look-depth.css); Black or White chosen by name draws plain.
+    note: `Black or White in Depth, as this computer is set${following && shown ? ` (now ${shown.name})` : ''}`,
     appearance: null,
     family: null,
   };
