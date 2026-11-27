@@ -13,7 +13,8 @@ import {
   operatorReady,
 } from './helpers';
 import { makeTestImage, makeTestVideo } from './test-media';
-import { dispatch, snapshot } from './time-bar-helpers';
+import type { Copy } from './time-bar-helpers';
+import { backgroundTiming, dispatch, inStep, snapshot } from './time-bar-helpers';
 import { cueReady, setupVideoCue } from './video-cue-helpers';
 import { CI_WINDOW, liveColumnToTop, sizeOperatorWindow } from './window-size';
 
@@ -383,13 +384,17 @@ async function tabFromOops(win: Page): Promise<{ stops: string[]; onlyBarsBefore
   return { stops, onlyBarsBeforeGo };
 }
 
-/** Whether every video of a background showing (`slot`: background-slots.ts slotKey) on the page has drawn its first frame. */
-const firstFrameDrawn = (page: Page, slot: string) =>
+/**
+ * Whether the page draws that background showing alone (`slot`: background-slots.ts slotKey): every background video
+ * on it is that showing's, with its first frame drawn (data-state "ready"), and the one before has gone.
+ */
+const drawsOnly = (page: Page, slot: string) =>
   page.evaluate((slot) => {
-    const videos = [...document.querySelectorAll('video[data-bg-slot]')].filter(
-      (v) => v.getAttribute('data-bg-slot') === slot,
+    const videos = [...document.querySelectorAll('video[data-bg-slot]')];
+    return (
+      videos.length > 0 &&
+      videos.every((v) => v.getAttribute('data-bg-slot') === slot && v.getAttribute('data-state') === 'ready')
     );
-    return videos.length > 0 && videos.every((v) => v.getAttribute('data-state') === 'ready');
   }, slot);
 
 test('Pro Mode: the cued video’s Go and Cancel are the keyboard’s next stops after Oops, and Enter on each does what it says', async () => {
@@ -424,26 +429,28 @@ test('Pro Mode: the cued video’s Go and Cancel are the keyboard’s next stops
     await expect.poll(() => backgroundId(win)).toBe(first);
     // Cancel: cued again while that video plays: from Oops, the time bar's own stops, then Go, then Cancel; Enter on
     // it: the cue gone, the screens as they were. The video put up again going round, so its end never changes the bar.
+    // a25 item 47: a loop put up at once after Go leaves the next cue never ready; this wait stays until that is fixed.
+    // So: the Go'd video playing in step on every picture page first, then the loop, then the loop drawn alone on each
+    // (its first frame drawn, the showing before gone), and only then the cue.
+    const copies: Copy[] = [
+      { name: 'LIVE', page: win, selector: `video[data-media-id="${first}"]` },
+      { name: 'the hall', page: hall, selector: `video[data-media-id="${first}"]` },
+      { name: 'the stream', page: stream, selector: `video[data-media-id="${first}"]` },
+    ];
+    await inStep(copies, () => backgroundTiming(win), 'the Go’d video on every picture page');
     const looping = await dispatch(win, {
       type: 'setBackground',
       background: { kind: 'media', mediaId: first, media: 'video', fit: 'fill', loop: true },
     });
     expect(looping.ok).toBe(true);
     await expect(win.locator('[data-testid="time-bar-row"][data-playing="background"]')).toBeVisible();
-    // a25 item 47: a loop put up at once after Go leaves the next cue never ready; this wait stays until that is fixed.
-    // The looping showing's first frame drawn on every picture page (its background slot ready there) before the cue.
     const loop = (await snapshot(win)).layers.background;
-    if (loop?.kind !== 'media' || loop.mediaId !== first) throw new Error('no looping background');
+    if (loop?.kind !== 'media' || loop.mediaId !== first || !loop.loop)
+      throw new Error('no looping background');
     const slot = `${first}@${String(loop.startedAt)}`;
-    for (const [name, page] of [
-      ['LIVE', win],
-      ['the hall', hall],
-      ['the stream', stream],
-    ] as const)
+    for (const copy of copies)
       await expect
-        .poll(() => firstFrameDrawn(page, slot), {
-          message: `${name}: the looping video's first frame drawn`,
-        })
+        .poll(() => drawsOnly(copy.page, slot), { message: `${copy.name}: the looping video drawn alone` })
         .toBe(true);
     expect((await dispatch(win, { type: 'cueVideo', mediaId: second })).ok).toBe(true);
     await cueReady(win);
