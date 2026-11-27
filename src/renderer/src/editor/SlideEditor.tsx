@@ -5,7 +5,8 @@ import type { EditDoc } from '../../../shared/slide-edit';
 import type { TextElement } from '../../../shared/model';
 import { legacyFontOf, slidesOf } from '../../../shared/slide-edit';
 import { renderEditedSlide } from '../../../shared/slide-design';
-import { SHOW_F_KEYS } from '../../../shared/keymap';
+import { keyText, SHOW_F_KEYS } from '../../../shared/keymap';
+import { editorKeys } from '../../../shared/window-keys';
 import { isTyping } from '../operator/useKeymap';
 import { loadMedia } from '../library/library-store';
 import { PlacedInParent } from '../render/Placed';
@@ -421,7 +422,9 @@ function Editor({ platform, name }: { platform: string; name: string }) {
     }, at);
   };
   const mac = platform === 'darwin';
-  const mod = mac ? '⌘' : 'Ctrl+';
+  // Its buttons' keys, as this computer writes them, from the keys the window acts on (alpha.24, keyplat R5).
+  const shown = (name: Parameters<typeof editorKeys>[0]) =>
+    keyText(editorKeys(name, platform)[0] ?? '', platform);
   const pdfPage = isPdfPage(doc, slideId);
   const shownGroup = visibleEditorGroup(group, pdfPage);
   const pdfRowVisible = pdfPage && shownGroup === 'pdf';
@@ -731,7 +734,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
             if (tabDropsRibbon(ribbonKept, ribbonFolded, foldNow())) setRibbonDropped(true);
           }}
         />
-        <Tooltip content="Undo the last change" kbd={`${mod}Z`} side="bottom">
+        <Tooltip content="Undo the last change" kbd={shown('undo')} side="bottom">
           <Button
             size="sm"
             variant="ghost"
@@ -743,7 +746,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
             <span className={WORDS_WHEN_ROOM}>Undo</span>
           </Button>
         </Tooltip>
-        <Tooltip content="Redo the change you undid" kbd={mac ? '⇧⌘Z' : 'Ctrl+Y'} side="bottom">
+        <Tooltip content="Redo the change you undid" kbd={shown('redo')} side="bottom">
           <Button
             size="sm"
             variant="ghost"
@@ -799,7 +802,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
         <Button
           variant="primary"
           size="sm"
-          kbd={`${mod}S`}
+          kbd={shown('save')}
           disabled={
             saving ||
             outsideBusy ||
@@ -899,7 +902,9 @@ function Editor({ platform, name }: { platform: string; name: string }) {
             <div data-testid="editor-ribbon" data-group={shownGroup} className="flex min-w-0 items-start">
               {shownGroup === 'words' && (
                 <WordsGroup
-                  findKbd={`${mod}F`}
+                  findKbd={shown('find')}
+                  outdentKbd={shown('outdent')}
+                  indentKbd={shown('indent')}
                   onFind={() => {
                     useEditor.setState({ finding: true });
                   }}

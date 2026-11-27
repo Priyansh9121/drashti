@@ -24,6 +24,9 @@ export function InputOnAudience({ className = 'px-3 pt-2' }: { className?: strin
         icon={Video}
         variant={up ? 'live' : 'secondary'}
         aria-pressed={up}
+        // A show control (alpha.24, QA24-UIMOTION-SKIP): the audience's background changes at once, and in Simple
+        // Mode, under Audio, no fold's copy or glide ever reaches it.
+        instant
         data-testid="input-on-audience"
         data-input-id={input.id}
         className="w-full justify-start"

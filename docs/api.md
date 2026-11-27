@@ -385,7 +385,7 @@ A new presentation from words is saved with its default look in one step. If the
 
 **The phone’s own** (Session 55, Part 9), a Remote’s alone, each as the window’s own request does it. In Simple Mode the wallpapers, Rename of a file/presentation a playlist holds, removing/restoring rows with Undo and (since Session 57) a video row's When it ends are allowed; picture-look editing and pins remain Pro-only (403). Since alpha.23 a Remote is refused this (the phone rule, above).
 
-A wallpaper’s picture has `mediaId`, `name` and `missing`; optional `unplayable` describes a present picture that needs conversion, such as HEIC. The operator window explains this separately from a missing picture.
+A wallpaper’s picture has `mediaId`, `name` and `missing`; optional `unplayable` describes a present picture that needs conversion, such as HEIC. The operator window explains this separately from a missing picture. Since alpha.24 the screens leave out such a picture until it is converted, as they leave out a missing one.
 
 | Request                                      | Body                                            | Does                                                                         |
 | -------------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------- |

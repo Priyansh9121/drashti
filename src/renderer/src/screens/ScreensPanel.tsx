@@ -16,6 +16,7 @@ import {
   SCREEN_STATE_WORDS,
 } from '../../../shared/screens';
 import { SWITCH_NAMES, switchFor } from '../../../shared/screen-switches';
+import { screenLabels } from '../../../shared/screen-labels';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
@@ -118,6 +119,12 @@ function ScreenRow({
     (p) => p.width === screen.canvasWidth && p.height === screen.canvasHeight,
   );
   const shownOn = displays.find((d) => d.key.id === screen.displayKey?.id);
+  // Its name in words: two of one name (two TVs of one model) told apart, "… (2)", as the red Stopped notice says it
+  // (S1-1).
+  const label = useScreens(
+    (s) =>
+      (s.snapshot && screenLabels(s.snapshot.groups.flatMap((g) => g.screens)).get(screen.id)) ?? screen.name,
+  );
   // Showing, but restarted again and again by the heartbeat (a23-heartbeat): how many times in a row.
   const restarts = useScreens(
     (s) => s.snapshot?.status.find((st) => st.screenId === screen.id && st.state === 'showing')?.restarts,
@@ -139,7 +146,9 @@ function ScreenRow({
   return (
     <li className="space-y-2 rounded-lg border border-line bg-panel px-3 py-2.5" data-testid="screen-row">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">{screen.name}</span>
+        <span className="font-medium" data-testid="screen-name">
+          {label}
+        </span>
         <span
           className={cx(
             'rounded-full border px-2 py-0.5 text-xs font-medium',
@@ -201,7 +210,7 @@ function ScreenRow({
           <label className="flex items-center gap-1.5 text-xs text-muted">
             Sends
             <Select
-              aria-label={`What ${screen.name} sends`}
+              aria-label={`What ${label} sends`}
               data-testid="screen-feed"
               value={screen.feed}
               onChange={(e) => {

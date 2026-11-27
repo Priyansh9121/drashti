@@ -147,6 +147,7 @@ import type {
   DeviceChoice,
   ProgramContext,
   ProgramInputs,
+  StreamTestSound,
   StreamLayout,
   StreamProfileInput,
   StreamProfiles,
@@ -1234,6 +1235,8 @@ export const IPC = {
     pageInputs: 'stream:page-inputs',
     /** The stream's page tells its off-screen frame grid while a cue waits (S5, a21-s5: a Go on its frames). */
     pageFrames: 'stream:page-frames',
+    /** Tests only (alpha.23): the clip the stream's page plays on its own clock, or null (always null packaged). */
+    pageTestSound: 'stream:page-test-sound',
     /** main -> the stream's page: its context changed. */
     context: 'stream:context',
     /** Video out (x30): the stream's picture to other software, and how it is going. */
@@ -2232,6 +2235,7 @@ export interface InvokeContract {
   [IPC.stream.pageContext]: { args: []; result: ProgramContext | null };
   [IPC.stream.pageInputs]: { args: [inputs: ProgramInputs]; result: null };
   [IPC.stream.pageFrames]: { args: [grid: FrameGrid]; result: null };
+  [IPC.stream.pageTestSound]: { args: []; result: StreamTestSound | null };
   [IPC.youtube.status]: { args: []; result: YouTubeStatus };
   [IPC.youtube.setClient]: { args: [clientId: string, clientSecret: string]; result: YouTubeResult };
   [IPC.youtube.removeClient]: { args: []; result: YouTubeResult };

@@ -75,11 +75,13 @@ import type { SleepGuard } from '../outputs/sleep-guard';
 import type { SelfTestResult } from '../selftest';
 import { runNodeWatchdogSelfTest } from '../selftest';
 import { IpcTransport } from '../transport/ipc-transport';
-import type { RendererWatchdog, WatchdogEvent } from '../watchdog';
+import type { RendererWatchdog, WatchdogEvent, WatchTarget } from '../watchdog';
 import { windowIcon } from '../windows/app-icon';
 import { pageAlive, sendToPage } from '../windows/send';
 import { loadPage } from '../windows/renderer';
 import { watchLoadFailures } from '../outputs/load-failures';
+import { screenOfPage } from '../outputs/output-of-page';
+import { screenLabels } from '../../shared/screen-labels';
 import { followOutputs, type WarmUpChoices, warmUpFact } from '../outputs/warm-up-choice';
 import { secureWebPreferences } from '../windows/web-preferences';
 import { LinkClient, openMediaFromMain, pairWithMain, postReportToMain } from './link-client';
@@ -180,8 +182,11 @@ export interface NodeAppHandle {
   runSelfTest: () => Promise<SelfTestResult>;
   crashWindow: () => void;
   crashOutputs: () => void;
-  /** What the node does with its outputs' watchdog events (Sessions 31–36): Stopped when given up on. */
-  watchdogEvent: (e: WatchdogEvent) => void;
+  /**
+   * What the node does with its outputs' watchdog events (Sessions 31–36): Stopped when given up on. Each comes with
+   * its window's page, its own screen's whatever its name (S1-1).
+   */
+  watchdogEvent: (e: WatchdogEvent, page: WatchTarget) => void;
   /** Mark an output as given up on (tests only: DRASHTI_TEST_GIVE_UP, never a packaged Drashti). */
   giveUp: (screenId: string) => void;
 }
@@ -436,7 +441,10 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
 
   // ---- outputs on the displays Main assigned ------------------------------------------------
   const outputWindows = new Map<string, BrowserWindow>();
-  /** Each output's name, as the watchdog and the log call it. */
+  /**
+   * Each open output's name, as the watchdog and the log call it: words only, two of one name told apart, "… (2)"
+   * (S1-1). Its window is found by its page (screenOfPage), never by this name.
+   */
   const outputNames = new Map<string, string>();
   const reports = new Map<string, OutputReport>();
   /**
@@ -606,10 +614,13 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       log.info(`Node: opening output "${config.name}" on ${display.label || display.id}`);
       const { window, handle: h } = createOutputWindow(config, display, { windowed: deps.windowed });
       outputWindows.set(config.id, window);
-      outputNames.set(config.id, `output "${config.name}"`);
-      deps.watchdog.watch(window.webContents, `output "${config.name}"`);
+      // Its name in words, two of one name told apart (S1-1); the watchdog knows the window by its page.
+      const words = screenLabels((paired?.screens ?? []).map((sc) => ({ id: sc.screenId, name: sc.name })));
+      const outputName = `output "${words.get(config.id) ?? config.name}"`;
+      outputNames.set(config.id, outputName);
+      deps.watchdog.watch(window.webContents, outputName);
       watchLoadFailures(window, {
-        name: `output "${config.name}"`,
+        name: outputName,
         screen: config.id,
         watchdog: deps.watchdog,
         log: (message) => {
@@ -627,6 +638,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         deps.warmUps.forget(h.webContentsId);
         if (outputWindows.get(config.id) === window) {
           outputWindows.delete(config.id);
+          // Its name goes with it (S1-1): a screen made again, or another of its name, never inherits it.
+          outputNames.delete(config.id);
           heartbeat.closed(config.id);
         }
         reports.delete(config.id);
@@ -1580,8 +1593,9 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     crashOutputs: () => {
       for (const w of showingOutputs()) w.webContents.forcefullyCrashRenderer();
     },
-    watchdogEvent: (e) => {
-      const screenId = [...outputNames].find(([, n]) => n === e.window)?.[0];
+    watchdogEvent: (e, page) => {
+      // That window's own screen (S1-1): a window replaced or closed meanwhile is no screen's.
+      const screenId = screenOfPage(outputWindows, page);
       if (screenId === undefined) return;
       // A page loaded again gets its grace before it is judged; tried again, its restarts forgotten (a23-heartbeat).
       if (e.kind === 'reloaded' || e.kind === 'retried') heartbeat.opened(screenId);

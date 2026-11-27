@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 import type { ClipExportJob, ClipExportRequest } from '../../../shared/video-copies';
+import { JOINED_PARTS_ORIGINAL, clipPartsSummary, type ClipPart } from '../../../shared/clip-parts';
 import { Button } from '../ui/Button';
 import { Field, Select } from '../ui/Field';
 import { Checkbox } from '../ui/Toggle';
 
-/** One range supplied by the editor in source time. Export is independent of closing that editor. */
+/**
+ * One range supplied by the editor in source time, or (alpha.24) two or more parts joined into one clip, in time
+ * order, from the original picture and sound. Export is independent of closing that editor.
+ */
 export function ClipExportPanel({
   mediaId,
   startMs,
@@ -12,6 +16,8 @@ export function ClipExportPanel({
   revision,
   dirty = false,
   ready = true,
+  parts,
+  problem = null,
 }: {
   mediaId: string;
   startMs: number;
@@ -19,6 +25,10 @@ export function ClipExportPanel({
   revision: number;
   dirty?: boolean;
   ready?: boolean;
+  /** Two or more parts, checked and in time order (shared/clip-parts.ts): one clip of them all. */
+  parts?: readonly ClipPart[];
+  /** Why the editor's times cannot be exported now, in its words (a time not typed, an overlap). */
+  problem?: string | null;
 }) {
   const [frame, setFrame] = useState<ClipExportRequest['frame']>('edited');
   const [shape, setShape] = useState<ClipExportRequest['shape']>('source');
@@ -46,16 +56,24 @@ export function ClipExportPanel({
       clearInterval(timer);
     };
   }, [mediaId]);
-  const needsSave = frame === 'edited' && (dirty || !ready);
+  const joined = parts !== undefined && parts.length >= 2 ? parts : null;
+  // Saved edits cover Start and End only: joined parts come from the original.
+  const joinedEdited = joined !== null && frame === 'edited';
+  const needsSave = !joined && frame === 'edited' && (dirty || !ready);
   const exportClip = async () => {
-    if (endMs === null || endMs <= startMs || needsSave) return;
+    if (endMs === null || endMs <= startMs || needsSave || joinedEdited || problem !== null) return;
     setBusy(true);
     setMessage(null);
     try {
       const result = await window.drashti.media.clipExport({
         mediaId,
-        startMs,
-        endMs,
+        ...(joined
+          ? {
+              startMs: joined[0]?.startMs ?? startMs,
+              endMs: joined[joined.length - 1]?.endMs ?? endMs,
+              parts: joined.map((part) => ({ startMs: part.startMs, endMs: part.endMs })),
+            }
+          : { startMs, endMs }),
         frame,
         shape,
         container,
@@ -115,6 +133,13 @@ export function ClipExportPanel({
           onChange={(e) => setAdd(e.target.checked)}
         />
       </div>
+      {joined && !problem && (
+        <p className="text-xs text-muted" role="status" data-testid="clip-parts-export">
+          {clipPartsSummary(joined)}
+        </p>
+      )}
+      {joinedEdited && <p className="text-xs text-muted">{JOINED_PARTS_ORIGINAL}</p>}
+      {problem && <p className="text-xs text-danger-fg">{problem}</p>}
       {needsSave && (
         <p className="text-xs text-muted">
           Save the edits and wait for preparation before exporting the edited clip.
@@ -130,7 +155,7 @@ export function ClipExportPanel({
         onClick={() => {
           void exportClip();
         }}
-        disabled={busy || needsSave || endMs === null || endMs <= startMs}
+        disabled={busy || needsSave || joinedEdited || problem !== null || endMs === null || endMs <= startMs}
       >
         Export clip…
       </Button>
