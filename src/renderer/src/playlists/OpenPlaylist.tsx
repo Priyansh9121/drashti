@@ -11,6 +11,7 @@ import type { CSSProperties, DragEvent, MouseEvent, ReactNode } from 'react';
 import { create } from 'zustand';
 import { formatDuration } from '../../../shared/format';
 import { actionFor, LIBRARY_KEYMAP } from '../../../shared/keymap';
+import { moveTitle } from './move-title';
 import type { RenderSlide } from '../../../shared/model';
 import type { ItemOrder, PlaylistItemInfo, TimerCue } from '../../../shared/playlists';
 import type { PresentationDoc } from '../../../shared/library';
@@ -535,9 +536,10 @@ function keepSlideFocus(
 
 /**
  * Up and Down on the chosen item, on a line under it so its name keeps its room: it moves a place,
- * as one Undo step, without dragging (Alt+↑ ↓ too).
+ * as one Undo step, without dragging (Alt+↑ ↓ too: ⌥↑ ↓ on a Mac).
  */
 function MoveButtons({
+  platform,
   name,
   first,
   last,
@@ -545,6 +547,8 @@ function MoveButtons({
   onMove,
   before = null,
 }: {
+  /** This computer, for the keys in the tooltips (moveTitle). */
+  platform: string;
   name: string;
   first: boolean;
   last: boolean;
@@ -576,7 +580,7 @@ function MoveButtons({
         icon={ArrowUp}
         data-move="up"
         disabled={first}
-        title="Up a place (Alt+↑)"
+        title={moveTitle(-1, platform)}
         onClick={(e) => {
           press(e, -1, 'up');
         }}
@@ -588,7 +592,7 @@ function MoveButtons({
         icon={ArrowDown}
         data-move="down"
         disabled={last}
-        title="Down a place (Alt+↓)"
+        title={moveTitle(1, platform)}
         onClick={(e) => {
           press(e, 1, 'down');
         }}
@@ -1475,6 +1479,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
               {/* Simple Mode moves rows by dragging (and Alt+↑ ↓): no Up, Down or order under the chosen one. */}
               {isMarked && anchorId === item.id && !simple && (
                 <MoveButtons
+                  platform={platform}
                   name={itemName(item)}
                   first={row === 0}
                   last={row === rows.length - 1}
