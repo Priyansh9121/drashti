@@ -155,3 +155,44 @@ test('a section stays as the operator leaves it while Drashti runs (Simple Mode 
   await expectAllFolded(win2.getByRole('complementary', { name: 'Live', exact: true }));
   await again.app.close();
 });
+
+/**
+ * Chromium's own names (its accessibility tree, what VoiceOver and NVDA are given) of the window's headings, buttons
+ * and regions. Playwright's names never apply text-transform, so only this tree shows a heading drawn in capitals
+ * being named in them.
+ */
+async function chromiumNames(win: Page): Promise<{ role: string; name: string }[]> {
+  const cdp = await win.context().newCDPSession(win);
+  try {
+    await cdp.send('Accessibility.enable');
+    const { nodes } = await cdp.send('Accessibility.getFullAXTree');
+    return nodes.flatMap((n) => {
+      const role = String(n.role?.value ?? '');
+      return ['heading', 'button', 'region'].includes(role) ? [{ role, name: String(n.name?.value ?? '') }] : [];
+    });
+  } finally {
+    await cdp.detach();
+  }
+}
+
+test('a screen reader is given each section’s heading in its own words, never in the capitals it is drawn in: Chromium’s names of the heading, its button and the section (alpha.24, lead 2’s item 38)', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // The headings are drawn in capitals (text-transform), as before.
+  await expect(win.getByTestId('group-audio-toggle')).toHaveCSS('text-transform', 'uppercase');
+  const names = await chromiumNames(win);
+  for (const s of SECTIONS) {
+    for (const role of ['heading', 'button', 'region'])
+      expect(
+        names.filter((n) => n.role === role && n.name === s.title).length,
+        `${s.title}: its ${role}, in its own words`,
+      ).toBeGreaterThanOrEqual(1);
+    expect(
+      names.filter((n) => n.name === s.title.toUpperCase()),
+      `${s.title}: nothing named in its capitals`,
+    ).toEqual([]);
+  }
+  await app.close();
+});
