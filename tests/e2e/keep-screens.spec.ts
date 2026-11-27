@@ -314,7 +314,7 @@ test('covering the controls: the output asks too, large, with its countdown; Esc
     await expect(big.getByTestId('keep-question-countdown')).toHaveText(
       /^Going back by itself in \d+ seconds?\.$/u,
     );
-    await expect(big).toContainText(process.platform === 'darwin' ? '⌘⇧U' : 'Ctrl+Shift+U');
+    await expect(big).toContainText(process.platform === 'darwin' ? '⇧⌘U' : 'Ctrl+Shift+U');
     await expectFits(big, 'Keep these screens? on the output over the controls');
     await expect(question.getByTestId('keep-screens-covered')).toBeVisible();
     expect(await pending(win)).toMatchObject({ coversControls: true });
