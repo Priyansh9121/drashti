@@ -19,6 +19,13 @@ describe('the release lead’s interface capture prohibition', () => {
     expect(captures.map((path) => relative(src, path).split('\\').join('/'))).toEqual([]);
   });
 
+  it('keeps Calm press words fully opaque while its decorative edge answers', () => {
+    const css = readFileSync(join(src, 'renderer/src/ui/motion.css'), 'utf8');
+    const active = /:root\[data-opened\]\[data-chip='yes'\]\[data-interface-motion='calm'\][^{]*:active\s*\{([^}]*)\}/u.exec(css)?.[1] ?? '';
+    expect(active).toMatch(/opacity:\s*1\s*;/u);
+    expect(active).toContain('box-shadow:');
+  });
+
   it('keeps appearance/mode independent of the Help effect and has no snapshot/copy/GPU path in that effect', () => {
     for (const path of ['preload/index.ts', 'renderer/src/operator/mode-store.ts']) {
       const code = readFileSync(join(src, path), 'utf8');
