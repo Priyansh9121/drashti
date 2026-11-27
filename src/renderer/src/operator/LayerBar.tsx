@@ -80,14 +80,26 @@ function WordsAndKey({ words, keyText }: { words: string; keyText: string }) {
 /** The bar's buttons' one shape: 32 px tall, its icon (and a little more room) from 1280 px wide. */
 const BAR_BUTTON =
   'relative inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-md border px-2 text-sm font-medium whitespace-nowrap min-[1280px]:gap-1.5 min-[1280px]:px-2.5';
+/*
+ * No look here changes while the pointer rests on a button (alpha.24, the a25 list's item 28): a show control's look
+ * says what is up, so it answers the pointer with nothing (a lit Black-out or Wallpaper had brightened, a lit clear,
+ * Clear all and Put it back had taken another fill or edge). The clears' tooltips still answer it.
+ */
 /** Nothing of it up: dimmed (Session 55), its edge the appearance's own (Session 44: Black and White's divider). */
 const DIMMED = 'border-layer-edge bg-transparent text-faint';
+/**
+ * The Wallpaper or Black-out off (alpha.24, the a25 list's item 33): dimmed too, but pressable, with no fill, so its
+ * edge is all that marks it out from the bar: the controls' edge (field: 3:1 against every surface rules.ts measures;
+ * in Depth 5.4:1 dark, 3.1:1 light on the ground), not the divider (1.17-1.49:1). A dimmed clear or Clear all, which
+ * cannot be pressed, keeps the divider's.
+ */
+const COVER_OFF = 'border-field bg-transparent text-faint';
 /** Its layer up: lit, as LIVE's edge. */
-const LIT = 'border-live-edge bg-layer text-fg hover:bg-panel-3';
+const LIT = 'border-live-edge bg-layer text-fg';
 /** A layer's clear with nothing up (alpha.24): its icon alone, a square as tall as the bar's buttons. */
 const COMPACT = 'relative inline-flex size-8 shrink-0 items-center justify-center rounded-md border';
 /** A cover on (the Wallpaper, Black-out): LIVE's red. */
-const ON = 'border-live bg-live text-white hover:brightness-110';
+const ON = 'border-live bg-live text-white';
 
 /**
  * An unseen copy of a look a bar button can take (aria-hidden, invisible), in its room's one grid cell with the button:
@@ -221,7 +233,7 @@ function CoverButton({
   words: string;
   onWords: string;
   keyText: string;
-  /** Its keys for a screen reader (aria-keyshortcuts). */
+  /** Its keys for a screen reader that its name does not say (aria-keyshortcuts). */
   keys: string | undefined;
   icon: Icon;
   testId: string;
@@ -241,7 +253,7 @@ function CoverButton({
         data-lit={on ? 'true' : undefined}
         data-dimmed={on ? undefined : 'true'}
         onClick={onClick}
-        className={cx(BAR_BUTTON, ROOM_FILL, on ? ON : cx(DIMMED, 'hover:bg-panel-2 hover:text-fg'))}
+        className={cx(BAR_BUTTON, ROOM_FILL, on ? ON : COVER_OFF)}
       >
         <BarIcon shape={icon} />
         <WordsAndKey words={on ? onWords : words} keyText={keyText} />
@@ -265,8 +277,16 @@ export function LayerBar({
   // The keys on its buttons, as they act now: none for Black-out while B, . and ? are off; the Wallpaper keeps F12.
   const keymap = useKeymapNow(simple ? SIMPLE_KEYMAP : undefined);
   const key = (action: OperatorAction) => shortcutText(action, platform, keymap);
-  // The same keys for a screen reader, every one the action answers to now.
+  // The same keys for a screen reader, every one the action answers to now (a layer's clear: its name says none).
   const keys = (action: OperatorAction) => ariaKeys(action, platform, keymap);
+  // A button whose name says its first key (Clear all, the Wallpaper, Black-out: its key chip, read out all the while,
+  // ui/Kbd.tsx) tells a screen reader only its other keys besides (Black-out's "."), so no key is said twice (alpha.24,
+  // the a25 list's item 36); with none shown, all of them.
+  const otherKeys = (action: OperatorAction) => {
+    const all = keys(action)?.split(' ') ?? [];
+    const others = key(action) === '' ? all : all.slice(1);
+    return others.length > 0 ? others.join(' ') : undefined;
+  };
   const layers = state?.layers;
   const blackout = state?.blackout ?? false;
   const wallpaper = state?.wallpaper ?? false;
@@ -293,11 +313,7 @@ export function LayerBar({
       onClick={() => {
         if (!practiceKey('putBack')) void dispatch({ type: 'putBack' });
       }}
-      className={cx(
-        BAR_BUTTON,
-        ROOM_FILL,
-        'border-warning bg-warning-bg text-warning-fg hover:border-warning-fg',
-      )}
+      className={cx(BAR_BUTTON, ROOM_FILL, 'border-warning bg-warning-bg text-warning-fg')}
     >
       <PutBackLook />
     </button>
@@ -308,7 +324,7 @@ export function LayerBar({
       data-show-control
       data-variant="strong"
       data-testid={simple ? 'simple-clear-all' : undefined}
-      aria-keyshortcuts={keys('clearAll')}
+      aria-keyshortcuts={otherKeys('clearAll')}
       // Simple Mode's stays a Tab stop, dimmed (Part 13's answer); Pro Mode's is not pressable.
       disabled={!simple && !anything}
       aria-disabled={simple && !anything ? true : undefined}
@@ -319,9 +335,7 @@ export function LayerBar({
       className={cx(
         BAR_BUTTON,
         ROOM_FILL,
-        anything
-          ? 'border-primary-edge bg-panel-2 font-semibold text-fg hover:bg-panel-3'
-          : cx(DIMMED, 'cursor-not-allowed'),
+        anything ? 'border-primary-edge bg-panel-2 font-semibold text-fg' : cx(DIMMED, 'cursor-not-allowed'),
       )}
     >
       <ClearAllLook keyText={key('clearAll')} />
@@ -375,7 +389,7 @@ export function LayerBar({
           words="Wallpaper"
           onWords="Wallpaper is on"
           keyText={key('toggleWallpaper')}
-          keys={keys('toggleWallpaper')}
+          keys={otherKeys('toggleWallpaper')}
           icon={Wallpaper}
           testId={simple ? 'simple-wallpaper' : 'wallpaper-button'}
           onClick={() => {
@@ -387,7 +401,7 @@ export function LayerBar({
           words="Black-out"
           onWords="Black-out is on"
           keyText={key('toggleBlackout')}
-          keys={keys('toggleBlackout')}
+          keys={otherKeys('toggleBlackout')}
           icon={BlackOut}
           testId={simple ? 'simple-blackout' : 'blackout-button'}
           onClick={() => {

@@ -530,6 +530,31 @@ function pageStyles(): CSSStyleSheet[] {
   return [sheet];
 }
 
+/**
+ * A copy's canvases show what their originals show (lead 2's item 12): cloneNode copies a canvas's size but not what is
+ * drawn on it, so a fold's copy showed level meters and pictures blank for its 0.2 s. Each copied canvas (at the same
+ * place in both lists) is drawn once with its original's picture as it is now; an empty one, or one that cannot be read
+ * (a canvas a worker draws), is left as it is. How many it drew.
+ */
+export function copyCanvases(originals: readonly Element[], copies: readonly Element[]): number {
+  let drawn = 0;
+  originals.forEach((from, i) => {
+    const to = copies[i];
+    if (from.localName !== 'canvas' || to?.localName !== 'canvas') return;
+    const source = from as HTMLCanvasElement;
+    if (source.width === 0 || source.height === 0) return;
+    try {
+      const pen = (to as HTMLCanvasElement).getContext('2d');
+      if (!pen) return;
+      pen.drawImage(source, 0, 0);
+      drawn += 1;
+    } catch {
+      // Not to be read: it stays blank in the copy, as before.
+    }
+  });
+  return drawn;
+}
+
 /** Play `node`'s exit as a copy, where it is now. Call it just before React removes the node. */
 export function leave(node: Element | null, kind: Leaving, place?: LeavingPlace): void {
   if (!(node instanceof HTMLElement) || !node.isConnected || motionOff()) return;
@@ -571,6 +596,8 @@ export function leave(node: Element | null, kind: Leaving, place?: LeavingPlace)
       ? [{ to, top: el.scrollTop, left: el.scrollLeft }]
       : [];
   });
+  // What its canvases show, drawn on theirs (a clone's are blank).
+  copyCanvases(originals, copies);
   for (const el of [copy, ...copy.querySelectorAll('*')]) {
     el.removeAttribute('id');
     // Its test id as the copy's rules name it (inCopy): a look's rules about it reach it, and no query of the page's

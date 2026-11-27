@@ -549,24 +549,18 @@ test('Lively: the tab’s underline and the chosen playlist glide, cards arrive 
   // A folded panel's insides arrive as it opens (every section under LIVE is folded at the start, alpha.22), unrolling
   // (alpha.24): Show a Window's. Audio's hold the music's show controls (alpha.24's review, S4), so they are there at
   // once (S2). Without a graphics chip (CI's Windows), simply there.
-  const unrolls = (id: string) =>
-    win
-      .getByTestId(`group-${id}-toggle`)
-      .locator('xpath=ancestor::section[1]')
-      .evaluate((section) => {
-        const body = section.querySelector<HTMLElement>('[id$="-body"]');
-        return body
-          ? `${body.dataset['lively'] ?? 'none'} ${getComputedStyle(body).animationName}`
-          : 'no body';
-      });
-  await win.getByTestId('group-show-a-window-toggle').click();
+  // Watch from the click itself: an arrival that has ended is now forgotten at once (item 8), so a later snapshot
+  // cannot say whether it played. Audio's show controls never arrive, and its unused marker goes at once too.
+  const windowOpened = await pressFold(win);
   await expect(win.getByTestId('show-a-window')).toBeVisible();
-  expect(await unrolls('show-a-window')).toBe(noChip ? 'none none' : 'open lively-open');
+  expect(windowOpened.arrivals).toEqual(noChip ? [] : ['lively-open 250']);
+  expect(await arrival(win)).toBe('none none none 0s');
   await letTimePass(win, 900, 'the show has not changed for a moment, as Lively waits for');
-  await win.getByTestId('group-audio-toggle').click();
+  const audioOpened = await pressFold(win, 'audio');
   await expect(win.getByTestId('music-panel')).toBeVisible();
   await expect(win.getByTestId('music-play')).toHaveAttribute('data-show-control', '');
-  expect(await unrolls('audio')).toBe(noChip ? 'none none' : 'open none');
+  expect(audioOpened.arrivals).toEqual([]);
+  expect(await arrival(win, 'audio')).toBe('none none none 0s');
 
   // A button answers a press; a show control never does.
   const transitions = (sel: string) =>
@@ -928,6 +922,85 @@ test('a section under LIVE: Calm fades its insides in and a copy of them out, ev
   await app.close();
 });
 
+/**
+ * Press a section's heading and change the interface motion at once to each of `motions` in turn, from inside the page
+ * (no round trip between): how long that took from the press, and the CSS animations running in the column two frames
+ * after the last.
+ */
+const switchAtOnce = (win: Page, id: string, motions: readonly string[]) =>
+  win.evaluate(
+    async ({ section, ms }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const frame = () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => {
+            resolve();
+          });
+        });
+      const started = performance.now();
+      document.querySelector<HTMLElement>(`[data-testid="group-${section}-toggle"]`)?.click();
+      for (const m of ms) {
+        await d.appearance.setMotion(m as 'calm' | 'lively' | 'off');
+        while (document.documentElement.dataset['interfaceMotion'] !== m) await frame();
+        // Apply each intermediate style before switching back: otherwise Chromium can coalesce Off and Calm into
+        // one style update, so no cancellation happened and an original arrival could still be running.
+        document
+          .querySelector(`[data-testid="group-${section}-toggle"]`)
+          ?.closest('section')
+          ?.querySelector('[id$="-body"]')
+          ?.getAnimations();
+        await frame();
+      }
+      await frame();
+      await frame();
+      return {
+        took: Math.round(performance.now() - started),
+        running: document
+          .getAnimations()
+          .flatMap((a) =>
+            a instanceof CSSAnimation &&
+            (a.effect as KeyframeEffect | null)?.target?.closest('[data-testid="live-rest"]')
+              ? [a.animationName]
+              : [],
+          ),
+      };
+    },
+    { section: id, ms: motions },
+  );
+
+test('a change of motion just after a section opens never plays its arrival again: Calm, Off and back; Lively, Calm and back (alpha.24, lead 2’s item 8; the review of uimotion, NOTE-4)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await expect(win.locator('html')).toHaveAttribute('data-opened', '');
+  // Without a chip nothing arrives at all; with one the initial arrival plays exactly once.
+  const noChip = await chipless(win);
+  const toggle = win.getByTestId(`group-${SECTION}-toggle`);
+  for (const [motion, then] of [
+    ['calm', ['off', 'calm']],
+    ['lively', ['calm', 'lively']],
+  ] as const) {
+    await interfaceMotion(win, motion);
+    await letTimePass(win, 900, 'the show has not changed for a moment, as a fold waits for');
+    const started = watchFold(win, 800);
+    const { took, running } = await switchAtOnce(win, SECTION, then);
+    const moved = await started;
+    expect(moved.arrivals, `${motion}: the initial arrival plays once`).toEqual(
+      noChip ? [] : [motion === 'calm' ? 'fade-in 200' : 'lively-open 250'],
+    );
+    // Within the 0.45 s the section once kept its arrival for (foldArrivalMs), the case that replayed.
+    console.log(`${motion}, then ${then.join(', then ')}: ${String(took)} ms after the press`);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(running, `${motion}, then ${then.join(', then ')}`).toEqual([]);
+    await settled(win);
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await settled(win);
+  }
+  await app.close();
+});
+
 test('a show control near a fold: insides holding one are there at once, nothing glides past one, and no copy covers one (alpha.24, the release lead’s review: MUST-2, S2, S4)', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp();
@@ -955,8 +1028,7 @@ test('a show control near a fold: insides holding one are there at once, nothing
     });
     if (!timer.ok) throw new Error(timer.message);
   }, DEFAULT_LOWER_THIRD_LOOK);
-  // Said in the log (which branch ran); every step here expects the same either way.
-  await chipless(win);
+  const noChip = await chipless(win);
   await letTimePass(win, 900, 'the show has not changed for a moment, as a fold waits for');
   for (const motion of ['calm', 'lively'] as const) {
     await interfaceMotion(win, motion);
@@ -976,10 +1048,40 @@ test('a show control near a fold: insides holding one are there at once, nothing
     pressed = await pressFold(win, 'timers');
     expect(pressed.copies, motion).toEqual([]);
     expect(pressed.glides, motion).toEqual([]);
-    // Show a Window (under Lower Thirds) opened and folded: no copy while a show control shares the column.
+    // Show a Window (under Lower Thirds) opened and folded: Lower Thirds' Show, higher in the column, stays where it is,
+    // so the copy is drawn as for any fold (where the LIVE block stands and the column does not scroll back: lead 2's
+    // item 8, the copy held as the glides are), and it lies over no show control (the review's MUST-2).
     await pressFold(win);
+    // The whole row, heading and insides, in view before measuring or clicking again. Otherwise the unclipped body
+    // rectangle can reach the footer even though the copy is clipped to the column (Windows red 46036239333).
+    const whole = win.getByTestId(`group-${SECTION}-toggle`).locator('xpath=ancestor::section[1]');
+    await whole.scrollIntoViewIfNeeded();
+    await expect(whole, `${motion}: the heading and insides wholly in the column`).toBeInViewport({
+      ratio: 1,
+    });
+    const drawn = !noChip && (await standing(win)) && !(await willScrollBack(win));
+    const show = win.getByTestId('lower-third-show').first();
+    const showAt = await show.boundingBox();
+    const insides = await win
+      .getByTestId(`group-${SECTION}-toggle`)
+      .locator('xpath=ancestor::section[1]')
+      .evaluate((section) => {
+        const r = section.querySelector('[id$="-body"]')?.getBoundingClientRect();
+        return r ? { top: r.top, bottom: r.bottom, left: r.left, right: r.right } : null;
+      });
     pressed = await pressFold(win);
-    expect(pressed.copies, motion).toEqual([]);
+    expect(pressed.copies, motion).toEqual(drawn ? [motion === 'lively' ? 'fold-lively' : 'fold'] : []);
+    expect(await show.boundingBox(), `${motion}: Lower Thirds' Show stays where it is`).toEqual(showAt);
+    const under = await win.evaluate((box) => {
+      if (!box) return ['no insides'];
+      return [...document.querySelectorAll('[data-show-control]')].flatMap((c) => {
+        const r = c.getBoundingClientRect();
+        const over =
+          r.width > 0 && r.top < box.bottom && r.bottom > box.top && r.left < box.right && r.right > box.left;
+        return over ? [c.getAttribute('data-testid') ?? c.tagName] : [];
+      });
+    }, insides);
+    expect(under, `${motion}: no show control where the copy lies`).toEqual([]);
     // Lower Thirds folded again for the next round.
     await pressFold(win, 'lower-thirds');
   }
@@ -1139,6 +1241,81 @@ test('a fold’s copy draws in the window’s appearance and look: Follow the co
         expect(corners, `${look}, ${motion}: the corners`).toBeNull();
       }
     }
+  }
+  await app.close();
+});
+
+/**
+ * At the press that folds Show a Window: a frame later, the colour of the middle of the copy's probe canvas (as `r g b a`),
+ * or null when no copy is drawn. The copy's closed shadow root is kept by wrapping attachShadow, as copyLook does.
+ */
+const copiedCanvas = (win: Page) =>
+  win.evaluate(
+    () =>
+      new Promise<string | null>((resolve) => {
+        const w = window as unknown as { shadows?: ShadowRoot[] };
+        if (!w.shadows) {
+          w.shadows = [];
+          const attach = Object.getOwnPropertyDescriptor(Element.prototype, 'attachShadow')?.value as (
+            this: Element,
+            init: ShadowRootInit,
+          ) => ShadowRoot;
+          Element.prototype.attachShadow = function (this: Element, init: ShadowRootInit) {
+            const root = attach.call(this, init);
+            w.shadows?.push(root);
+            return root;
+          };
+        }
+        const before = w.shadows.length;
+        window.addEventListener(
+          'click',
+          () => {
+            requestAnimationFrame(() => {
+              const canvas = (w.shadows ?? [])
+                .slice(before)
+                .at(-1)
+                ?.querySelector<HTMLCanvasElement>('canvas[data-probe]');
+              const pixel = canvas?.getContext('2d')?.getImageData(4, 4, 1, 1).data;
+              resolve(pixel ? [...pixel].join(' ') : null);
+            });
+          },
+          { capture: true, once: true },
+        );
+      }),
+  );
+
+test('a fold’s copy shows what its canvases showed, never blank (alpha.24, lead 2’s item 12; the review of uimotion, a NIT)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await expect(win.locator('html')).toHaveAttribute('data-opened', '');
+  const noChip = await chipless(win);
+  for (const motion of ['calm', 'lively'] as const) {
+    await interfaceMotion(win, motion);
+    await letTimePass(win, 900, 'the show has not changed for a moment, as a fold waits for');
+    await pressFold(win);
+    await expect(win.getByTestId(SECTION)).toBeVisible();
+    // A canvas in its insides, as a level meter or a picture is: a placeholder colour drawn on it.
+    await win.getByTestId(SECTION).evaluate((el) => {
+      const c = document.createElement('canvas');
+      c.width = 8;
+      c.height = 8;
+      c.dataset['probe'] = '';
+      const g = c.getContext('2d');
+      if (g) {
+        g.fillStyle = 'rgb(200, 30, 40)';
+        g.fillRect(0, 0, 8, 8);
+      }
+      el.append(c);
+    });
+    const drawn = !noChip && (await standing(win)) && !(await willScrollBack(win));
+    const seen = copiedCanvas(win);
+    await win.getByTestId(`group-${SECTION}-toggle`).click();
+    const pixel = await seen;
+    await settled(win);
+    console.log(`${motion}: the copy's canvas ${pixel ?? 'not drawn'}`);
+    expect(pixel, motion).toBe(drawn ? '200 30 40 255' : null);
   }
   await app.close();
 });

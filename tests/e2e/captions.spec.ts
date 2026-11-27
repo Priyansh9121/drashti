@@ -65,6 +65,11 @@ test('off until turned on and marked Trial; on, what is heard shows on the stage
     await hallAndStage(win, app);
     const stage = await outputWith(app, 'stage');
     const hall = await outputWith(app, 'audience');
+    const liveStatus = win.getByTestId('header-states').getByTestId('live-status');
+    const liveBadge = liveStatus.locator('[data-badge]').first();
+    const liveText = liveStatus.getByTestId('live-text');
+    await expect(liveBadge).toHaveText('Off');
+    await expect(liveText).toHaveText('Nothing live');
 
     // Off at first, marked Trial; nothing on any screen.
     await chooseMenuItem(app, 'live-captions');
@@ -84,6 +89,9 @@ test('off until turned on and marked Trial; on, what is heard shows on the stage
     await expect(stage.getByTestId('captions')).toContainText(HEARD, { timeout: 15_000 });
     await expect(stage.getByTestId('captions')).toHaveAttribute('data-screen', 'stage');
     await expect(hall.getByTestId('captions')).toHaveCount(0);
+    // A caption-only band is public on the stream too: LIVE names its kind, not the recognised speech (topbar, A).
+    await expect(liveBadge).toHaveText('Live');
+    await expect(liveText).toHaveText('Live: Captions');
 
     // The audience screens too, when chosen: kept in the library.
     await dialog.getByTestId('captions-audience').click();
@@ -128,6 +136,8 @@ test('off until turned on and marked Trial; on, what is heard shows on the stage
     for (const p of outputPages(app)) await expect(p.getByTestId('captions')).toHaveCount(0);
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(dialog).toHaveCount(0);
+    await expect(liveBadge).toHaveText('Off');
+    await expect(liveText).toHaveText('Nothing live');
 
     // Simple Mode: no File menu, and the main process refuses to show or change captions.
     await win.getByRole('button', { name: 'Simple Mode' }).dblclick();

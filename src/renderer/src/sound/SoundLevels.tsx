@@ -91,7 +91,9 @@ function LevelLine({ kind, level }: { kind: SoundKind; level: SoundLevel }) {
             setMoving(null);
           }, SETTLE_MS);
         }}
-        className="h-1.5 min-w-16 flex-1 cursor-pointer accent-primary"
+        // 24 px tall, a target (WCAG 2.5.8; targets, alpha.24: 6 px until then) in the 28 px row its Mute switch gives
+        // the line; the track is drawn as before, in the middle (targets-24.spec.ts).
+        className="h-6 min-w-16 flex-1 cursor-pointer accent-primary"
       />
       <output htmlFor={`${id}-level`} className="w-10 shrink-0 text-right text-xs text-muted tabular-nums">
         {`${String(shown)} %`}

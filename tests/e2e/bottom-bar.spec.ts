@@ -209,6 +209,31 @@ async function stayPut(win: Page, bar: Locator, before: Map<number, Place[]>, wh
   }
 }
 
+/**
+ * Each of the bar's buttons says its keys to a screen reader once, as they act now (a25 item 36; the single-letter
+ * keys on). Clear all, the Wallpaper and Black-out say theirs in their names (their key chips are read out all the
+ * while, ui/Kbd.tsx), so no aria-keyshortcuts says them again; Black-out's second key (".") is in no name, so its
+ * aria-keyshortcuts says that one; a layer's clear's name says no key (its words and key are in its tooltip), so its
+ * aria-keyshortcuts says it.
+ */
+async function keysSaidOnce(button: (words: string) => Locator, where: string): Promise<void> {
+  for (const [words, name, keys] of [
+    ['Clear all', 'Clear all F1', null],
+    ['Wallpaper', 'Wallpaper F12', null],
+    ['Black-out', 'Black-out B', '.'],
+  ] as const) {
+    const at = `${where}: ${words}`;
+    await expect(button(words), at).toHaveAccessibleName(name);
+    if (keys === null) await expect(button(words), at).not.toHaveAttribute('aria-keyshortcuts');
+    else await expect(button(words), at).toHaveAttribute('aria-keyshortcuts', keys);
+  }
+  for (const [words, key] of CLEARS) {
+    const at = `${where}: ${words}`;
+    await expect(button(words), at).not.toHaveAccessibleName(new RegExp(key, 'u'));
+    await expect(button(words), at).toHaveAttribute('aria-keyshortcuts', key);
+  }
+}
+
 /** Every one of the bar's buttons in one row, none cut, the bar not scrolling; its height. */
 async function oneRow(win: Page, where: string): Promise<number> {
   const bar = win.getByTestId('layer-bar');
@@ -264,11 +289,9 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
     await expect(button(words), words).toBeEnabled();
     await expect(button(words), words).toHaveAttribute('data-dimmed', 'true');
   }
-  // Each button names its keys for a screen reader too (aria-keyshortcuts), as they act now: Black-out B and its "."
-  // while the single-letter keys are on (as they are to begin with).
-  const KEYS = [['Clear all', 'F1'], ...CLEARS, ['Wallpaper', 'F12'], ['Black-out', 'B .']] as const;
-  for (const [words, key] of KEYS)
-    await expect(button(words), words).toHaveAttribute('aria-keyshortcuts', key);
+  // Each button says its keys to a screen reader once, as they act now (the single-letter keys on, as they are to
+  // begin with): in its name, or in aria-keyshortcuts (a25 item 36).
+  await keysSaidOnce(button, 'nothing up');
   // Each layer's clear compact (alpha.24): its icon in sight, no words or key on it; its words and key in its tooltip,
   // the mouse resting on it.
   const tip = win.locator('[role="tooltip"]');
@@ -353,9 +376,8 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
     await oneRow(win, `${width} × ${height}, every layer up`);
   }
   await stayPut(win, bar, atRest, 'every layer up');
-  // Lit, each still names its keys for a screen reader.
-  for (const [words, key] of KEYS)
-    await expect(button(words), words).toHaveAttribute('aria-keyshortcuts', key);
+  // Lit, each still says its keys to a screen reader, once.
+  await keysSaidOnce(button, 'every layer up');
   // Black-out on over them all, in its words ("Black-out is on"): no button moved, the Wallpaper beside it neither;
   // then off again.
   await button('Black-out').click();
@@ -396,16 +418,21 @@ test('Simple Mode’s buttons too: its Clear all dimmed with nothing up; the Wal
   expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'))).toMatchObject({
     ok: true,
   });
-  // Each of its buttons names its keys for a screen reader, as Pro Mode's do (aria-keyshortcuts).
-  for (const [id, key] of [
-    ['simple-clear-all', 'F1'],
-    ['simple-clear-slide', 'F2'],
-    ['simple-clear-background', 'F3'],
-    ['simple-clear-audio', 'F5'],
-    ['simple-wallpaper', 'F12'],
-    ['simple-blackout', 'B .'],
-  ] as const)
-    await expect(win.getByTestId(id), id).toHaveAttribute('aria-keyshortcuts', key);
+  // Each of its buttons says its keys to a screen reader once, as Pro Mode's do (a25 item 36): Clear all, the
+  // Wallpaper and Black-out in their names, the clears (whose names say none) and Black-out's "." in
+  // aria-keyshortcuts.
+  for (const [id, name, keys] of [
+    ['simple-clear-all', 'Clear all F1', null],
+    ['simple-clear-slide', 'Clear slide', 'F2'],
+    ['simple-clear-background', 'Clear background', 'F3'],
+    ['simple-clear-audio', 'Clear audio', 'F5'],
+    ['simple-wallpaper', 'Wallpaper F12', null],
+    ['simple-blackout', 'Black-out B', '.'],
+  ] as const) {
+    await expect(win.getByTestId(id), id).toHaveAccessibleName(name);
+    if (keys === null) await expect(win.getByTestId(id), id).not.toHaveAttribute('aria-keyshortcuts');
+    else await expect(win.getByTestId(id), id).toHaveAttribute('aria-keyshortcuts', keys);
+  }
   // Its Clear all dimmed with nothing up, as the bar of clears' is, and pressable once something is.
   const clearAll = win.getByTestId('simple-clear-all');
   await expect(clearAll).toBeDisabled();
