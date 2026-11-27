@@ -58,6 +58,38 @@ export function LiveBadge({ label = 'Live', className }: { label?: string; class
   );
 }
 
+/**
+ * A playlist's row on the screens now (alpha.24, uitop: LIVE is said once, in words, by the top bar's badge): a small
+ * dot in LIVE's frame colour beside the row's red edge, and "Live" for screen readers, so the row reads as before. Only
+ * the row that is up has one: its being there says it, never its colour alone. In forced colours (a Windows contrast
+ * theme) the dot and the edge, backgrounds, are the system's own colour, so the word Live is seen there in their place,
+ * in the theme's text colour (the release lead's review, MUST-1).
+ */
+export function LiveDot({ className }: { className?: string }) {
+  return (
+    <span data-live-dot="" className={cx('flex h-4 min-w-4 shrink-0 items-center justify-center', className)}>
+      <span aria-hidden="true" className="h-2 w-2 rounded-full bg-live-edge forced-colors:hidden" />
+      <span className="sr-only forced-colors:not-sr-only forced-colors:text-xs forced-colors:font-bold">
+        Live
+      </span>
+    </span>
+  );
+}
+
+/**
+ * A row's red edge at its start while it is up (alpha.24, uitop), with its LiveDot: decoration only (hidden from screen
+ * readers), absolute in the row (which is relative), so nothing in the row moves as it comes or goes.
+ */
+export function LiveEdge() {
+  return (
+    <span
+      aria-hidden="true"
+      data-live-edge=""
+      className="pointer-events-none absolute inset-y-1.5 left-0.5 w-[3px] rounded-full bg-live-edge"
+    />
+  );
+}
+
 /** A file the library cannot find. */
 export function MissingBadge({ title }: { title?: string }) {
   return (

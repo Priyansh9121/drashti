@@ -19,7 +19,7 @@ The left column holds the playlists, in folders, and under them the wallpapers. 
 
 ## The open playlist
 
-**What it is.** The middle of the window. A presentation, a PDF or a deck is a row with its name, and a row under it for each slide. A picture, a video, a sound and a video input are a row each. **One click on any row puts it on the screens at once.**
+**What it is.** The middle of the window. A presentation, a PDF or a deck is a row with its name, and a row under it for each slide. A picture, a video, a sound and a video input are a row each. **One click on any row puts it on the screens at once.** The row on the screens has a red edge and a small red dot; the top bar's **LIVE** says it in words.
 
 The new timing, Find and M3U controls are in Pro Mode.
 
@@ -50,7 +50,7 @@ In Pro Mode, the open playlist’s **⋯** has **Shuffle** and **Repeat all**, b
 
 1. To add: choose a row in the **Library** and press **Add to playlist**, or drag it onto the playlist.
 2. To bring in new files: press **Add files…** above the playlist, or drop files on it.
-3. To move a row: drag it, or choose it and press **Alt+↑** or **Alt+↓**.
+3. To move a row: drag it, or choose it and press **Alt+↑** or **Alt+↓** (**⌥↑** or **⌥↓** on a Mac).
 4. To take a row out: right-click it, then **Remove from playlist**.
 5. Press **Cmd+Z** (Ctrl+Z) to undo the last change.
 

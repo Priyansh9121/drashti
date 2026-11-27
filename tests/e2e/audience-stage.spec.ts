@@ -1,7 +1,12 @@
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { IPC } from '../../src/shared/ipc';
 import type { StreamStatus } from '../../src/shared/stream';
+import {
+  type IconAloneButton,
+  MAY_SHOW_ICON_ALONE,
+  WORDS_FROM,
+} from '../../src/renderer/src/operator/top-bar';
 import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
 import { expectPhoneRefuses } from './phone-refuses';
 import { expectFits } from './fit';
@@ -469,6 +474,108 @@ test('the top bar fits at 1024 × 645 and 1280 × 720 with Phones on: nothing cu
       await onAirAndRec(app, win, stream.live, stream.noSound);
       await expectTopBarFits(win, `the top bar at ${String(width)} × ${String(height)}, ${stream.words}`);
     }
+  await app.close();
+});
+
+/*
+ * The top bar's words (alpha.24, uitop; the release lead's review S3): each of Simple Mode, Ready?, Phones,
+ * Announcements and Stream shows its words from the width top-bar.ts gives it, with Phones off and with Phones on. At
+ * that width, on air as the stream says it longest (reconnecting and REC, or No sound), the bar fits and what is live
+ * keeps 48 px; 1 px narrower, that button shows its icon alone, square.
+ */
+const TOP_BAR_BUTTON: Record<IconAloneButton, (header: Locator) => Locator> = {
+  simple: (h) => h.getByRole('button', { name: 'Simple Mode', exact: true }),
+  ready: (h) => h.getByTestId('open-ready'),
+  phones: (h) => h.getByTestId('open-network'),
+  announcements: (h) => h.getByTestId('open-announcements'),
+  stream: (h) => h.getByTestId('open-stream'),
+};
+
+test('the top bar’s words come back where top-bar.ts says, Phones off and on, on air: the bar fits, what is live keeps 48 px, and 1 px narrower each shows its icon alone (uitop)', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const header = win.getByTestId('app-header');
+  const streams = [
+    { live: 'live', noSound: false, words: 'on air and recording' },
+    { live: 'reconnecting', noSound: false, words: 'reconnecting and recording' },
+    { live: 'live', noSound: true, words: 'on air and recording, with no sound' },
+  ] as const;
+  for (const crowded of [false, true]) {
+    if (crowded) {
+      await networkOn(win);
+      await expect(header.getByTestId('open-announcements')).toBeVisible();
+    }
+    const phones = crowded ? 'Phones on' : 'Phones off';
+    for (const b of MAY_SHOW_ICON_ALONE) {
+      if (!crowded && b === 'announcements') continue;
+      const from = WORDS_FROM[b][crowded ? 'crowded' : 'quiet'];
+      const button = TOP_BAR_BUTTON[b](header);
+      await win.setViewportSize({ width: from, height: 720 });
+      for (const stream of streams) {
+        await onAirAndRec(app, win, stream.live, stream.noSound);
+        const where = `${phones}, ${b}'s words at ${String(from)} px, ${stream.words}`;
+        await expectTopBarFits(win, where);
+        const line = (await win.getByTestId('live-text').boundingBox())?.width ?? 0;
+        expect(line, `${where}: what is live keeps 48 px`).toBeGreaterThanOrEqual(47.5);
+      }
+      expect(
+        (await button.boundingBox())?.width ?? 0,
+        `${phones}: ${b} with its words at ${String(from)} px`,
+      ).toBeGreaterThan(40);
+      await win.setViewportSize({ width: from - 1, height: 720 });
+      expect(
+        (await button.boundingBox())?.width,
+        `${phones}: ${b}'s icon alone at ${String(from - 1)} px`,
+      ).toBe(32);
+    }
+  }
+  await app.close();
+});
+
+test('Stage off and on again moves nothing in the top bar: On and Off keep the same room (uitop, lead 2’s hands-on pass)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  const header = win.getByTestId('app-header');
+  const stage = header.getByTestId('switch-stage');
+  await expect(stage).toBeEnabled();
+  /**
+   * Where each of the top bar group's buttons is, from the group's end, and how wide: the switches' own room (the
+   * page's own scroll, which moved the whole group, is checked apart, below).
+   */
+  const places = () =>
+    header.locator('[data-top-group]').evaluate((group) => {
+      const end = group.getBoundingClientRect().right;
+      return [...group.querySelectorAll('button')].map((b) => {
+        const r = b.getBoundingClientRect();
+        return [end - r.x, r.width];
+      });
+    });
+  /**
+   * The page's own scroll: its room and what it holds, the same either way. With Stage off, the status bar's Stage off
+   * and its Turn on (28 px tall in a 28 px bar) made it 3 px taller than the window (720, 723 on CI's Windows, run
+   * a22-uitop-1127-093143-70913), so the page scrolled and its scrollbar took 10 px from the whole window.
+   */
+  const page = () =>
+    win.evaluate(() => {
+      const d = document.documentElement;
+      return { width: [d.clientWidth, d.scrollWidth], height: [d.clientHeight, d.scrollHeight] };
+    });
+  const before = await places();
+  const was = (await stage.getAttribute('aria-checked')) === 'true';
+  const room = await page();
+  expect(room.height[1], 'the page fits the window').toBeLessThanOrEqual(room.height[0] ?? 0);
+  // Nothing shows on a stage screen here: turned either way at once, asking nothing.
+  await win.keyboard.press(`${MOD}+2`);
+  await expect(stage).toHaveAttribute('aria-checked', was ? 'false' : 'true');
+  expect(await page(), `Stage ${was ? 'off' : 'on'}: the page scrolls no more than before`).toEqual(room);
+  expect(await places(), 'Stage the other way: every button where it was in the group, 0 px').toEqual(before);
+  await win.keyboard.press(`${MOD}+2`);
+  await expect(stage).toHaveAttribute('aria-checked', was ? 'true' : 'false');
+  expect(await places()).toEqual(before);
   await app.close();
 });
 
