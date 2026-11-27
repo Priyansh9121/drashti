@@ -179,8 +179,9 @@ function newWaysToDraw(win: Page) {
  * What draws over a column's rounded corners: at three points outside each corner's arc, everything the column holds
  * there (above it, under the point) with a background of its own. The ring of the ground lies under what the column
  * holds (the re-review of 6e6d4fea2, SHOULD-1), so anything there with a background would show the corner square. Not
- * seen (accepted, the review of copylook ee108ee50, SHOULD-2): what takes no pointer (elementsFromPoint skips it), and
- * LIVE's rows, 4 px in, cut by the column's foot as what is under LIVE scrolls (about 3 x 8 px of a corner).
+ * seen (accepted, the review of copylook ee108ee50, SHOULD-2): what takes no pointer (elementsFromPoint skips it); and
+ * passed by name: LIVE's rows, 4 px in, cut by the column's foot or top where what is under LIVE scrolls (about 3 x 8 px
+ * of a corner, as CI's Windows shows at 1280 x 720 with every section folded: run 45957201941).
  */
 function overCorners(win: Page) {
   return win.evaluate(() => {
@@ -209,7 +210,9 @@ function overCorners(win: Page) {
       for (const [x, y] of points) {
         for (const el of document.elementsFromPoint(x, y)) {
           if (el === column) break;
-          if (!column.contains(el)) continue;
+          // Accepted (the review of copylook ee108ee50, SHOULD-2): LIVE's rows, 4 px in, cut by the column's foot or
+          // top where what is under LIVE scrolls, cover at most about 3 x 8 px of a corner.
+          if (!column.contains(el) || el.matches('[data-testid="live-rest"] > div > *')) continue;
           const own = getComputedStyle(el);
           const clear = /^rgba\(\d+, \d+, \d+, 0\)$|^transparent$/u.test(own.backgroundColor);
           if (clear && own.backgroundImage === 'none') continue;

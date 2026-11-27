@@ -281,25 +281,28 @@ describe('B · Depth: styles/look-depth.css', () => {
     expect(column?.decls).toMatchObject({ position: 'relative', isolation: 'isolate' });
     // Nothing of a column's drawn over what it holds.
     expect(rules.filter((r) => r.selector.includes('column-') && r.selector.endsWith('::after'))).toEqual([]);
-    // What lies at the left column's foot while it is up (the release lead's review of copylook ee108ee50, MUST-1): the
-    // Library sheet and an Undo line have backgrounds of their own over the ring, so their bottom corners are the
-    // panel's (a rounded background, no clip), and the sheet draws no line along the foot.
-    for (const id of ['library-sheet', 'undo-removal']) {
-      const foot = rules.find(
-        (r) => r.selector.startsWith(SCOPE) && r.selector.endsWith(`[data-testid='${id}']`),
-      );
-      expect(foot?.decls, id).toMatchObject({
-        'border-bottom-left-radius': 'var(--radius-panel)',
-        'border-bottom-right-radius': 'var(--radius-panel)',
-      });
-      expect(foot?.decls['overflow'], id).toBeUndefined();
-    }
-    // The sheet only while it reaches the foot: an Undo line (or its room) under it is the foot then.
-    const sheet = rules.find((r) => r.selector.endsWith("[data-testid='library-sheet']"));
-    expect(sheet?.selector).toBe(
+    // What lies at the left column's corners while it is up (the release lead's review of copylook ee108ee50, MUST-1):
+    // an Undo line at the foot, and the Library sheet from the column's top (to its foot while nothing else is there).
+    // Backgrounds of their own over the ring, so their corners there are the panel's (a rounded background, no clip),
+    // and the sheet draws no line along the panel's top or foot.
+    const PANEL = 'var(--radius-panel)';
+    const undo = rules.find((r) => r.selector === `${SCOPE} [data-testid='undo-removal']`);
+    expect(undo?.decls).toEqual({ 'border-bottom-left-radius': PANEL, 'border-bottom-right-radius': PANEL });
+    const sheets = rules.filter((r) => r.selector.endsWith("[data-testid='library-sheet']"));
+    expect(sheets.map((r) => r.selector)).toEqual([
+      `${SCOPE} [data-testid='library-sheet']`,
       `${SCOPE} [data-testid='column-left']:not(:has([data-testid='undo-removal'], [data-testid='undo-room'])) [data-testid='library-sheet']`,
-    );
-    expect(sheet?.decls).toMatchObject({ 'border-bottom-color': 'transparent' });
+    ]);
+    expect(sheets[0]?.decls).toEqual({
+      'border-top-left-radius': PANEL,
+      'border-top-right-radius': PANEL,
+      'border-top-color': 'transparent',
+    });
+    expect(sheets[1]?.decls).toEqual({
+      'border-bottom-left-radius': PANEL,
+      'border-bottom-right-radius': PANEL,
+      'border-bottom-color': 'transparent',
+    });
   });
 
   it('LIVE is a red ring and a light red tint, never a glow: the live picture and the live row', () => {
