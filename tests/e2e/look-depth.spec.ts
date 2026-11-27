@@ -184,6 +184,11 @@ function liveEdges(win: Page) {
       back: step(box('show-back')?.left, picture?.left),
       oops: step(box('show-oops')?.left, picture?.left),
       nextUp: step(picture?.right, box('next-up')?.right),
+      // Nothing reaches past the live column's room: it never scrolls sideways (a scrolling LIVE column would).
+      sideways: (() => {
+        const scroller = document.querySelector('[data-testid="live-scroll"]');
+        return scroller ? scroller.scrollWidth - scroller.clientWidth : null;
+      })(),
     };
   });
 }
@@ -243,6 +248,7 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
       back: 0,
       oops: 0,
       nextUp: 0,
+      sideways: 0,
     });
     pictures.push(edges.picture);
     await win.evaluate(() =>
@@ -274,6 +280,7 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
     back: 0,
     oops: null,
     nextUp: 0,
+    sideways: 0,
   });
   await chooseMenuItem(app, 'switch-mode');
   await expect(win.getByTestId('simple-mode')).toHaveCount(0);
@@ -299,6 +306,7 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
     back: 0,
     oops: 0,
     nextUp: 0,
+    sideways: 0,
   });
   expect(pictures, "the live picture's box: Depth's the flat look's").toEqual([
     flatEdges.picture,

@@ -279,12 +279,14 @@
   }
   /*
    * Back, Next and the next picture's row, and Oops's line, reach the gaps' room back with it, so Back and Oops start at
-   * the picture's left edge and the next picture ends at its right, as in a flat look (they were 4 px inside them).
+   * the picture's left edge and the next picture ends at its right, as in a flat look (they were 4 px inside them): their
+   * own padding (px-3, operator/NextBack.tsx) less the gap, inside their box, so nothing reaches past the column's room
+   * (a margin would, and a scrolling LIVE column would scroll sideways by it).
    */
   :root[data-window-look='depth']
     [data-testid='column-right']
     :is(:has(> [data-testid='show-back']), :has(> [data-testid='show-oops'])) {
-    margin-inline: calc(-1 * var(--depth-gap));
+    padding-inline: calc(var(--spacing) * 3 - var(--depth-gap));
   }
   :root[data-window-look='depth'] [data-testid='live-preview'].border-live-edge {
     box-shadow:
