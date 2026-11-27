@@ -1,5 +1,7 @@
 import { BrowserWindow, type Session, type WebContents, type WebFrameMain } from 'electron';
-import { loadPage } from '../windows/renderer';
+import { devServerUrl, loadPage, rendererDir } from '../windows/renderer';
+import { isAppUrl } from '../windows/navigation';
+import { permissionFrameAllowed } from '../windows/security';
 import { secureWebPreferences } from '../windows/web-preferences';
 import type { CaptureGrant } from '../live-window/live-window-service';
 
@@ -48,6 +50,8 @@ export function streamPermissionAllowed(
 export interface StreamSessionRules {
   /** True for the Program window's page. */
   isProgram(contents: WebContents | null): boolean;
+  /** Tests may supply their app-page fixture; production uses the built renderer or the dev server. */
+  isOwnPage?: (url: string) => boolean;
   /** Every permission asked for and checked (DRASHTI_LOG_PERMISSIONS). */
   log?(line: string): void;
   /** Each capture of the page's own picture, granted or refused: rare, so always kept (Session 18). */
@@ -64,38 +68,50 @@ export interface StreamSessionRules {
  * microphone and capture its own picture; every other request is refused.
  */
 export function applyStreamSessionSecurity(session: Session, rules: StreamSessionRules): void {
+  const own =
+    rules.isOwnPage ??
+    ((url: string) => isAppUrl(url, { devServerUrl: devServerUrl(), rendererDir: rendererDir() }));
   session.setPermissionRequestHandler((contents, permission, callback, details) => {
     const url = details.requestingUrl;
     const media = 'mediaTypes' in details ? (details.mediaTypes ?? []) : [];
-    const allowed = streamPermissionAllowed(permission, rules.isProgram(contents), url, media);
+    const allowed =
+      permissionFrameAllowed(contents, url, details.isMainFrame, own) &&
+      streamPermissionAllowed(permission, rules.isProgram(contents), url, media);
     rules.log?.(`Stream permission ${allowed ? 'granted' : 'refused'}: ${permission} for ${url}`);
     callback(allowed);
   });
   session.setPermissionCheckHandler((contents, permission, _origin, details) => {
     const url = details.requestingUrl ?? contents?.getURL() ?? '';
-    const allowed = streamPermissionAllowed(permission, rules.isProgram(contents), url);
+    const media = details.mediaType === undefined ? [] : [details.mediaType];
+    const allowed =
+      permissionFrameAllowed(contents, url, details.isMainFrame, own) &&
+      streamPermissionAllowed(permission, rules.isProgram(contents), url, media);
     rules.log?.(`Stream permission check ${allowed ? 'passed' : 'failed'}: ${permission} for ${url}`);
     return allowed;
   });
   session.setDisplayMediaRequestHandler((request, callback) => {
     const frame: WebFrameMain | null = request.frame;
-    const window = rules.liveWindow?.(frame) ?? null;
+    const program =
+      frame !== null &&
+      frame.parent === null &&
+      isStreamPage(frame.url) &&
+      own(frame.url) &&
+      BrowserWindow.getAllWindows().some(
+        (w) =>
+          rules.isProgram(w.webContents) &&
+          w.webContents.mainFrame === frame &&
+          permissionFrameAllowed(w.webContents, frame.url, true, own),
+      );
+    const window = program ? (rules.liveWindow?.(frame) ?? null) : null;
     if (window) {
       rules.logCapture?.('Stream capture of the window on the screens granted');
       callback({ video: window });
       return;
     }
-    const own =
-      frame !== null &&
-      frame.parent === null &&
-      isStreamPage(frame.url) &&
-      BrowserWindow.getAllWindows().some(
-        (w) => rules.isProgram(w.webContents) && w.webContents.mainFrame === frame,
-      );
-    const line = `Stream capture ${own ? 'granted' : 'refused'} for ${frame?.url ?? 'no frame'}`;
+    const line = `Stream capture ${program ? 'granted' : 'refused'} for ${frame?.url ?? 'no frame'}`;
     rules.log?.(line);
     rules.logCapture?.(line);
-    if (own) callback({ video: frame });
+    if (program) callback({ video: frame });
     else callback({});
   });
 }
