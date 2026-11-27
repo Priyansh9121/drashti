@@ -199,9 +199,9 @@ describe('the operator window’s keys, as its listener takes them', () => {
 describe('the key a window’s own shortcut reads (shortcutKey)', () => {
   it('reads another script’s letter as the Latin one in its place, outside a field', () => {
     expect(shortcutKey({ key: 'સ', code: 'KeyS', target: new StandInElement('DIV') })).toBe('S');
-    expect(shortcutKey({ key: 'ॆ', code: 'KeyZ', isComposing: false, target: new StandInElement('BODY') })).toBe(
-      'Z',
-    );
+    expect(
+      shortcutKey({ key: 'ॆ', code: 'KeyZ', isComposing: false, target: new StandInElement('BODY') }),
+    ).toBe('Z');
     // React's event, whose native event says whether an IME is composing; and one with no target.
     expect(shortcutKey({ key: 'ય', code: 'KeyY', nativeEvent: { isComposing: false } })).toBe('Y');
     expect(shortcutKey({ key: 'અ', code: 'KeyA' })).toBe('A');

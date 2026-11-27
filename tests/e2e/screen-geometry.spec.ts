@@ -818,7 +818,14 @@ test('Screens: Adjust the picture… moves a corner by its numbers, the keys and
         document
           .querySelector('[data-testid="adjust-preview"]')
           ?.dispatchEvent(
-            new KeyboardEvent('keydown', { key: k, code: 'KeyZ', shiftKey: shift, bubbles: true, cancelable: true, ...mods }),
+            new KeyboardEvent('keydown', {
+              key: k,
+              code: 'KeyZ',
+              shiftKey: shift,
+              bubbles: true,
+              cancelable: true,
+              ...mods,
+            }),
           ),
       { key, shiftKey, mods: process.platform === 'darwin' ? { metaKey: true } : { ctrlKey: true } },
     );

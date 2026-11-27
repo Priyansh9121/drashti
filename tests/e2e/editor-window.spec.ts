@@ -320,7 +320,9 @@ test('with a Gujarati or Hindi keyboard layout, the editor’s own keys act by t
       ({ key: k, code: c, mods }) => {
         document
           .querySelector('[data-testid="editor-canvas"]')
-          ?.dispatchEvent(new KeyboardEvent('keydown', { key: k, code: c, bubbles: true, cancelable: true, ...mods }));
+          ?.dispatchEvent(
+            new KeyboardEvent('keydown', { key: k, code: c, bubbles: true, cancelable: true, ...mods }),
+          );
       },
       { key, code, mods: { ...command, ...more } },
     );

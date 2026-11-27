@@ -287,7 +287,10 @@ describe('an upright video’s Quality, by the short side of its picture (alpha.
     expect(chosenHeight(video, 1080, 1280)).toBe(1280);
     expect(chosenHeight(video, 1080, 3840)).toBe(1920);
     expect(chosenHeight(video, 2160, 3840)).toBe(3840);
-    expect(qualityChoice(video, false, undefined)).toEqual({ ok: true, choice: { type: 'mp4', height: 1920 } });
+    expect(qualityChoice(video, false, undefined)).toEqual({
+      ok: true,
+      choice: { type: 'mp4', height: 1920 },
+    });
     expect(qualityChoice(video, false, 3840)).toEqual({ ok: true, choice: { type: 'mp4', height: 3840 } });
     expect(linkQualities(video, false).initial).toBe(1920);
   });

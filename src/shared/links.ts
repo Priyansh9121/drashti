@@ -360,7 +360,8 @@ export function aboveTheUsual(video: VideoDetails, height: number): boolean {
  * upright 1080 × 1920 is 1080p.
  */
 export function chosenHeight(video: VideoDetails, maxHeight: number, picked: number | null): number | null {
-  if (picked !== null && video.heights.some((h) => h.height === picked && sideOf(h) <= maxHeight)) return picked;
+  if (picked !== null && video.heights.some((h) => h.height === picked && sideOf(h) <= maxHeight))
+    return picked;
   return video.heights.find((h) => sideOf(h) <= maxHeight)?.height ?? null;
 }
 

@@ -449,11 +449,39 @@ describe('reading yt-dlp’s answers', () => {
   const upright = (extra: Record<string, unknown> = {}) =>
     details({
       formats: [
-        { format_id: '137', width: 1080, height: 1920, vcodec: 'avc1.640028', acodec: 'none', filesize: 40_000_000 },
+        {
+          format_id: '137',
+          width: 1080,
+          height: 1920,
+          vcodec: 'avc1.640028',
+          acodec: 'none',
+          filesize: 40_000_000,
+        },
         { format_id: '248', width: 1080, height: 1920, vcodec: 'vp9', acodec: 'none', filesize: 30_000_000 },
-        { format_id: '136', width: 720, height: 1280, vcodec: 'avc1.4d401f', acodec: 'none', filesize: 20_000_000 },
-        { format_id: '135', width: 480, height: 854, vcodec: 'avc1.4d401e', acodec: 'none', filesize: 10_000_000 },
-        { format_id: '134', width: 360, height: 640, vcodec: 'avc1.4d401e', acodec: 'none', filesize: 5_000_000 },
+        {
+          format_id: '136',
+          width: 720,
+          height: 1280,
+          vcodec: 'avc1.4d401f',
+          acodec: 'none',
+          filesize: 20_000_000,
+        },
+        {
+          format_id: '135',
+          width: 480,
+          height: 854,
+          vcodec: 'avc1.4d401e',
+          acodec: 'none',
+          filesize: 10_000_000,
+        },
+        {
+          format_id: '134',
+          width: 360,
+          height: 640,
+          vcodec: 'avc1.4d401e',
+          acodec: 'none',
+          filesize: 5_000_000,
+        },
         { format_id: '140', vcodec: 'none', acodec: 'mp4a.40.2', filesize: 1_600_000 },
       ],
       ...extra,
@@ -483,7 +511,10 @@ describe('reading yt-dlp’s answers', () => {
       false,
     ]);
     // A Download with no choice takes its 1080p, said so in the log; yt-dlp is asked for its real height.
-    expect(qualityChoice(video, false, undefined)).toEqual({ ok: true, choice: { type: 'mp4', height: 1920 } });
+    expect(qualityChoice(video, false, undefined)).toEqual({
+      ok: true,
+      choice: { type: 'mp4', height: 1920 },
+    });
     expect(choiceWords({ type: 'mp4', height: 1920 }, video)).toBe('MP4, 1080p');
     expect(choiceWords({ type: 'mp4', height: 854 }, video)).toBe('MP4, 480p');
     const args = downloadArgs(PATHS, LINK, { type: 'mp4', height: 1920 }, WORK);
@@ -522,9 +553,30 @@ describe('reading yt-dlp’s answers', () => {
     const withWidths = read(
       details({
         formats: [
-          { format_id: '137', width: 1920, height: 1080, vcodec: 'avc1.640028', acodec: 'none', filesize: 50_000_000 },
-          { format_id: '248', width: 1920, height: 1080, vcodec: 'vp9', acodec: 'none', filesize: 40_000_000 },
-          { format_id: '313', width: 3840, height: 2160, vcodec: 'vp9', acodec: 'none', filesize_approx: 300_000_000 },
+          {
+            format_id: '137',
+            width: 1920,
+            height: 1080,
+            vcodec: 'avc1.640028',
+            acodec: 'none',
+            filesize: 50_000_000,
+          },
+          {
+            format_id: '248',
+            width: 1920,
+            height: 1080,
+            vcodec: 'vp9',
+            acodec: 'none',
+            filesize: 40_000_000,
+          },
+          {
+            format_id: '313',
+            width: 3840,
+            height: 2160,
+            vcodec: 'vp9',
+            acodec: 'none',
+            filesize_approx: 300_000_000,
+          },
           { format_id: '136', width: 1280, height: 720, vcodec: 'avc1.4d401f', acodec: 'none', tbr: 2000 },
           { format_id: '140', vcodec: 'none', acodec: 'mp4a.40.2', filesize: 1_600_000 },
           { format_id: 'sb0', vcodec: 'none', acodec: 'none', width: 160, height: 90 },
@@ -534,17 +586,28 @@ describe('reading yt-dlp’s answers', () => {
     expect(withWidths).toEqual(plain);
     expect(JSON.stringify(withWidths.heights)).toBe(JSON.stringify(plain.heights));
     expect(linkQualities(withWidths, false)).toEqual(linkQualities(plain, false));
-    expect([2160, 1080, 720].map((height) => aboveTheUsual(withWidths, height))).toEqual([true, false, false]);
+    expect([2160, 1080, 720].map((height) => aboveTheUsual(withWidths, height))).toEqual([
+      true,
+      false,
+      false,
+    ]);
     expect(choiceWords({ type: 'mp4', height: 1080 }, withWidths)).toBe('MP4, 1080p');
     // A square video and a wide film's (1920 × 804) by their height too, as before.
     const square = read(
-      details({ formats: [{ width: 1080, height: 1080, vcodec: 'avc1.640028', acodec: 'none', filesize: 9 }] }),
+      details({
+        formats: [{ width: 1080, height: 1080, vcodec: 'avc1.640028', acodec: 'none', filesize: 9 }],
+      }),
     );
     expect(square.heights).toEqual([{ height: 1080, bytes: 9 }]);
     const film = read(
-      details({ formats: [{ width: 1920, height: 804, vcodec: 'avc1.640028', acodec: 'none', filesize: 9 }] }),
+      details({
+        formats: [{ width: 1920, height: 804, vcodec: 'avc1.640028', acodec: 'none', filesize: 9 }],
+      }),
     );
-    expect(linkQualities(film, false)).toEqual({ options: [{ value: 804, label: '804p', bytes: 9 }], initial: 804 });
+    expect(linkQualities(film, false)).toEqual({
+      options: [{ value: 804, label: '804p', bytes: 9 }],
+      initial: 804,
+    });
   });
 
   it('an upright video whose formats give no width is named by its height, as before (hunt S3-2)', () => {

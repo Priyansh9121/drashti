@@ -55,7 +55,8 @@ function LinkWindow({ audio }: { audio: boolean }) {
     ? qualityPick
     : (qualities?.initial ?? null);
   // Above the 1080p it begins with, by the short side of the picture (hunt S3-2: an upright 1080 × 1920 is not).
-  const above = current && view.look?.video && quality !== null ? aboveTheUsual(view.look.video, quality) : false;
+  const above =
+    current && view.look?.video && quality !== null ? aboveTheUsual(view.look.video, quality) : false;
   useEffect(() => {
     if (!text.trim() || submitting) return;
     const timer = setTimeout(() => {
