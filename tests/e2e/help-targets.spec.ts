@@ -2,16 +2,25 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { NETWORK_ENV, networkOn } from './devices';
 import { settledRead } from './help';
-import { chooseMenuItem, holdStill, launchApp, operatorPage, operatorReady } from './helpers';
+import {
+  chooseMenuItem,
+  holdStill,
+  launchApp,
+  openAllSections,
+  operatorPage,
+  operatorReady,
+} from './helpers';
 import { CI_WINDOW } from './window-size';
 
 /*
  * Every "What is this?" a target of at least 24 × 24 px (WCAG 2.5.8, the redesign's rule; qtargets, alpha.24): the top
  * bar's beside Stream, Phones and Announcements were 20 × 20 px until then (uitop's hands-on pass, row 21). Each is now a
- * 24 px target in the 20 px room it had, so the bar holds what it held; and the top bar keeps that room while Help is
- * off, so Help turned on draws each ? in it and moves nothing there (help-switch.spec.ts's rule for the show controls'
- * keys, here for the top bar). In CI's 1024 × 645 and the owner's 1410 × 900, Pro Mode with Phones off and on (the
- * Announcements ? then too, from 1280 px), and Simple Mode, which has no ? of its own.
+ * 24 px target in the 20 px room it had, so the bar grows by no more than it did and still fits; the ? come with Help
+ * and take that room then, so Stream and Phones move left as they come (lead 2, 27 Nov: accepted for alpha.24, as they
+ * are not show controls). The sections under LIVE hold still as Help turns on (0 px, help-switch.spec.ts's rule for the
+ * show controls' keys): each heading keeps its one row with its ?, and no section moves. In CI's 1024 × 645 and the
+ * owner's 1410 × 900, Pro Mode with Phones off and on (the Announcements ? then too, from 1280 px) and every section
+ * under LIVE open, and Simple Mode, which has no ? of its own.
  */
 
 /** The controls of a target: what fit.ts counts as one. */
@@ -19,25 +28,52 @@ const CONTROLS =
   'button, a[href], input:not([type="hidden"]), select, textarea, [role="button"], [role="slider"], [role="switch"], [role="checkbox"], [role="radio"], [role="tab"], [role="combobox"], [role="spinbutton"]';
 
 /**
- * The top bar in sight (Pro Mode's or Simple Mode's): its name, its states and every control in it but its ?, each
- * where it is and how big.
+ * What Help may change, measured: the top bar in sight (Pro Mode's or Simple Mode's): every control in it but its ?,
+ * how big (`sizes`) and where (`places`), its group's width and how many ? are in it; and the column under LIVE: the
+ * LIVE block's height, and each section's and its heading's box in the sections' own place (whatever it has scrolled).
  */
-const topBar = (win: Page) =>
+const layout = (win: Page) =>
   win.evaluate((controls) => {
-    const at = (r: DOMRect) =>
-      `${r.left.toFixed(1)}, ${r.top.toFixed(1)}, ${r.width.toFixed(1)} × ${r.height.toFixed(1)}`;
-    const bars = [...document.querySelectorAll('header[data-header]')].filter(
-      (h) => h.getClientRects().length > 0,
-    );
-    if (bars.length !== 1) return [`${String(bars.length)} top bars in sight`];
-    const bar = bars[0];
-    if (!bar) return [];
-    return [...bar.querySelectorAll(`h1, [data-header-states], [data-top-group], ${controls}`)]
-      .filter((el) => el.getClientRects().length > 0 && !el.matches('[data-what-is-this]'))
-      .map((el) => {
-        const name = el.getAttribute('data-testid') ?? el.getAttribute('aria-label') ?? el.textContent.trim();
-        return `${el.tagName.toLowerCase()} ${name}: ${at(el.getBoundingClientRect())}`;
-      });
+    const seen = (el: Element) => el.getClientRects().length > 0;
+    const px = (n: number) => n.toFixed(1);
+    const nameOf = (el: Element) =>
+      el.getAttribute('data-testid') ?? el.getAttribute('aria-label') ?? el.textContent.trim().slice(0, 40);
+    const bars = [...document.querySelectorAll('header[data-header]')].filter(seen);
+    const bar = bars.length === 1 ? bars[0] : undefined;
+    const parts = bar
+      ? [...bar.querySelectorAll(controls)].filter((el) => seen(el) && !el.matches('[data-what-is-this]'))
+      : [];
+    const group = bar?.querySelector('[data-top-group]');
+    const top = {
+      bars: bars.length,
+      sizes: parts.map((el) => {
+        const r = el.getBoundingClientRect();
+        return `${nameOf(el)}: ${px(r.width)} × ${px(r.height)}`;
+      }),
+      places: parts.map((el) => {
+        const r = el.getBoundingClientRect();
+        return `${nameOf(el)}: ${px(r.left)}, ${px(r.top)}`;
+      }),
+      group: group ? group.getBoundingClientRect().width : null,
+      asks: bar ? [...bar.querySelectorAll('[data-what-is-this]')].filter(seen).length : 0,
+    };
+    const live: string[] = [];
+    const still = document.querySelector('[data-testid="live-still"]');
+    const rest = document.querySelector('[data-testid="live-rest"]');
+    if (still && seen(still)) live.push(`the LIVE block: ${px(still.getBoundingClientRect().height)} tall`);
+    if (rest && seen(rest)) {
+      const r0 = rest.getBoundingClientRect();
+      const at = (r: DOMRect) =>
+        `${px(r.left - r0.left)}, ${px(r.top - r0.top + rest.scrollTop)}, ${px(r.width)} × ${px(r.height)}`;
+      for (const section of rest.querySelectorAll('section')) {
+        if (!seen(section)) continue;
+        const title = section.querySelector('h2')?.textContent.trim() ?? nameOf(section);
+        const heading = section.querySelector(':scope > header');
+        live.push(`${title}: ${at(section.getBoundingClientRect())}`);
+        if (heading) live.push(`${title}'s heading: ${at(heading.getBoundingClientRect())}`);
+      }
+    }
+    return { top, live };
   }, CONTROLS);
 
 /** Every ? in sight: its name and its box. */
@@ -79,11 +115,28 @@ const asksOverOthers = (win: Page) =>
     return out;
   }, CONTROLS);
 
-test('every What is this? is a target of at least 24 × 24 px, over no other, and Help turned on moves nothing in the top bar, at 1024 × 645 and 1410 × 900, in Pro Mode (Phones off and on) and Simple Mode', async () => {
-  test.setTimeout(150_000);
+/** Whatever of the top bar runs past the window's edge, and the page or the top bar scrolling sideways. */
+const topBarPastTheEdge = (win: Page) =>
+  win.evaluate(() => {
+    const out: string[] = [];
+    if (document.documentElement.scrollWidth > innerWidth) out.push('the page scrolls sideways');
+    for (const bar of document.querySelectorAll<HTMLElement>('header[data-header]')) {
+      if (bar.getClientRects().length === 0) continue;
+      if (bar.scrollWidth > bar.clientWidth + 1) out.push('the top bar scrolls sideways');
+      for (const el of bar.querySelectorAll('button, [role="switch"], [data-what-is-this]'))
+        if (el.getClientRects().length > 0 && el.getBoundingClientRect().right > innerWidth + 0.5)
+          out.push(`${el.getAttribute('data-testid') ?? el.textContent.trim()} past the window's edge`);
+    }
+    return out;
+  });
+
+test('every What is this? is a target of at least 24 × 24 px, over no other, in the room the top bar had for it, and the sections under LIVE hold still as Help turns on, at 1024 × 645 and 1410 × 900, in Pro Mode (Phones off and on) and Simple Mode', async () => {
+  test.setTimeout(180_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
   await operatorReady(win);
+  // Every section under LIVE open, so each heading has its buttons too (Timers: Calendar and New timer).
+  await openAllSections(win);
   const help = win.getByTestId('help-toggle');
   const asks = win.locator('[data-what-is-this]');
   const header = (id: string) => win.getByTestId('app-header').getByTestId(`what-is-this-${id}`);
@@ -106,27 +159,47 @@ test('every What is this? is a target of at least 24 × 24 px, over no other, an
       await win.setViewportSize(size);
       await expect(help).toHaveAttribute('aria-pressed', 'false');
       await expect(asks).toHaveCount(0);
-      const atRest = await settledRead(win, size, () => topBar(win), `${where}: the top bar`);
-      expect(atRest.length, `${where}: what is measured`).toBeGreaterThanOrEqual(mode === 'pro' ? 9 : 3);
+      const atRest = await settledRead(
+        win,
+        size,
+        () => layout(win),
+        `${where}: the top bar and LIVE's column`,
+      );
+      expect(atRest.top.bars, `${where}: one top bar in sight`).toBe(1);
+      expect(atRest.top.sizes.length, `${where}: what is measured`).toBeGreaterThanOrEqual(
+        mode === 'pro' ? 7 : 1,
+      );
+      if (mode === 'pro')
+        expect(atRest.live.length, `${where}: LIVE's sections measured`).toBeGreaterThanOrEqual(20);
 
-      // Help on: each ? in its room, and nothing in the top bar moves, then or after.
+      // Help on: the sections under LIVE hold still, then and after; the top bar's controls keep their sizes, and its
+      // group grows by each ?'s 20 px room alone (top-bar.ts counts it so).
       await help.dispatchEvent('click');
       await expect(help).toHaveAttribute('aria-pressed', 'true');
-      expect(await topBar(win), `${where}: Help on`).toEqual(atRest);
+      const on = await layout(win);
+      expect(on.live, `${where}: Help on, the sections under LIVE where they were`).toEqual(atRest.live);
+      expect(on.top.sizes, `${where}: Help on, the top bar's controls as big as they were`).toEqual(
+        atRest.top.sizes,
+      );
       if (mode === 'pro') {
         // Below 1280 px with Phones on the top bar's ? go (top-bar.ts), Help on or off; each panel has its own.
         const inBar =
           phones && size.width < 1280 ? [] : ['stream', 'phones', ...(phones ? ['announcements'] : [])];
         for (const id of inBar) await expect(header(id), `${where}: ${id}'s ?`).toBeVisible();
         if (inBar.length === 0) await expect(header('stream')).toBeHidden();
+        expect(on.top.asks, `${where}: the top bar's ? in sight`).toBe(inBar.length);
+        expect(
+          (on.top.group ?? 0) - (atRest.top.group ?? 0),
+          `${where}: the top bar's group grows by 20 px for each ?`,
+        ).toBeCloseTo(20 * inBar.length, 1);
       } else await expect(asks).toHaveCount(0);
       await holdStill(
-        async () => JSON.stringify(await topBar(win)) === JSON.stringify(atRest),
+        async () => JSON.stringify((await layout(win)).live) === JSON.stringify(atRest.live),
         600,
-        `${where}: Help on, every top bar control where it was`,
+        `${where}: Help on, every section under LIVE where it was`,
       );
 
-      // Every ? in sight at least 24 × 24 px, and none over another target.
+      // Every ? in sight at least 24 × 24 px, and none over another target; the top bar still fits.
       const shown = await asksInSight(win);
       if (mode === 'pro') expect(shown.length, `${where}: the ? in sight`).toBeGreaterThanOrEqual(8);
       expect(
@@ -136,28 +209,13 @@ test('every What is this? is a target of at least 24 × 24 px, over no other, an
         `${where}: every ? at least 24 × 24 px`,
       ).toEqual([]);
       expect(await asksOverOthers(win), `${where}: a ? over another target`).toEqual([]);
-      // The top bar still fits: nothing past the window's edge, nothing scrolls sideways.
-      expect(
-        await win.evaluate(() => {
-          const out: string[] = [];
-          if (document.documentElement.scrollWidth > innerWidth) out.push('the page scrolls sideways');
-          for (const bar of document.querySelectorAll<HTMLElement>('header[data-header]')) {
-            if (bar.getClientRects().length === 0) continue;
-            if (bar.scrollWidth > bar.clientWidth + 1) out.push('the top bar scrolls sideways');
-            for (const el of bar.querySelectorAll('button, [role="switch"], [data-what-is-this]'))
-              if (el.getClientRects().length > 0 && el.getBoundingClientRect().right > innerWidth + 0.5)
-                out.push(`${el.getAttribute('data-testid') ?? el.textContent.trim()} past the window's edge`);
-          }
-          return out;
-        }),
-        `${where}: the top bar fits with Help on`,
-      ).toEqual([]);
+      expect(await topBarPastTheEdge(win), `${where}: the top bar fits with Help on`).toEqual([]);
 
-      // Help off again: the ? go, and still nothing has moved.
+      // Help off again: the ? go, and everything is where it was.
       await help.dispatchEvent('click');
       await expect(help).toHaveAttribute('aria-pressed', 'false');
       await expect(asks).toHaveCount(0);
-      expect(await topBar(win), `${where}: Help off again`).toEqual(atRest);
+      expect(await layout(win), `${where}: Help off again`).toEqual(atRest);
     }
   }
   await app.close();
