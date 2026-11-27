@@ -1,13 +1,14 @@
 import { isValidElement } from 'react';
-import type { ReactNode } from 'react';
+import type { EffectCallback, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PanelHelpId } from '../../../shared/panel-help';
 import type { Box } from './card-place';
+import type { useWhatIsThis } from './WhatIsThis';
 
 /* Exercise the real hook with controlled layout/effect delivery, without a browser or a DOM library. Native Tab
  * walks the fixture's document order; negative tabindex is focusable only by the hook. Windows tests additionally
  * make complete circuits in Chromium and check that an adjacent card cannot hide the focused action. */
-type Props = {
+interface Props {
   children?: ReactNode;
   ref?: { current: unknown };
   onClick?: () => void;
@@ -15,7 +16,7 @@ type Props = {
   style?: { left?: number };
   'data-testid'?: string;
   'data-got-it'?: string;
-};
+}
 const box = (left: number, top: number, right: number, bottom: number): Box => ({ left, top, right, bottom });
 
 class Element {
@@ -93,19 +94,19 @@ class Resize {
   }
 }
 
-type Effect = {
+interface Effect {
   deps: readonly unknown[];
-  run: () => void | (() => void);
+  run: EffectCallback;
   stop?: (() => void) | undefined;
   pending: boolean;
-};
+}
 let current: Card;
 let doc: Document;
 let win: EventTarget & { innerWidth: number; innerHeight: number };
-let useCard: typeof import('./WhatIsThis').useWhatIsThis;
+let renderCard: typeof useWhatIsThis;
 const cards: Card[] = [];
 function nodes(tree: ReactNode): Props[] {
-  if (Array.isArray(tree)) return tree.flatMap((node) => nodes(node));
+  if (Array.isArray(tree)) return (tree as ReactNode[]).flatMap(nodes);
   if (!isValidElement<Props>(tree)) return [];
   return [tree.props, ...nodes(tree.props.children)];
 }
@@ -132,8 +133,8 @@ class Card {
     do {
       this.dirty = false;
       this.cursor = 0;
-      current = this;
-      this.tree = useCard(this.topic).button;
+      selectCard(this.topic);
+      this.tree = renderCard(this.topic).button;
       for (const props of nodes(this.tree)) {
         if (props['data-testid'] === `what-is-this-${this.topic}` && props.ref) props.ref.current = this.ask;
         if (props['data-testid'] === 'what-is-this' && props.ref) props.ref.current = this.card;
@@ -145,9 +146,13 @@ class Card {
         if (effect.pending) {
           effect.pending = false;
           effect.stop?.();
-          effect.stop = effect.run() ?? undefined;
+          const stop = effect.run();
+          effect.stop = typeof stop === 'function' ? stop : undefined;
         }
-    } while (this.dirty);
+    } while (this.pendingRender);
+  }
+  get pendingRender() {
+    return this.dirty;
   }
   get shown() {
     return nodes(this.tree).some((p) => p['data-testid'] === 'what-is-this');
@@ -170,6 +175,11 @@ class Card {
     for (const effect of this.effects.values()) effect.stop?.();
   }
 }
+function selectCard(topic: PanelHelpId) {
+  const card = cards.find((candidate) => candidate.topic === topic);
+  if (!card) throw new Error(`No card fixture for ${topic}`);
+  current = card;
+}
 function flush() {
   for (const card of cards) card.draw();
 }
@@ -187,7 +197,8 @@ function tab(order: Element[], backward = false) {
     const native = [...order, ...cards.filter((c) => c.shown).flatMap((c) => [c.manual, c.got])].filter(
       (el) => el.tabIndex >= 0,
     );
-    const at = native.indexOf(doc.activeElement!);
+    const active = doc.activeElement;
+    const at = active === null ? -1 : native.indexOf(active);
     native[(at + (backward ? -1 : 1) + native.length) % native.length]?.focus();
   }
   vi.runOnlyPendingTimers();
@@ -214,7 +225,8 @@ beforeEach(async () => {
       return [
         card.slots[index],
         (value: unknown) => {
-          const next = typeof value === 'function' ? value(card.slots[index]) : value;
+          const next =
+            typeof value === 'function' ? (value as (before: unknown) => unknown)(card.slots[index]) : value;
           if (!Object.is(next, card.slots[index])) {
             card.slots[index] = next;
             card.dirty = true;
@@ -239,7 +251,7 @@ beforeEach(async () => {
       { subscribe: () => () => undefined },
     ),
   }));
-  ({ useWhatIsThis: useCard } = await import('./WhatIsThis'));
+  ({ useWhatIsThis: renderCard } = await import('./WhatIsThis'));
 });
 afterEach(() => {
   for (const card of cards) card.stop();
@@ -252,18 +264,16 @@ afterEach(() => {
 describe('an open help card', () => {
   it('has one place beside its ? in a complete forward and backward Tab circuit (MUST-1)', () => {
     const card = new Card('live');
-    const [header, playlists, slides, after, show, status] = [
-      'header',
-      'Playlists',
-      'Slides',
-      'Live after ?',
-      'Show controls',
-      'Status',
-    ].map((name) => new Element(name, doc));
-    const order = [header!, playlists!, slides!, card.ask, after!, show!, status!];
+    const header = new Element('header', doc);
+    const playlists = new Element('Playlists', doc);
+    const slides = new Element('Slides', doc);
+    const after = new Element('Live after ?', doc);
+    const show = new Element('Show controls', doc);
+    const status = new Element('Status', doc);
+    const order = [header, playlists, slides, card.ask, after, show, status];
     card.open();
     for (const backward of [false, true]) {
-      header!.focus();
+      header.focus();
       const seen: string[] = [];
       for (let i = 0; i < 20; i++) {
         tab(order, backward);

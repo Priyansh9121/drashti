@@ -25,7 +25,7 @@
 **How:**
 
 1. Press **Help** in the status bar (in a narrow window, its round **?**), or choose **Help**, then **Show Help** in the menu bar. It stays pressed, and **Show Help** ticked, while it is on.
-2. Press the **?** on the panel's heading, and read its sentences in the card that opens beside it. Opening another **?**, with the mouse or keyboard, closes the previous card. With the keyboard, the card's two buttons come just after its **?**, once in either direction.
+2. Press the **?** on the panel's heading and read its card. Opening another **?**, with the mouse or keyboard, closes the previous card. Its two buttons follow its **?** once in either Tab direction.
 3. Press **Open the manual** to read more, or **Got it** to close them (**Esc**, the **?** again or a click anywhere else in the window closes them too).
 4. Press **Help** again (or choose **Show Help** again) to put every **?** and key away.
 
