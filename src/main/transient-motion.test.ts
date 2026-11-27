@@ -16,10 +16,41 @@ describe('operator transient motion budgets', () => {
     const stylesheet = 'transient-motion.css';
     const html = readFileSync(join(renderer, 'index.html'), 'utf8');
     expect(html).toContain(`href="./src/ui/${stylesheet}"`);
-    for (const name of readdirSync(renderer).filter((name) => name.endsWith('.html') && name !== 'index.html'))
+    for (const name of readdirSync(renderer).filter(
+      (name) => name.endsWith('.html') && name !== 'index.html',
+    ))
       expect(readFileSync(join(renderer, name), 'utf8'), name).not.toContain(stylesheet);
-    for (const name of ['ui/transient-motion.ts', 'ui/Menu.tsx', 'ui/Tooltip.tsx', 'ui/Notice.tsx', 'chat/ChatPop.tsx'])
+    for (const name of [
+      'ui/transient-motion.ts',
+      'ui/Menu.tsx',
+      'ui/Tooltip.tsx',
+      'ui/Notice.tsx',
+      'chat/ChatPop.tsx',
+    ])
       expect(readFileSync(join(renderer, 'src', name), 'utf8'), name).not.toContain(stylesheet);
+  });
+
+  it('keeps existing exit defaults outside the operator window', () => {
+    const text = css().replace(/\/\*[\s\S]*?\*\//gu, '');
+    const root = /:root:has\(> body\.operator\)\s*\{([^}]+)\}/u.exec(text)?.[1] ?? '';
+    expect(root).toContain('--surface-exit-name: surface-out;');
+    expect(root).toContain('--surface-exit-easing: var(--ease-in);');
+    for (const name of ['surface-exit-name', 'surface-exit-easing'])
+      expect([...text.matchAll(new RegExp(`--${name}:`, 'gu'))]).toHaveLength(1);
+    const rules = [...text.matchAll(/([^{}@;]+)\{([^{}]*)\}/gu)].map((m) => ({
+      selector: (m[1] ?? '').trim().replace(/\s+/gu, ' '),
+      animation: /\banimation:\s*([^;]+);/u.exec(m[2] ?? '')?.[1] ?? '',
+    }));
+    const exits = rules.filter((r) => r.selector.startsWith('[data-leaving=') && r.animation !== '');
+    expect(exits).toHaveLength(4);
+    for (const { selector, animation } of exits) {
+      expect(animation).toMatch(/var\(--dur-surface-[\w-]+, var\(--dur-exit\)\)/u);
+      const sheet = selector.includes("[data-leaving='sheet'] >");
+      expect(animation).toContain(`var(--surface-exit-easing, var(--${sheet ? 'ease-drawer' : 'ease-out'}))`);
+      if (selector.includes(' >') || selector.includes("[data-leaving='pop']"))
+        expect(animation).toContain(`var(--surface-exit-name, ${sheet ? 'sheet-out' : 'drop-out'})`);
+      else expect(animation).toMatch(/^fade-out /u);
+    }
   });
 
   it('every Calm entrance, including sheets and the dim, settles within 180 ms', () => {

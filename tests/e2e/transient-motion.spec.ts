@@ -36,7 +36,11 @@ async function watchExits(win: Page, stopNextPop = false): Promise<void> {
         recorded = true;
         const bounds = host.getBoundingClientRect();
         const record: Exit = {
-          surface: copy.dataset['transient'] ?? host.dataset['leavingHost'] ?? '',
+          surface: copy.classList.contains('motionui-tooltip')
+            ? 'tooltip'
+            : copy.classList.contains('motionui-chat-pop')
+              ? 'chat'
+              : (host.dataset['leavingHost'] ?? ''),
           closed: host.shadowRoot === null,
           inert: host.inert,
           hidden: host.getAttribute('aria-hidden'),
@@ -114,7 +118,7 @@ test('Calm tooltips, menus, notices and sheets arrive and leave within budget wi
 
     const screens = win.getByRole('button', { name: 'Screens', exact: true });
     await screens.hover();
-    const tip = win.locator('[role="tooltip"][data-transient="tooltip"]');
+    const tip = win.locator('[role="tooltip"].motionui-tooltip');
     await expect(tip).toBeVisible();
     await arrives(tip, 120);
     expect(await show.boundingBox()).toEqual(before);
@@ -231,6 +235,15 @@ test('chat arrives calmly, its exit stays private, and Off or reduced motion lea
     await sizeOperatorWindow(app, win, CI_WINDOW);
     const { port } = await networkOn(win);
     const token = await pairToken(win, port, 'remote', 'Placeholder phone');
+    expect(
+      (
+        await apiCall(port, CHAT_API.name, {
+          method: 'POST',
+          token,
+          body: { name: 'Placeholder Sender' },
+        })
+      ).status,
+    ).toBe(200);
     const send = async (text: string) => {
       expect((await apiCall(port, CHAT_API.send, { method: 'POST', token, body: { text } })).status).toBe(
         200,
@@ -274,13 +287,56 @@ test('chat arrives calmly, its exit stays private, and Off or reduced motion lea
       await expect(chat).toHaveCount(0);
       await focus.hover();
       await win.getByRole('button', { name: 'Screens', exact: true }).hover();
-      const tip = win.locator('[role="tooltip"][data-transient="tooltip"]');
+      const tip = win.locator('[role="tooltip"].motionui-tooltip');
       await expect(tip).toBeVisible();
       expect(await style(tip)).toMatchObject({ name: 'none', transition: '0s' });
       await win.keyboard.press('Escape');
       await expect(tip).toHaveCount(0);
       await expect(win.locator('[data-leaving-host]')).toHaveCount(0);
       expect((await exits(win)).length, mode).toBe(count);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
+
+test('secondary desktop exits retain their original timing, curve and animation', async () => {
+  const { app } = await launchApp();
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const defaults = await win.evaluate(() => {
+      const was = document.body.className;
+      const fixture = document.createElement('div');
+      fixture.style.cssText = 'position:fixed;left:-9999px;top:0';
+      try {
+        document.body.classList.remove('operator');
+        for (const kind of ['dialog', 'sheet', 'pop', 'notice']) {
+          const copy = document.createElement('div');
+          copy.dataset['leaving'] = kind;
+          copy.append(document.createElement('div'));
+          fixture.append(copy);
+        }
+        document.body.append(fixture);
+        return [...fixture.children].flatMap((copy) => {
+          const parts = [copy, ...(copy.matches('[data-leaving="dialog"], [data-leaving="sheet"]') ? copy.children : [])];
+          return parts.map((part) => {
+            const st = getComputedStyle(part);
+            return { kind: copy.getAttribute('data-leaving'), panel: part !== copy, name: st.animationName, ms: Number.parseFloat(st.animationDuration) * 1000, easing: st.animationTimingFunction };
+          });
+        });
+      } finally {
+        fixture.remove();
+        document.body.className = was;
+      }
+    });
+    expect(defaults).toHaveLength(6);
+    for (const result of defaults) {
+      const sheet = result.kind === 'sheet' && result.panel;
+      expect(result.name).toBe(result.panel ? sheet ? 'sheet-out' : 'drop-out' : result.kind === 'pop' || result.kind === 'notice' ? 'drop-out' : 'fade-out');
+      expect(result.ms).toBe(150);
+      expect(result.easing).toBe(sheet ? 'cubic-bezier(0.32, 0.72, 0, 1)' : 'cubic-bezier(0.23, 1, 0.32, 1)');
     }
   } finally {
     await app.close();
