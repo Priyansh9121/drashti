@@ -9,7 +9,7 @@ import { Badge, LiveBadge } from '../ui/Badge';
 import { cx } from '../ui/cx';
 import { Monitor, MonitorOff, Music } from '../ui/icons';
 import { Truncate } from '../ui/Truncate';
-import type { Layers, SlideLayer } from '../../../shared/engine/state';
+import type { Layers, LiveCursor, SlideLayer } from '../../../shared/engine/state';
 import { lastStep, stepOf } from '../../../shared/deck-show';
 import type { PlaylistItemInfo } from '../../../shared/playlists';
 import { repeatPlaylistOf } from '../../../shared/repeat';
@@ -43,15 +43,46 @@ export function itemStillUp(item: PlaylistItemInfo | undefined, layers: Layers |
 
 const NO_STATUS: ScreenStatus[] = [];
 
+/** What LIVE's line in the top bar is told: the show's place and layers, and the names this window knows. */
+export interface LiveLineFacts {
+  live: LiveCursor | null | undefined;
+  layers: Layers | null | undefined;
+  /** The live presentation's name: the library's, a Shastra passage's reference, or a Repeat's playlist. */
+  presentation: string | undefined;
+  /** The playlist row the show is at, when its playlist is open. */
+  item: PlaylistItemInfo | undefined;
+}
+
+/**
+ * LIVE's line in the top bar: whether something is on the screens (its LIVE badge, or Off) and what, in words.
+ * A timer up alone first (Session 50), then the presentation's slide the show is at (said cleared once it is), then a
+ * playlist's picture, video, sound or video input row (Session 56).
+ */
+export function liveLine({ live, layers, presentation, item }: LiveLineFacts): { onAir: boolean; text: string } {
+  const slideShown = layers?.slide !== null;
+  // A timer up alone in the slide's place (Session 50): named instead of the slide the show is at.
+  const timerAlone = layers?.slide?.timer?.name ?? null;
+  const itemUp = itemStillUp(item, layers);
+  let text = 'Nothing live';
+  if (timerAlone !== null) {
+    text = `Live: Timer · ${timerAlone}`;
+  } else if (live?.presentationId && live.slideIndex !== null) {
+    // A deck's slide's click (Session 54, C2).
+    text = `Live: ${presentation ?? 'presentation'} · slide ${live.slideIndex + 1} of ${live.slideCount}${slideShown ? clickWords(layers?.slide) : ' (cleared)'}`;
+  } else if (live?.playlist) {
+    text = `Live: ${item?.label ?? 'playlist item'}${itemUp ? '' : ' (cleared)'}`;
+  }
+  const onAir =
+    timerAlone !== null ||
+    Boolean(live?.presentationId && slideShown) ||
+    Boolean(live?.playlist && !live.presentationId && itemUp);
+  return { onAir, text };
+}
+
 /** What is on the screens, in words: the header says it at all times. */
 export function LiveStatus() {
   const live = useEngine((s) => s.state?.live);
-  const slideShown = useEngine((s) => s.state?.layers.slide !== null);
-  // A timer up alone in the slide's place (Session 50): named instead of the slide the show is at.
-  const timerAlone = useEngine((s) => s.state?.layers.slide?.timer?.name ?? null);
   const blackout = useEngine((s) => s.state?.blackout ?? false);
-  // A deck's slide's click (Session 54, C2).
-  const click = useEngine((s) => clickWords(s.state?.layers.slide));
   const audio = useEngine((s) => s.state?.layers.audio?.title ?? null);
   const name = useLibrary((s) => s.presentations.find((p) => p.id === live?.presentationId)?.name);
   // A Shastra passage is not in the library's list: its reference instead.
@@ -67,19 +98,12 @@ export function LiveStatus() {
   // (Session 56: a cover going on takes a video off).
   const item = usePlaylists((s) => s.items.find((i) => i.id === live?.playlist?.itemId));
   const layers = useEngine((s) => s.state?.layers);
-  const itemUp = itemStillUp(item, layers);
-  let text = 'Nothing live';
-  if (timerAlone !== null) {
-    text = `Live: Timer · ${timerAlone}`;
-  } else if (live?.presentationId && live.slideIndex !== null) {
-    text = `Live: ${name ?? passage ?? repeatName ?? repeating ?? 'presentation'} · slide ${live.slideIndex + 1} of ${live.slideCount}${slideShown ? click : ' (cleared)'}`;
-  } else if (live?.playlist) {
-    text = `Live: ${item?.label ?? 'playlist item'}${itemUp ? '' : ' (cleared)'}`;
-  }
-  const onAir =
-    timerAlone !== null ||
-    Boolean(live?.presentationId && slideShown) ||
-    Boolean(live?.playlist && !live.presentationId && itemUp);
+  const { onAir, text } = liveLine({
+    live,
+    layers,
+    presentation: name ?? passage ?? repeatName ?? repeating,
+    item,
+  });
   return (
     <div className="flex min-w-0 items-center gap-2 text-sm" data-testid="live-status" aria-live="polite">
       {onAir ? <LiveBadge /> : <Badge>Off</Badge>}
