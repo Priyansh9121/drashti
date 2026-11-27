@@ -70,7 +70,10 @@ export function whenCueStarted(cueId: string, run: () => void, sign: CueStartSig
   };
 }
 
-/** How long the operator preview's work waits for a cued picture that never starts (it failed): one playback check. */
+/**
+ * How long the operator window's Go work waits for a cued picture that never starts (it failed) or never shows a moving
+ * frame (one that holds still at Go, a page that draws nothing): one playback check.
+ */
 const NEVER_STARTED_MS = 250;
 
 /**
@@ -125,5 +128,40 @@ export function watchFirstMove(v: MovingVideo, from: number, shown: () => void):
   return () => {
     done = true;
     v.cancelVideoFrameCallback(asked);
+  };
+}
+
+/** What LIVE's teller reads of its cued picture's element. */
+export type TellingVideo = MovingVideo &
+  Pick<
+    HTMLVideoElement,
+    'playbackRate' | 'paused' | 'currentTime' | 'addEventListener' | 'removeEventListener'
+  >;
+
+/**
+ * The operator's LIVE preview (render/BackgroundMedia.tsx, its cued picture's `tellStart`): tell this page when cue
+ * `cueId`'s picture has started at Go (its rate above 0 while it plays), and then when its first moving frame is
+ * presented past where it was held (golive). Its stop, for the effect's cleanup.
+ */
+export function tellCueStart(v: TellingVideo, cueId: string): () => void {
+  let heldAt: number | null = null;
+  let stopWatch: (() => void) | null = null;
+  const told = () => {
+    if (!startedNow(v)) {
+      // Held (the Go lead's warm-up at rate 0): where its trimmed frame is.
+      heldAt = v.currentTime;
+      return;
+    }
+    cueStarted(cueId);
+    stopWatch ??= watchFirstMove(v, heldAt ?? v.currentTime, () => {
+      cueShown(cueId);
+    });
+  };
+  v.addEventListener('ratechange', told);
+  v.addEventListener('playing', told);
+  return () => {
+    v.removeEventListener('ratechange', told);
+    v.removeEventListener('playing', told);
+    stopWatch?.();
   };
 }

@@ -1,5 +1,5 @@
 import { cueClock } from './cue-clock';
-import { afterCueStart, cueShown, cueStarted, startedNow, watchFirstMove } from './cue-started';
+import { afterCueStart, tellCueStart } from './cue-started';
 import { atGoMoment } from './go-moment';
 import { cuePresentation, PRIVATE_VIDEO_OPACITY } from './cue-presentation';
 import { videoFadeProgress, type VideoCue, type VideoCrossfade } from '../../../shared/video-cue';
@@ -197,31 +197,12 @@ function VideoSlot({
   // The operator's LIVE preview (QA23-CUELIVE-1): its cued picture says it has started once its rate is set above 0
   // while it plays (a prepared start's rate at Go; a start with no lead plays at its rate), after its own check for Go;
   // and, once its first moving frame is presented past where it was held, that it is shown (golive: the operator
-  // window's other Go work waits for that, render/cue-started.ts).
+  // window's other Go work waits for that): render/cue-started.ts tellCueStart.
   const cueId = layer.cueId;
   useEffect(() => {
     const v = ref.current;
     if (!tellStart || !cueId || !v) return;
-    let heldAt: number | null = null;
-    let stopWatch: (() => void) | null = null;
-    const told = () => {
-      if (!startedNow(v)) {
-        // Held (the Go lead's warm-up at rate 0): where its trimmed frame is.
-        heldAt = v.currentTime;
-        return;
-      }
-      cueStarted(cueId);
-      stopWatch ??= watchFirstMove(v, heldAt ?? v.currentTime, () => {
-        cueShown(cueId);
-      });
-    };
-    v.addEventListener('ratechange', told);
-    v.addEventListener('playing', told);
-    return () => {
-      v.removeEventListener('ratechange', told);
-      v.removeEventListener('playing', told);
-      stopWatch?.();
-    };
+    return tellCueStart(v, cueId);
   }, [tellStart, cueId]);
   const seekAt = layer.seek?.at;
   const clipKey = `${String(layer.clip?.startMs)}/${String(layer.clip?.endMs)}`;

@@ -14,9 +14,10 @@ export class CuedStartKeeper {
   private held: { id: string; at: number; before: EngineState; lastRaw: EngineState } | null = null;
 
   /**
-   * `holdPastGo` (the operator's LIVE preview alone, QA23-CUELIVE-1): whether, past its Go at `at`, cue `id` is still
-   * held, its cued picture not started yet. Through that, LIVE keeps its scene until its picture has set its rate at Go,
-   * whether its own Go-moment work or Main's patch at Go (clearing videoStart, nothing else) comes first; any other
+   * `holdPastGo` (the operator window's LIVE preview and Screens previews, QA23-CUELIVE-1): whether, past its Go at `at`,
+   * cue `id` is still held, LIVE's cued picture not shown moving yet. Through that, the scene is kept until LIVE's first
+   * moving frame after Go is shown (golive; before alpha.24, its rate set at Go), whether its own Go-moment work or
+   * Main's patch at Go (clearing videoStart, nothing else) comes first; any other
    * change lets it go at once. A change Main makes between Go and its own patch at Go (a Next while Main is busy then)
    * keeps videoStart, so LIVE holds it too, until its picture's start: the rule every page has for a change before Go.
    * Left out (every other page): held until Go, as before.

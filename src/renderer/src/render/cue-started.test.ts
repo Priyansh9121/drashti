@@ -6,6 +6,7 @@ import {
   heldUntilStarted,
   isCueStarted,
   startedNow,
+  tellCueStart,
   watchFirstMove,
   whenCueStarted,
 } from './cue-started';
@@ -147,5 +148,127 @@ describe("LIVE's watch for its cued picture's first moving frame (golive)", () =
     expect(v.asked.size).toBe(0);
     v.present(1.033);
     expect(shown).not.toHaveBeenCalled();
+  });
+});
+
+describe("LIVE's teller: its cued picture's start and its first moving frame, told to the operator window (golive)", () => {
+  // a24-review-golive MUST-1: a dead watch passes every e2e (crossfade:306 then passes on the 250 ms fallback), so the
+  // teller itself (render/BackgroundMedia.tsx's tellStart effect, moved here unchanged) is tested with a stand-in.
+  class Element extends EventTarget {
+    playbackRate = 1;
+    paused = true;
+    currentTime = 1.000002;
+    asked = new Map<number, VideoFrameRequestCallback>();
+    listeners = 0;
+    private next = 0;
+    override addEventListener(...args: Parameters<EventTarget['addEventListener']>): void {
+      this.listeners++;
+      super.addEventListener(...args);
+    }
+    override removeEventListener(...args: Parameters<EventTarget['removeEventListener']>): void {
+      this.listeners--;
+      super.removeEventListener(...args);
+    }
+    requestVideoFrameCallback(run: VideoFrameRequestCallback): number {
+      this.asked.set(++this.next, run);
+      return this.next;
+    }
+    cancelVideoFrameCallback(id: number): void {
+      this.asked.delete(id);
+    }
+    /** Its rate set, and the event a task later, as Chromium sends it. */
+    rate(value: number): void {
+      this.playbackRate = value;
+      this.dispatchEvent(new Event('ratechange'));
+    }
+    playing(): void {
+      this.paused = false;
+      this.dispatchEvent(new Event('playing'));
+    }
+    present(mediaTime: number): void {
+      const runs = [...this.asked.values()];
+      this.asked.clear();
+      for (const run of runs) run(0, { mediaTime } as VideoFrameCallbackMetadata);
+    }
+  }
+  const shown = (cueId: string) => !heldUntilStarted(cueId, 0, 1, 'shown');
+
+  it("tells its rate at Go after the Go lead's warm-up, and 'shown' only at its first moving frame, once", () => {
+    const v = new Element();
+    const stop = tellCueStart(v, 'tell-a');
+    // The Go lead's warm-up: rate 0, play.
+    v.rate(0);
+    v.playing();
+    expect(isCueStarted('tell-a'), 'the warm-up is no start').toBe(false);
+    v.rate(1);
+    expect(isCueStarted('tell-a'), 'its rate at Go').toBe(true);
+    expect(shown('tell-a'), 'nothing moved yet').toBe(false);
+    v.present(1.000002);
+    expect(shown('tell-a'), 'the held trimmed frame again').toBe(false);
+    v.present(1.033);
+    expect(shown('tell-a'), 'its first moving frame').toBe(true);
+    expect(v.asked.size, 'nothing more asked').toBe(0);
+    stop();
+  });
+
+  it("takes keepAwake's wakes for no start: rate 0, play and pause, the events coming while it is paused", () => {
+    const v = new Element();
+    const stop = tellCueStart(v, 'tell-b');
+    v.playbackRate = 0;
+    v.dispatchEvent(new Event('ratechange'));
+    v.dispatchEvent(new Event('playing'));
+    v.rate(1);
+    expect(isCueStarted('tell-b'), 'a rate while paused is no start').toBe(false);
+    expect(v.asked.size, 'no watch').toBe(0);
+    stop();
+  });
+
+  it('asks for one watch only, through the later rates that bring it into step', () => {
+    const v = new Element();
+    const stop = tellCueStart(v, 'tell-c');
+    v.rate(0);
+    v.playing();
+    v.rate(1);
+    v.rate(1.033);
+    v.rate(1.05);
+    expect(v.asked.size, 'one frame asked for').toBe(1);
+    v.present(1.033);
+    expect(shown('tell-c')).toBe(true);
+    stop();
+  });
+
+  it('watches from where it is when it starts with no warm-up (playing at its rate)', () => {
+    const v = new Element();
+    v.currentTime = 2.5;
+    const stop = tellCueStart(v, 'tell-d');
+    v.playing();
+    expect(isCueStarted('tell-d')).toBe(true);
+    v.present(2.5);
+    expect(shown('tell-d')).toBe(false);
+    v.present(2.5333);
+    expect(shown('tell-d')).toBe(true);
+    stop();
+  });
+
+  it('lets go of its listeners and its frame asked for when stopped (unmounted, or a new cue), and tells nothing after', () => {
+    const v = new Element();
+    const stop = tellCueStart(v, 'tell-e');
+    v.rate(0);
+    v.playing();
+    v.rate(1);
+    expect(v.asked.size).toBe(1);
+    stop();
+    expect(v.listeners, 'both listeners removed').toBe(0);
+    expect(v.asked.size, 'its frame callback cancelled').toBe(0);
+    v.present(1.033);
+    expect(shown('tell-e'), 'never told after its stop').toBe(false);
+    // A new cue on the same element: only the new one is told.
+    const next = tellCueStart(v, 'tell-f');
+    v.rate(1.04);
+    v.present(1.067);
+    expect(shown('tell-f')).toBe(true);
+    expect(shown('tell-e'), 'the old cue: still nothing').toBe(false);
+    next();
+    expect(v.listeners).toBe(0);
   });
 });
