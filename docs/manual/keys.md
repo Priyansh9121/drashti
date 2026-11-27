@@ -65,6 +65,7 @@ Simple Mode has no keys for Screens, Search, the quick bar, the list of keys, Re
 | The quick bar's first to eighth pin (Pro Mode)                                                 | **Alt+1** to **Alt+8**                            | **⌥1** to **⌥8**                              | **⌥1** to **⌥8**                              |
 | Put up a row by its number: type it, then Enter (Esc forgets it, Backspace takes a digit back) | **0** to **9**, **Enter**, **Esc**, **Backspace** | **0** to **9**, **↩**, **Esc**, **Backspace** | **0** to **9**, **↩**, **Esc**, **Backspace** |
 | Switch to Simple Mode or Pro Mode, with the keyboard on the switch: Enter twice                | **Enter**                                         | **↩**                                         | **↩**                                         |
+| See the buttons’ keys while you hold it, with Help off; let go of it, then press the key       | **Alt**                                           | **⌥**                                         | **⌥**                                         |
 
 ![The keys sheet](../screenshots/keys-sheet.png)
 
