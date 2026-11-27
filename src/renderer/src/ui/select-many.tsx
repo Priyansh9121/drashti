@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode, RefObject } from 'react';
-import { shortcutKey } from '../operator/useKeymap';
+import { isTyping, shortcutKey } from '../operator/useKeymap';
 import { Button } from './Button';
 import { Trash2, X } from './icons';
 
@@ -211,9 +211,13 @@ export function boxChoice(before: readonly string[], touched: readonly string[],
 
 /**
  * Cmd-A (Ctrl-A on Windows and Linux): every row of the list. With a Gujarati or Hindi layout, the A key's place
- * (hunt S3-3).
+ * (hunt S3-3). Never typed in a text box inside the list (a playlist's rename box): there it selects the box's words,
+ * on every layout (hunt3fix review MUST-1).
  */
 export function isSelectAll(e: KeyboardEvent, platform: string): boolean {
+  // (A stand-in press in a unit test may have no target.)
+  const target: unknown = e.target;
+  if (target !== undefined && target !== null && isTyping(target)) return false;
   const mod = platform === 'darwin' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
   return mod && !e.altKey && !e.shiftKey && shortcutKey(e).toLowerCase() === 'a';
 }

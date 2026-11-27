@@ -14,6 +14,7 @@ export interface ShortcutPress {
   code?: string;
   metaKey?: boolean;
   ctrlKey?: boolean;
+  altKey?: boolean;
   isComposing?: boolean;
   keyCode?: number;
   nativeEvent?: { isComposing?: boolean; keyCode?: number };
@@ -28,12 +29,14 @@ export interface ShortcutPress {
  * mark, digit or stop on a letter, digit or full stop key). With Cmd or Ctrl held, anywhere, typing in a field or a
  * text box too, as a Latin layout's Save and Find act there (the release lead, 27 Nov: else an operator types Gujarati
  * words, presses Ctrl+S and believes they saved); a letter alone never in a field or an editable box, as keyplat's B.
- * Never during an IME's composition (isComposing, or its key code 229). A Latin layout's press is always its own key,
- * nothing else asked of it.
+ * Never during an IME's composition (isComposing, or its key code 229), nor with Alt or Option held: they type
+ * characters (a Mac's Option+Z types "Ω", Windows' AltGr a layout's own), not a shortcut's letter. A Latin layout's
+ * press is always its own key, nothing else asked of it.
  */
 export function shortcutKey(e: ShortcutPress): string {
   const latin = latinKey(e);
   if (latin === e.key) return e.key;
+  if (e.altKey === true) return e.key;
   const composing =
     e.isComposing === true ||
     e.nativeEvent?.isComposing === true ||
