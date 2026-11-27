@@ -4,6 +4,7 @@ import { SET_UP_STAGE } from '../../../shared/screen-switches';
 import { useScreenSwitches } from '../operator/screen-switches-store';
 import type { ScreensSaid } from '../../../shared/screens';
 import { saidShort } from '../../../shared/screens';
+import { saidTips } from '../../../shared/screens-said';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Info, Monitor, MonitorOff, Settings, Tv, X } from '../ui/icons';
@@ -25,15 +26,19 @@ import { Tooltip } from '../ui/Tooltip';
  * bar's passing news, so nothing in the window or the bar moves as it comes or goes, and it is never over a control.
  * Its words in sight are a few, whole (saidShort), so that it and the access line ("No access list") both show at
  * 1024 × 645; it never shrinks (the bar's other words do first: a missing screen matters more during a show). The
- * whole line is its tooltip (over its words, or with its buttons focused) and what a screen reader reads, politely, as
- * it comes (its place is a status region, there always).
+ * whole line is the tooltip of its words and icon, and what a screen reader reads, politely, as it comes (its place is
+ * a status region, there always); each button has its own tooltip, on the mouse or keyboard focus (saidTips: the
+ * action button says what it does, the X "Dismiss: " and the line; alpha.25 item 40, done in saidwords).
  *
  * After the release lead's review (27 Nov 2026): Stage's line says Stage is on with no Stage screen, so it closes as
  * Stage goes off (it had stayed, beside Stage off saying the opposite, and at 1024 × 645 with Audience off too the bar
  * ran some 30 px past the window's edge). And with Audience off, whose item takes the most room in the bar, the line's
  * words give way in a window under 1280 px wide (its icon and buttons stay; the whole line is still its tooltip and
  * read out), so the bar's items fit in every mix of Audience, Stage, the line and the access line (the sweep in
- * screens-said-still.spec.ts).
+ * screens-said-still.spec.ts): on the lines that keep an action button (Pro Mode's Stage line and set lines, whose
+ * button still says what to do) and on Simple Mode's set lines (news only: the screens set themselves up). Stage's line
+ * in Simple Mode and mirroring in both modes keep their words (saidwords, lead 2's (C)): the warnings that matter, an
+ * icon and an X alone saying nothing; measured, they fit at 1024 × 645 with Audience off.
  */
 
 interface SaidView {
@@ -97,8 +102,11 @@ const ICONS = { 'no-stage': MonitorOff, set: Monitor, mirroring: Info } as const
 
 function SaidLine({ said, onChange }: { said: ScreensSaid; onChange: ((displayId: number) => void) | null }) {
   const first = said.displayIds[0];
-  // Audience off (its item the bar's widest): below 1280 px wide the words give way to the icon and buttons.
+  // Audience off (its item the bar's widest): below 1280 px wide the words give way to the icon and buttons, on a set
+  // line and on Pro Mode's Stage line (with Set up Stage screen…); Simple's Stage line and mirroring keep them.
   const audienceOff = useScreenSwitches((s) => s.known && !s.switches.audience);
+  const givesWay =
+    said.kind === 'set' || (said.kind === 'no-stage' && onChange !== null && first !== undefined);
   // No Stage screen in the bar's warning look, as Stage off's beside it; a display set up or mirroring as news.
   const warning = said.kind === 'no-stage';
   const IconShape = ICONS[said.kind];
@@ -106,30 +114,36 @@ function SaidLine({ said, onChange }: { said: ScreensSaid; onChange: ((displayId
     close(said.id);
     onChange?.(id);
   };
+  // Each part its own tooltip (alpha.25 item 40, done in saidwords): the words the whole line, each button what it does,
+  // the X Dismiss with the line. Their words are in the line already for screen readers: the tooltips only show them.
+  const tips = saidTips(said);
   return (
-    // Its words are in it already, for screen readers: the tooltip only shows them.
-    <Tooltip content={said.text} describes={false}>
-      <div
-        data-testid="screens-said"
-        data-kind={said.kind}
-        className={cx(
-          'mr-3 flex h-6 shrink-0 items-center gap-1.5 rounded-sm pl-1.5 whitespace-nowrap',
-          warning ? 'bg-warning-bg text-warning-fg' : 'bg-panel-2 text-fg',
-        )}
-      >
-        <IconShape size={13} aria-hidden="true" className={cx('shrink-0', !warning && 'text-accent')} />
-        {/* In sight, the short words; read out, the whole line. */}
-        <span
-          aria-hidden="true"
-          className={cx(audienceOff && 'max-[1280px]:hidden')}
-          data-testid="screens-said-short"
-        >
-          {saidShort(said)}
+    <div
+      data-testid="screens-said"
+      data-kind={said.kind}
+      className={cx(
+        'mr-3 flex h-6 shrink-0 items-center gap-1.5 rounded-sm pl-1.5 whitespace-nowrap',
+        warning ? 'bg-warning-bg text-warning-fg' : 'bg-panel-2 text-fg',
+      )}
+    >
+      {/* The icon and, in sight, the short words (the icon alone where they give way); read out, the whole line. */}
+      <Tooltip content={tips.words} describes={false}>
+        <span className="flex items-center gap-1.5">
+          <IconShape size={13} aria-hidden="true" className={cx('shrink-0', !warning && 'text-accent')} />
+          <span
+            aria-hidden="true"
+            className={cx(audienceOff && givesWay && 'max-[1280px]:hidden')}
+            data-testid="screens-said-short"
+          >
+            {saidShort(said)}
+          </span>
         </span>
-        <span className="sr-only" data-testid="screens-said-text">
-          {said.text}
-        </span>
-        {onChange && said.kind === 'set' && first !== undefined && (
+      </Tooltip>
+      <span className="sr-only" data-testid="screens-said-text">
+        {said.text}
+      </span>
+      {onChange && said.kind === 'set' && first !== undefined && (
+        <Tooltip content={tips.action} describes={false}>
           <Button
             size="sm"
             icon={Settings}
@@ -141,8 +155,10 @@ function SaidLine({ said, onChange }: { said: ScreensSaid; onChange: ((displayId
           >
             Change…
           </Button>
-        )}
-        {onChange && said.kind === 'no-stage' && first !== undefined && (
+        </Tooltip>
+      )}
+      {onChange && said.kind === 'no-stage' && first !== undefined && (
+        <Tooltip content={tips.action} describes={false}>
           <Button
             size="sm"
             icon={Tv}
@@ -154,8 +170,10 @@ function SaidLine({ said, onChange }: { said: ScreensSaid; onChange: ((displayId
           >
             {SET_UP_STAGE}
           </Button>
-        )}
-        {/* 24 × 24 (WCAG 2.5.8), as the notices' own. */}
+        </Tooltip>
+      )}
+      {/* 24 × 24 (WCAG 2.5.8), as the notices' own. */}
+      <Tooltip content={tips.dismiss} describes={false}>
         <button
           type="button"
           aria-label="Dismiss"
@@ -166,7 +184,7 @@ function SaidLine({ said, onChange }: { said: ScreensSaid; onChange: ((displayId
         >
           <X size={13} aria-hidden="true" />
         </button>
-      </div>
-    </Tooltip>
+      </Tooltip>
+    </div>
   );
 }

@@ -344,6 +344,23 @@ for (const mode of ['pro', 'simple'] as const)
       await expect(win.locator('[role="tooltip"]'), where).toHaveText(NO_STAGE_WHOLE);
       await win.mouse.move(0, 0);
       await expect(win.locator('[role="tooltip"]')).toHaveCount(0);
+      // Each button its own tooltip on keyboard focus (the release lead's alpha.25 item 40, in saidwords): Set up Stage
+      // screen… says what it does, the X says Dismiss with the line. By the keyboard from the Help switch before them.
+      await win.getByTestId('help-toggle').focus();
+      if (mode === 'pro') {
+        await win.keyboard.press('Tab');
+        await expect(line.getByTestId('screens-said-set-up-stage'), where).toBeFocused();
+        await expect(win.locator('[role="tooltip"]'), where).toHaveText(
+          'Set up Stage screen…: opens Screens, to give a display the Stage job',
+        );
+      }
+      await win.keyboard.press('Tab');
+      await expect(line.getByRole('button', { name: 'Dismiss' }), where).toBeFocused();
+      await expect(win.locator('[role="tooltip"]'), where).toHaveText(`Dismiss: ${NO_STAGE_WHOLE}`);
+      await win.evaluate(() => {
+        (document.activeElement as HTMLElement | null)?.blur();
+      });
+      await expect(win.locator('[role="tooltip"]')).toHaveCount(0);
       // Closed and said again (Stage on again with no Stage screen, Stage already on): nothing else in the status bar
       // moves as it goes or comes, the access line's place among them.
       const withLine = await statusBar(win);
@@ -378,6 +395,16 @@ const barFaults = async (win: Page): Promise<string[]> => [
     const out: string[] = [];
     if (bar.scrollWidth > bar.clientWidth + 1)
       out.push(`the status bar's items need ${String(bar.scrollWidth)} px of its ${String(bar.clientWidth)}`);
+    // Sound's words whole, by any amount (the bar's one item that gives way, with an ellipsis): its words' own width
+    // within its box, to the hundredth of a pixel (scrollWidth and fitFaults see whole pixels only).
+    const sound = bar.querySelector<HTMLElement>('[data-testid="sound-status"] .truncate');
+    if (sound) {
+      const range = document.createRange();
+      range.selectNodeContents(sound);
+      const words = range.getBoundingClientRect().width;
+      const room = sound.getBoundingClientRect().width;
+      if (words > room + 0.01) out.push(`Sound's words cut by ${(words - room).toFixed(2)} px`);
+    }
     const edge = bar.getBoundingClientRect();
     const end = edge.right - Number.parseFloat(getComputedStyle(bar).paddingRight);
     for (const el of bar.querySelectorAll('[data-testid], button')) {
@@ -428,7 +455,7 @@ interface Step {
   act: 'switches' | 'dismiss' | 'stage on again';
   audience: boolean;
   stage: boolean;
-  line: 'none' | 'no-stage' | 'set';
+  line: 'none' | 'no-stage' | 'set' | 'mirroring';
 }
 
 /**
@@ -449,13 +476,29 @@ const NO_STAGE_STEPS: Step[] = [
 ];
 
 /** Two displays just plugged in (one the stage): their line stays as Audience and Stage go off and on. */
-const SET_STEPS: Step[] = [
+const SET2_STEPS: Step[] = [
   { act: 'switches', audience: true, stage: false, line: 'set' },
   { act: 'switches', audience: false, stage: false, line: 'set' },
   { act: 'switches', audience: false, stage: true, line: 'set' },
   { act: 'switches', audience: true, stage: true, line: 'set' },
   { act: 'switches', audience: true, stage: false, line: 'set' },
 ];
+
+/**
+ * One display plugged in (the audience picture), or the computer mirroring, with Stage on at the start: the line stays as
+ * Audience goes off and Stage off (Stage on again would say Stage's line in its place: no screen is set to Stage).
+ */
+const ONE_LINE_STEPS = (line: 'set' | 'mirroring'): { version: Step[]; access: Step[] } => ({
+  version: [
+    { act: 'switches', audience: true, stage: true, line },
+    { act: 'switches', audience: false, stage: true, line },
+  ],
+  access: [
+    { act: 'switches', audience: false, stage: true, line },
+    { act: 'switches', audience: false, stage: false, line },
+    { act: 'switches', audience: true, stage: false, line },
+  ],
+});
 
 /** The pretend displays, set by themselves (screens-set-themselves.spec.ts). */
 const AUTO = {
@@ -482,10 +525,14 @@ async function sweep(win: Page, mode: 'pro' | 'simple', steps: Step[], access: s
       const line = win.locator(`[data-testid="screens-said"][data-kind="${step.line}"]`);
       await expect(line, where).toBeVisible();
       await inTheStatusBar(win, line, where);
-      // Its words in sight, whole, while Audience is on; with Audience off in a window under 1280 px wide they give
-      // way (its icon and buttons stay, the whole line in its tooltip and read out), so the bar's items all fit.
+      // Its words in sight, whole. With Audience off in a window under 1280 px wide they give way (its icon and
+      // buttons stay, the whole line in its tooltip and read out), so the bar's items all fit, on the lines that keep
+      // an action button (Pro Mode's Stage line and set lines) and on Simple Mode's set lines (news only: the screens
+      // set themselves up). Stage's line in Simple Mode and mirroring in both modes keep their words (saidwords, lead
+      // 2's (C): the warnings that matter; an icon and an X alone would not say what the line is).
       const short = line.getByTestId('screens-said-short');
-      if (step.audience) expect((await wordsWhole(short)).problems, where).toEqual([]);
+      const givesWay = step.line === 'set' || (step.line === 'no-stage' && mode === 'pro');
+      if (step.audience || !givesWay) expect((await wordsWhole(short)).problems, where).toEqual([]);
       else await expect(short, where).toBeHidden();
       await expect(line.getByTestId('screens-said-text'), where).not.toBeEmpty();
     }
@@ -495,35 +542,56 @@ async function sweep(win: Page, mode: 'pro' | 'simple', steps: Step[], access: s
   }
 }
 
+/** The sweep's lines: Stage's (no display), two displays', one display's, and mirroring's. */
+const KINDS = {
+  'no-stage': { name: 'Stage’s line', env: STAGE_OFF, plug: 0 },
+  set2: { name: 'two displays’ line', env: { ...STAGE_OFF, ...AUTO }, plug: 2 },
+  set1: { name: 'one display’s line', env: AUTO, plug: 1 },
+  mirroring: {
+    name: 'mirroring’s line',
+    env: { ...AUTO, DRASHTI_TEST_MIRRORED_ONTO: 'PLACEHOLDER PJ' },
+    plug: 0,
+  },
+} as const;
+
 for (const mode of ['pro', 'simple'] as const)
-  for (const kind of ['no-stage', 'set'] as const)
-    test(`${mode === 'pro' ? 'Pro' : 'Simple'} Mode at 1024 × 645, ${kind === 'no-stage' ? 'Stage’s line' : 'two displays’ line'}: Audience on and off × Stage on and off × the line × the access line, the status bar’s items all fit, nothing cut at its end${kind === 'no-stage' ? '; Stage’s line closes as Stage goes off' : ''}`, async () => {
+  for (const kind of ['no-stage', 'set2', 'set1', 'mirroring'] as const)
+    test(`${mode === 'pro' ? 'Pro' : 'Simple'} Mode at 1024 × 645, ${KINDS[kind].name}: Audience on and off × Stage on and off × the line × the access line, the status bar’s items all fit, nothing cut at its end, Sound’s words whole${kind === 'no-stage' ? '; Stage’s line closes as Stage goes off' : ''}${(mode === 'simple' && kind === 'no-stage') || kind === 'mirroring' ? '; its short words kept with Audience off (a warning with no action button)' : ''}`, async () => {
       test.setTimeout(180_000);
-      const { app, access: list } = await launchApp({
-        ...STAGE_OFF,
-        ...QUICK,
-        ...(kind === 'set' ? AUTO : {}),
-      });
+      const { app, access: list } = await launchApp({ ...QUICK, ...KINDS[kind].env });
       try {
         const win = await operatorPage(app);
         await operatorReady(win);
         await slideUp(win);
         await sizeOperatorWindow(app, win, CI_WINDOW);
-        if (kind === 'set') {
+        if (KINDS[kind].plug > 0)
           await app.evaluate((_electron, n) => {
             (globalThis as { drashtiTestDisplays?: (n: number) => void }).drashtiTestDisplays?.(n);
-          }, 2);
+          }, KINDS[kind].plug);
+        if (kind === 'set2') {
           await expect(said(win).getByTestId('screens-said-text')).toHaveText(
             '“Extra display 1” shows the audience picture, and “Extra display 2” the stage.',
           );
           await expect(said(win).getByTestId('screens-said-short')).toHaveText('2 new screens set up');
         }
-        const steps = kind === 'no-stage' ? NO_STAGE_STEPS : SET_STEPS;
-        await sweep(win, mode, steps, 'the version showing');
+        if (kind === 'set1') {
+          await expect(said(win).getByTestId('screens-said-text')).toHaveText(
+            '“Extra display 1” shows the audience picture.',
+          );
+          await expect(said(win).getByTestId('screens-said-short')).toHaveText('New screen set up');
+        }
+        if (kind === 'mirroring') await expect(said(win)).toHaveAttribute('data-kind', 'mirroring');
+        const steps =
+          kind === 'no-stage'
+            ? { version: NO_STAGE_STEPS, access: NO_STAGE_STEPS }
+            : kind === 'set2'
+              ? { version: SET2_STEPS, access: SET2_STEPS }
+              : ONE_LINE_STEPS(kind === 'set1' ? 'set' : 'mirroring');
+        await sweep(win, mode, steps.version, 'the version showing');
         // The list stops answering: "No access list" in the version's place, and the same again.
         stopAnswering(list);
         await expect(win.getByTestId('access-offline-notice')).toBeVisible({ timeout: 30_000 });
-        await sweep(win, mode, steps, 'No access list showing');
+        await sweep(win, mode, steps.access, 'No access list showing');
       } finally {
         await app.close();
       }
