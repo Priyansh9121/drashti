@@ -4,9 +4,12 @@ import {
   NO_CONTACT_COME_BACK_TEXT,
   NO_CONTACT_STOP_TEXT,
   NO_CONTACT_STOP_TITLE,
+  OFFLINE_DAYS_TEXT,
+  OFFLINE_SHORT_ROOM,
   OFFLINE_SHORT_TEXT,
   offlineLeftText,
   offlineLine,
+  offlineShortLeft,
 } from './access';
 import { ACCESS_STOP_AFTER_MS } from './access-protocol';
 
@@ -54,6 +57,50 @@ describe('the line in the status bar (under the top bar before alpha.24)', () =>
     // What the whole line is about, which stays the owner's own words.
     expect(offlineLine(DAY)).toContain('access list');
     expect(OFFLINE_SHORT_TEXT).not.toContain('…');
+  });
+});
+
+/*
+ * The days left in sight (alpha.25 item 5, in alpha.24: the owner's delegate's words through lead 2, 28 Nov 2026):
+ * "⚠ No access list · 14 days", then "· 5 hours" in the last day and "· 40 minutes" in the last hour, rounded down;
+ * the line's room holds the widest of each, so nothing moves as the count or its unit changes.
+ */
+describe('the line’s countdown in sight', () => {
+  it('days while a day or more is left, then hours, then minutes, each rounded down', () => {
+    const forms: [number, string][] = [
+      [ACCESS_STOP_AFTER_MS, '15 days'],
+      [ACCESS_STOP_AFTER_MS - 2 * MINUTE, '14 days'],
+      [14 * DAY + 6 * HOUR + 59 * MINUTE, '14 days'],
+      [2 * DAY, '2 days'],
+      [DAY + 23 * HOUR, '1 day'],
+      [DAY, '1 day'],
+      [DAY - 1, '23 hours'],
+      [5 * HOUR + 59 * MINUTE, '5 hours'],
+      [HOUR, '1 hour'],
+      [HOUR - 1, '59 minutes'],
+      [40 * MINUTE + 59_999, '40 minutes'],
+      [MINUTE, '1 minute'],
+    ];
+    for (const [ms, words] of forms) expect(offlineShortLeft(ms), String(ms)).toBe(words);
+  });
+
+  it('never less than 1 minute in sight (the whole line says less than a minute)', () => {
+    for (const ms of [59_999, 1, 0, -5_000]) expect(offlineShortLeft(ms), String(ms)).toBe('1 minute');
+    expect(offlineLine(59_999)).toContain('less than a minute');
+  });
+
+  it('its room: the widest of each unit, so every count fits in it', () => {
+    expect(OFFLINE_SHORT_ROOM).toEqual([OFFLINE_DAYS_TEXT, '23 hours', '59 minutes']);
+    expect(OFFLINE_DAYS_TEXT).toBe('15 days');
+    // Every count has as many digits as its unit's widest, or fewer, and the same unit word.
+    for (let ms = 0; ms <= ACCESS_STOP_AFTER_MS; ms += 7 * MINUTE) {
+      const words = offlineShortLeft(ms);
+      const [count, unit] = words.split(' ');
+      const widest = OFFLINE_SHORT_ROOM.find((w) => w.split(' ')[1]?.replace(/s$/u, '') === unit?.replace(/s$/u, ''));
+      expect(widest, words).toBeDefined();
+      expect(count?.length, words).toBeLessThanOrEqual(widest?.split(' ')[0]?.length ?? 0);
+      expect(words, words).not.toContain('…');
+    }
   });
 });
 
