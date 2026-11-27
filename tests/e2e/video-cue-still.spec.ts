@@ -22,9 +22,11 @@ import { CI_WINDOW, liveColumnToTop, sizeOperatorWindow } from './window-size';
  * cuestill; the joined-tree hands-on's row 7, a25 list item 27). Until alpha.24, in Pro Mode, Cue brought the card in
  * above the LIVE picture, so the picture, Next, Back and Oops jumped some 66 px down until Go, right where the
  * operator's hand is; and in Pro and Simple Mode a picture going up brought + / − / Reset in between the picture and
- * Next and Back, pushing them 36 px. Now both sit under Next and Back (under Oops in Pro Mode), so nothing above them
- * moves at any frame as either comes or goes, at CI's 1024 × 645 and at 1410 × 900; and the card's Go and Cancel are
- * the keyboard's next stops after Oops. Placeholder words and generated media only.
+ * Next and Back, pushing them 36 px. Now both sit under Next and Back (under Oops in Pro Mode) and the time bars, so
+ * nothing above them moves at any frame as either comes or goes, at CI's 1024 × 645 and at 1410 × 900, the bars' Pause
+ * neither; the card's Go and Cancel are the keyboard's next stops after Oops (the bars' own first while something
+ * plays); and Go stays in sight at 1024 × 645 with a video's bar up and every section open. Placeholder words and
+ * generated media only.
  */
 
 const OWNERS_WINDOW = { width: 1410, height: 900 } as const;
@@ -245,8 +247,21 @@ test('Pro Mode at 1024 × 645 and 1410 × 900: a video cued, waiting, gone with 
       expect(cued.moved, `${where}: what moved as the card came, waited and went with Go`).toEqual([]);
       expect(await stillParts(win, selector), `${where}: after Go`).toEqual(before);
 
-      // Cued again, then Cancel: nothing moves either.
-      expect(await startWatching(win, selector)).toBe(before.length);
+      // Cued again while the video plays, then Cancel: nothing moves either, the time bar's Pause too (the card comes
+      // under the time bars). The video put up again going round, so its end (8 s) never swaps Pause for Play here.
+      const looping = await dispatch(win, {
+        type: 'setBackground',
+        background: { kind: 'media', mediaId: id, media: 'video', fit: 'fill', loop: true },
+      });
+      expect(looping.ok).toBe(true);
+      await expect(win.getByTestId('time-bar-pause')).toBeVisible();
+      const playing = `${selector}, [data-testid="time-bar-pause"]`;
+      const withBar = await settledStill(win, playing, `${where}, the video playing`);
+      expect(
+        withBar.some((p) => p.includes(' time-bar-pause: ')),
+        `${where}: the time bar's Pause is there`,
+      ).toBe(true);
+      expect(await startWatching(win, playing)).toBe(withBar.length);
       expect((await dispatch(win, { type: 'cueVideo', mediaId: other })).ok).toBe(true);
       await expect(win.getByTestId('video-cue')).toBeVisible();
       await letTimePass(win, 300, 'the card up');
@@ -257,7 +272,8 @@ test('Pro Mode at 1024 × 645 and 1410 × 900: a video cued, waiting, gone with 
       await letTimePass(win, 500, 'frames after Cancel');
       const cancelled = await stopWatching(win);
       expect(cancelled.moved, `${where}: what moved as the card came and went with Cancel`).toEqual([]);
-      expect(await stillParts(win, selector), `${where}: after Cancel`).toEqual(before);
+      expect(await stillParts(win, playing), `${where}: after Cancel`).toEqual(withBar);
+      expect(await stillParts(win, selector), `${where}: after Cancel, as before the cue`).toEqual(before);
       expect(await backgroundId(win), `${where}: Cancel leaves the screens as they were`).toBe(id);
     }
   } finally {
@@ -344,6 +360,29 @@ const focusedName = (win: Page) =>
     return el.getAttribute('aria-label') ?? el.textContent.trim();
   });
 
+/** Whether the focused control is one of the time bars' (their Play or Pause, bar, captions or More). */
+const focusInBars = (win: Page) =>
+  win.evaluate(() => document.activeElement?.closest('[data-testid="time-bars"]') !== null);
+
+/**
+ * Tab from Oops until Cancel (at most 12 presses): each stop's name, and whether every stop before Go was one of the
+ * time bars' (the card comes under them, so while something plays they are the stops between Oops and Go).
+ */
+async function tabFromOops(win: Page): Promise<{ stops: string[]; onlyBarsBeforeGo: boolean }> {
+  await win.getByTestId('show-oops').focus();
+  await expect(win.getByTestId('show-oops')).toBeFocused();
+  const stops: string[] = [];
+  let onlyBarsBeforeGo = true;
+  for (let i = 0; i < 12; i++) {
+    await win.keyboard.press('Tab');
+    const name = await focusedName(win);
+    stops.push(name);
+    if (name === 'Cancel video cue') break;
+    if (!stops.includes('Go cued video') && !(await focusInBars(win))) onlyBarsBeforeGo = false;
+  }
+  return { stops, onlyBarsBeforeGo };
+}
+
 test('Pro Mode: the cued video’s Go and Cancel are the keyboard’s next stops after Oops, and Enter on each does what it says', async () => {
   test.setTimeout(180_000);
   const { app, win, ids } = await setupVideoCue();
@@ -353,7 +392,7 @@ test('Pro Mode: the cued video’s Go and Cancel are the keyboard’s next stops
     await slidesUp(win);
     const oops = win.getByTestId('show-oops');
     await expect(oops).toBeEnabled();
-    // Go: Oops, then Tab, Tab.
+    // Go: nothing playing, so Oops, then Tab, Tab.
     expect((await dispatch(win, { type: 'cueVideo', mediaId: first })).ok).toBe(true);
     await cueReady(win);
     await expect(goButton(win)).toBeEnabled();
@@ -374,13 +413,30 @@ test('Pro Mode: the cued video’s Go and Cancel are the keyboard’s next stops
     await win.keyboard.press('Enter');
     await expect(win.getByTestId('video-cue')).toHaveCount(0);
     await expect.poll(() => backgroundId(win)).toBe(first);
-    // Cancel: cued again, Oops, Tab, Tab, Enter: the cue gone, the screens as they were.
+    // Cancel: cued again while that video plays: from Oops, the time bar's own stops, then Go, then Cancel; Enter on
+    // it: the cue gone, the screens as they were. The video put up again going round, so its end never changes the bar.
+    const looping = await dispatch(win, {
+      type: 'setBackground',
+      background: { kind: 'media', mediaId: first, media: 'video', fit: 'fill', loop: true },
+    });
+    expect(looping.ok).toBe(true);
+    await expect(win.locator('[data-testid="time-bar-row"][data-playing="background"]')).toBeVisible();
     expect((await dispatch(win, { type: 'cueVideo', mediaId: second })).ok).toBe(true);
     await cueReady(win);
     await expect(oops).toBeEnabled();
-    await oops.focus();
-    await win.keyboard.press('Tab');
-    await win.keyboard.press('Tab');
+    const walk = await tabFromOops(win);
+    await test.info().attach('cuestill-tab-order-playing.json', {
+      body: Buffer.from(JSON.stringify(walk)),
+      contentType: 'application/json',
+    });
+    expect(walk.stops.slice(-2), 'the last stops of the walk from Oops').toEqual([
+      'Go cued video',
+      'Cancel video cue',
+    ]);
+    expect(
+      walk.onlyBarsBeforeGo,
+      `nothing but the time bars between Oops and Go: ${walk.stops.join(' | ')}`,
+    ).toBe(true);
     await expect(cancelButton(win)).toBeFocused();
     await win.keyboard.press('Enter');
     await expect(win.getByTestId('video-cue')).toHaveCount(0);
