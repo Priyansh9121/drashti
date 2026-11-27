@@ -3,7 +3,7 @@ import type { DataAttributes } from './cx';
 import { cx } from './cx';
 import type { Icon } from './icons';
 import { useArrival } from './motion';
-import { leaveTransient } from './transient-motion';
+import { interfaceBody, leaveTransient } from './transient-motion';
 import { AlertTriangle, CircleAlert, CircleCheck, Info, X } from './icons';
 
 export type NoticeTone = 'info' | 'success' | 'warning' | 'danger';
@@ -62,9 +62,8 @@ export function Notice({
   className?: string;
 } & DataAttributes) {
   const ref = useRef<HTMLDivElement>(null);
-  const arriving = useArrival(
-    typeof document !== 'undefined' && document.body.classList.contains('operator') ? 'notice' : null,
-  );
+  const body = interfaceBody();
+  const arriving = useArrival(body && !body.matches('.output, .web') ? 'notice' : null);
   const look = tones[tone];
   const IconShape = look.icon;
   const announce = role ?? (tone === 'warning' || tone === 'danger' ? 'alert' : 'status');

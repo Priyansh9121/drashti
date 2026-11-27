@@ -13,6 +13,8 @@
   --dur-surface-tooltip-exit: 80ms;
   --dur-surface-exit: 100ms;
   --dur-surface-sheet-exit: 120ms;
+  --surface-exit-name: surface-out;
+  --surface-exit-easing: var(--ease-in);
   --surface-rise: 4px;
   --surface-slide: 8px;
 }
@@ -42,60 +44,65 @@ body.operator [data-motion='pop'] {
   animation: surface-in var(--dur-surface-menu) var(--ease-out) both;
 }
 body.operator [data-motion='notice'],
-body.operator [data-transient='chat']:not([data-leaving]) {
+body.operator .motionui-chat-pop:not([data-leaving]) {
   --surface-x: 0px;
   --surface-y: calc(var(--surface-rise) * -1);
   animation: surface-in var(--dur-surface-notice) var(--ease-out) both;
 }
 /* A tooltip starts only after its position is measured; its anchor and show control stay still. */
-body.operator [data-transient='tooltip'] {
+body.operator .motionui-tooltip {
   --surface-x: 0px;
   --surface-y: var(--surface-rise);
   animation: surface-in var(--dur-surface-tooltip) var(--ease-out) both;
 }
 
 /* The chat's real card fades on its ten-second deadline. Dismiss/open use the same inert copy as menus. */
-body.operator [data-transient='chat'] {
+body.operator .motionui-chat-pop {
   transition-property: opacity, transform;
   transition-duration: var(--dur-surface-exit);
   transition-timing-function: var(--ease-in);
 }
-body.operator [data-transient='chat'][data-leaving='true'] {
+body.operator .motionui-chat-pop[data-leaving='true'] {
   animation: none;
   transform: translateY(calc(var(--surface-rise) * -1));
 }
 
 /*
  * These selectors also work inside motion.ts's closed shadow copies, which inherit the operator's
- * tokens. Their root has no <html> and never replays an entrance. No change to Dialog.tsx is needed.
+ * tokens. The new exit values are set only by body.operator; other windows retain the existing
+ * names, times and curves through the original tokens. A copy never replays an entrance.
  */
 [data-leaving='dialog'],
 [data-leaving='sheet'] {
-  animation: fade-out var(--dur-surface-sheet-exit) var(--ease-in) both;
+  animation: fade-out var(--dur-surface-sheet-exit, var(--dur-exit))
+    var(--surface-exit-easing, var(--ease-out)) both;
 }
 [data-leaving='dialog'] > * {
   --surface-x: 0px;
   --surface-y: var(--surface-rise);
-  animation: surface-out var(--dur-surface-sheet-exit) var(--ease-in) both;
+  animation: var(--surface-exit-name, drop-out) var(--dur-surface-sheet-exit, var(--dur-exit))
+    var(--surface-exit-easing, var(--ease-out)) both;
 }
 [data-leaving='sheet'] > * {
   --surface-x: var(--surface-slide);
   --surface-y: 0px;
-  animation: surface-out var(--dur-surface-sheet-exit) var(--ease-in) both;
+  animation: var(--surface-exit-name, sheet-out) var(--dur-surface-sheet-exit, var(--dur-exit))
+    var(--surface-exit-easing, var(--ease-drawer)) both;
 }
 [data-leaving='pop'],
 [data-leaving='notice'] {
   --surface-x: 0px;
   --surface-y: calc(var(--surface-rise) * -1);
-  animation: surface-out var(--dur-surface-exit) var(--ease-in) both;
+  animation: var(--surface-exit-name, drop-out) var(--dur-surface-exit, var(--dur-exit))
+    var(--surface-exit-easing, var(--ease-out)) both;
 }
-[data-leaving='pop'][data-transient='tooltip'] {
-  animation-duration: var(--dur-surface-tooltip-exit);
+[data-leaving='pop'].motionui-tooltip {
+  animation-duration: var(--dur-surface-tooltip-exit, var(--dur-exit));
 }
 
 /* Moving an ancestor would move a show control too. Its whole surface and dim therefore stay still. */
 body.operator
-  :is([data-motion], [data-transient]):is(
+  :is([data-motion], .motionui-chat-pop, .motionui-tooltip):is(
     [data-show-control],
     [data-show-control] *,
     :has([data-show-control])

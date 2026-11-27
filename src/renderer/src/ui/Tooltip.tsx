@@ -2,6 +2,7 @@ import { cloneElement, useCallback, useEffect, useId, useLayoutEffect, useRef, u
 import type { ReactElement, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Kbd } from './Kbd';
+import { cx } from './cx';
 import { leaveTransient } from './transient-motion';
 
 /*
@@ -45,7 +46,7 @@ export function Tooltip({
   };
   const hide = useCallback(() => {
     clear();
-    if (tip.current?.hasAttribute('data-transient')) leaveTransient(tip.current, 'pop');
+    if (tip.current?.classList.contains('motionui-tooltip')) leaveTransient(tip.current, 'pop');
     setOpen(false);
     setPlace(null);
   }, [clear]);
@@ -53,7 +54,7 @@ export function Tooltip({
   useLayoutEffect(() => {
     const node = tip.current;
     return () => {
-      if (node?.hasAttribute('data-transient')) leaveTransient(node, 'pop');
+      if (node?.classList.contains('motionui-tooltip')) leaveTransient(node, 'pop');
     };
   }, [open]);
 
@@ -104,14 +105,16 @@ export function Tooltip({
             ref={tip}
             id={id}
             role="tooltip"
-            data-transient={place ? 'tooltip' : undefined}
             aria-hidden={describes ? undefined : 'true'}
             style={{
               position: 'fixed',
               left: place?.x ?? -9999,
               top: place?.y ?? -9999,
             }}
-            className="pointer-events-none z-[60] flex max-w-72 items-center gap-2 rounded-md border border-line-strong bg-panel-3 px-2 py-1 text-xs text-fg shadow-overlay"
+            className={cx(
+              'pointer-events-none z-[60] flex max-w-72 items-center gap-2 rounded-md border border-line-strong bg-panel-3 px-2 py-1 text-xs text-fg shadow-overlay',
+              place && 'motionui-tooltip',
+            )}
           >
             <span className="break-words">{content}</span>
             {kbd && <Kbd>{kbd}</Kbd>}

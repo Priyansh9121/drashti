@@ -1,8 +1,12 @@
 import { REPORT_PRIVATE_ATTR } from '../../../shared/report-private';
 import { leave, motionOff, type Leaving } from './motion';
-import './transient-motion.css';
 
 const copied = new WeakSet<Element>();
+
+/** Shared UI can be imported before a body exists, including server-rendered Help. */
+export function interfaceBody(): HTMLElement | null | undefined {
+  return typeof document === 'undefined' ? undefined : document.body;
+}
 
 /** Reuse the existing inert exit, without ever carrying a show control or an output into it. */
 export function leaveTransient(node: Element | null, kind: Leaving): void {
@@ -58,7 +62,7 @@ export function removeTransientCopies(): void {
   for (const host of document.querySelectorAll('[data-leaving-host]')) host.remove();
 }
 
-if (typeof window !== 'undefined' && document.body.classList.contains('operator')) {
+if (typeof window !== 'undefined' && interfaceBody()?.classList.contains('operator')) {
   new MutationObserver(removeTransientCopies).observe(document.documentElement, {
     attributes: true,
     attributeFilter: ['data-interface-motion'],

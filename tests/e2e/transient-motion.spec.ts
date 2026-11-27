@@ -300,7 +300,6 @@ test('chat arrives calmly, its exit stays private, and Off or reduced motion lea
   }
 });
 
-
 test('secondary desktop exits retain their original timing, curve and animation', async () => {
   const { app } = await launchApp();
   try {
@@ -320,10 +319,19 @@ test('secondary desktop exits retain their original timing, curve and animation'
         }
         document.body.append(fixture);
         return [...fixture.children].flatMap((copy) => {
-          const parts = [copy, ...(copy.matches('[data-leaving="dialog"], [data-leaving="sheet"]') ? copy.children : [])];
+          const parts = [
+            copy,
+            ...(copy.matches('[data-leaving="dialog"], [data-leaving="sheet"]') ? copy.children : []),
+          ];
           return parts.map((part) => {
             const st = getComputedStyle(part);
-            return { kind: copy.getAttribute('data-leaving'), panel: part !== copy, name: st.animationName, ms: Number.parseFloat(st.animationDuration) * 1000, easing: st.animationTimingFunction };
+            return {
+              kind: copy.getAttribute('data-leaving'),
+              panel: part !== copy,
+              name: st.animationName,
+              ms: Number.parseFloat(st.animationDuration) * 1000,
+              easing: st.animationTimingFunction,
+            };
           });
         });
       } finally {
@@ -334,7 +342,15 @@ test('secondary desktop exits retain their original timing, curve and animation'
     expect(defaults).toHaveLength(6);
     for (const result of defaults) {
       const sheet = result.kind === 'sheet' && result.panel;
-      expect(result.name).toBe(result.panel ? sheet ? 'sheet-out' : 'drop-out' : result.kind === 'pop' || result.kind === 'notice' ? 'drop-out' : 'fade-out');
+      expect(result.name).toBe(
+        result.panel
+          ? sheet
+            ? 'sheet-out'
+            : 'drop-out'
+          : result.kind === 'pop' || result.kind === 'notice'
+            ? 'drop-out'
+            : 'fade-out',
+      );
       expect(result.ms).toBe(150);
       expect(result.easing).toBe(sheet ? 'cubic-bezier(0.32, 0.72, 0, 1)' : 'cubic-bezier(0.23, 1, 0.32, 1)');
     }

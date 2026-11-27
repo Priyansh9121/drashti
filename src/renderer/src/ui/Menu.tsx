@@ -7,7 +7,7 @@ import { cx } from './cx';
 import type { Icon } from './icons';
 import { Check } from './icons';
 import { Kbd } from './Kbd';
-import { useArrival } from './motion';
+import { leave, useArrival } from './motion';
 import { leaveTransient } from './transient-motion';
 
 /*
@@ -94,7 +94,8 @@ export function Menu({
       const lost = now === null || now === document.body || (ref.current?.contains(now) ?? false);
       if (lost && opener?.isConnected) opener.focus();
       // It leaves as it came (ui/motion.ts), in about 70% of the time.
-      leaveTransient(ref.current, 'pop');
+      if (document.body.classList.contains('operator')) leaveTransient(ref.current, 'pop');
+      else if (!document.body.matches('.output, .web')) leave(ref.current, 'pop');
     },
     [opener],
   );
