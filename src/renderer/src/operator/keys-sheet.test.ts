@@ -71,7 +71,15 @@ describe('the keys sheet’s list', () => {
     const html = draw('win32', true);
     expect(count(html, 'keys-single')).toBe(0);
     expect(count(html, 'keys-group')).toBe(keyGroups(true).length);
-    for (const words of ['Next slide', 'Previous slide', 'Clear all', 'Black-out', 'Wallpaper', 'Oops', 'Undo'])
+    for (const words of [
+      'Next slide',
+      'Previous slide',
+      'Clear all',
+      'Black-out',
+      'Wallpaper',
+      'Oops',
+      'Undo',
+    ])
       expect(html, words).toContain(words);
     expect(html).toContain('Audience on');
     expect(html).not.toContain('Audience on or off');

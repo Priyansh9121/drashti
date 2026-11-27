@@ -66,6 +66,8 @@ export interface KeyBinding {
   keys: readonly string[];
   /** Short name for buttons and the shortcut legend. */
   label: string;
+  /** Simple Mode's keys sheet's name for it, where Simple Mode does less with the key (Audience and Stage: on only). */
+  simpleLabel?: string;
   /** Also registered system-wide by the main process while it is needed. */
   global?: boolean;
   /** Only while a list (presentations, playlists, a playlist's items) has the keyboard focus. */
@@ -106,8 +108,20 @@ export const KEYMAP: readonly KeyBinding[] = [
   // This computer's audience screens (key and fill too), or its stage screens, off and on (Session 50): Audience off
   // gives their displays back to the computer, Stage off shows the audience picture on the stage screens (Session 55);
   // the show carries on. View › Audience and Stage show them.
-  { action: 'toggleAudience', keys: ['Mod+1'], label: 'Audience on or off', shownInMenu: true },
-  { action: 'toggleStage', keys: ['Mod+2'], label: 'Stage on or off', shownInMenu: true },
+  {
+    action: 'toggleAudience',
+    keys: ['Mod+1'],
+    label: 'Audience on or off',
+    simpleLabel: 'Audience on',
+    shownInMenu: true,
+  },
+  {
+    action: 'toggleStage',
+    keys: ['Mod+2'],
+    label: 'Stage on or off',
+    simpleLabel: 'Stage on',
+    shownInMenu: true,
+  },
   // Repeat Slides going round stops, its slide staying up (Session 26d). Not while a dialog, a menu, the
   // slide editor or a field has the keyboard: they keep Esc for themselves.
   { action: 'stopRepeat', keys: ['Escape'], label: 'Stop Repeat Slides' },
@@ -127,7 +141,8 @@ export const KEYMAP: readonly KeyBinding[] = [
   { action: 'moveItemDown', keys: ['Alt+ArrowDown'], label: 'Move down', scope: 'library' },
   { action: 'findInLibrary', keys: ['Mod+F'], label: 'Search' },
   { action: 'undo', keys: ['Mod+Z'], label: 'Undo', menuOnly: true },
-  // The keys sheet (Help > Keyboard Shortcuts…, Session 25): Pro Mode only, as no field has the focus.
+  // The keys sheet (Help > Keyboard Shortcuts…, Session 25), as no field has the focus: Simple Mode's too since alpha.24
+  // (a25 item 3), of its own keys.
   { action: 'showKeys', keys: ['?'], label: 'This list of keys' },
   // The quick bar (Session 55, Part 8): its first to eighth pin, one press each (quickSlotFor says which). Alt and a
   // digit: never a key typed by itself, nothing the operators press already (Cmd/Ctrl+1 and +2 are Audience and Stage),
@@ -167,7 +182,12 @@ export function fKeyFirstStep(platform: string): string | null {
  * The keys sheet, built from KEYMAP and grouped by what the operator is doing (Session 25): every
  * action once (a unit test checks), so the sheet never drifts from the keys.
  */
-export const KEY_GROUPS: readonly { title: string; actions: readonly OperatorAction[] }[] = [
+export const KEY_GROUPS: readonly {
+  title: string;
+  /** Simple Mode's sheet's title for it, where what is left of it there needs other words (keyGroups). */
+  simpleTitle?: string;
+  actions: readonly OperatorAction[];
+}[] = [
   {
     title: 'Running the show',
     actions: ['next', 'previous', 'nextItem', 'previousItem', 'stopRepeat', 'oops', 'quickBar'],
@@ -179,6 +199,8 @@ export const KEY_GROUPS: readonly { title: string; actions: readonly OperatorAct
   { title: 'Covering the picture', actions: ['toggleBlackout', 'toggleWallpaper'] },
   {
     title: 'The library and playlists',
+    // Simple Mode's Undo alone: what Clear all took down, else its playlist's last step (operator/actions.ts).
+    simpleTitle: 'Taking back a step',
     actions: ['findInLibrary', 'moveItemUp', 'moveItemDown', 'removeSelected', 'undo'],
   },
   {
@@ -186,6 +208,32 @@ export const KEY_GROUPS: readonly { title: string; actions: readonly OperatorAct
     actions: ['openScreens', 'toggleAudience', 'toggleStage', 'uncoverControls', 'showKeys'],
   },
 ];
+
+/**
+ * The keys Simple Mode leaves alone (operator/actions.ts, performSimple): it changes no screen setup and no library, so
+ * Screens, Search and a list's Remove and Move keys do nothing there, and its keys sheet leaves them out.
+ */
+export const SIMPLE_IDLE: readonly OperatorAction[] = [
+  'openScreens',
+  'findInLibrary',
+  'removeSelected',
+  'moveItemUp',
+  'moveItemDown',
+];
+
+/**
+ * The keys sheet's groups for a mode: Pro Mode's KEY_GROUPS; Simple Mode's (a25 item 3, in alpha.24 by the owner's
+ * 48-item list) only the keys that act there (SIMPLE_KEYMAP less SIMPLE_IDLE), in the same groups and order, a group
+ * left with none gone.
+ */
+export function keyGroups(simple: boolean): readonly { title: string; actions: readonly OperatorAction[] }[] {
+  return simple ? SIMPLE_GROUPS : KEY_GROUPS;
+}
+
+/** A binding's name in the keys sheet: Simple Mode's own where it does less with the key (keyGroups). */
+export function keyLabel(binding: KeyBinding, simple: boolean): string {
+  return simple ? (binding.simpleLabel ?? binding.label) : binding.label;
+}
 
 /** Keys the page listens for everywhere (not scoped to a list, not owned by the menu). */
 export const PAGE_KEYMAP: readonly KeyBinding[] = KEYMAP.filter((b) => !b.scope && !b.menuOnly);
@@ -196,6 +244,11 @@ export const LIBRARY_KEYMAP: readonly KeyBinding[] = KEYMAP.filter((b) => b.scop
  * down). The Edit menu still owns Undo's key, and tells the page when it is chosen.
  */
 export const SIMPLE_KEYMAP: readonly KeyBinding[] = KEYMAP.filter((b) => !b.scope && b.proOnly !== true);
+
+const SIMPLE_GROUPS = KEY_GROUPS.map((g) => ({
+  title: g.simpleTitle ?? g.title,
+  actions: g.actions.filter((a) => !SIMPLE_IDLE.includes(a) && SIMPLE_KEYMAP.some((b) => b.action === a)),
+})).filter((g) => g.actions.length > 0);
 
 /**
  * A key of one character with no Cmd, Ctrl or Alt (Shift or not): B, . and ? (L went with the Logo, Session 55).

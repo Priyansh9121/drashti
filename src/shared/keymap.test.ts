@@ -190,9 +190,25 @@ describe('keymap', () => {
     // In Pro Mode's order, group by group.
     const proOrder = KEY_GROUPS.flatMap((g) => g.actions);
     expect(listed).toEqual(proOrder.filter((a) => listed.includes(a)));
-    for (const a of ['next', 'previous', 'clearAll', 'toggleBlackout', 'toggleWallpaper', 'oops', 'undo', 'showKeys'])
+    for (const a of [
+      'next',
+      'previous',
+      'clearAll',
+      'toggleBlackout',
+      'toggleWallpaper',
+      'oops',
+      'undo',
+      'showKeys',
+    ])
       expect(listed, a).toContain(a);
-    for (const a of ['openScreens', 'findInLibrary', 'quickBar', 'removeSelected', 'moveItemUp', 'moveItemDown'])
+    for (const a of [
+      'openScreens',
+      'findInLibrary',
+      'quickBar',
+      'removeSelected',
+      'moveItemUp',
+      'moveItemDown',
+    ])
       expect(listed, a).not.toContain(a);
     // Simple Mode turns Audience and Stage on, never off.
     const named = (action: string, simpleMode: boolean) => {

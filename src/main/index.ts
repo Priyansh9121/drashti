@@ -11332,7 +11332,7 @@ function start(): void {
       if (mode === 'pro') sendToOperator(IPC.updates.open, { at: Date.now() });
     },
     keyboardShortcuts: () => {
-      if (mode === 'pro') sendToOperator(IPC.app.showKeys, { at: Date.now() });
+      sendToOperator(IPC.app.showKeys, { at: Date.now() });
     },
     guides: () => {
       sendToOperator(IPC.app.showGuides, { at: Date.now() });

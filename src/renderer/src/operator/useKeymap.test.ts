@@ -258,7 +258,12 @@ describe('Space on a focused button', () => {
     (name) => {
       const button = new StandInButton(name, false, true);
       const ran: OperatorAction[] = [];
-      const onKey = keyListener('win32', PAGE_KEYMAP, (action) => ran.push(action), () => true);
+      const onKey = keyListener(
+        'win32',
+        PAGE_KEYMAP,
+        (action) => ran.push(action),
+        () => true,
+      );
       const presses = [new Press(' ', { target: button }), new Press(' ', { target: button })];
       for (const p of presses) onKey(p);
       expect(ran).toEqual(['next', 'next']);

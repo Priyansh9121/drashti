@@ -115,6 +115,7 @@ function MuteSwitch({ kind, muted, nameId }: { kind: SoundKind; muted: boolean; 
       aria-checked={!muted}
       aria-labelledby={`${nameId} ${wordsId}`}
       data-testid={`sound-mute-${kind}`}
+      data-space-next=""
       data-muted={muted ? 'true' : 'false'}
       onClick={() => void setMuted(kind, !muted)}
       className={cx(
