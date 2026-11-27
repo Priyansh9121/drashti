@@ -33,6 +33,12 @@ const PX = {
   network: { full: 174 + 16, compact: 36 + 16 },
   /** LIVE's badge and the gap before what is live. */
   live: 50 + 8,
+  /**
+   * Phones on, with the held LIVE/Off room: Windows 46034661877 measured 42.296875 px for the live line at 1536 px,
+   * reconnecting + REC, where this old screenshot-based budget promised 48. Reserve the missing 5.703125 px, rounded
+   * up, in the crowded budget. Quiet breakpoints passed that run and keep their measured budget.
+   */
+  crowdedAllowance: 6,
   /** What is live ("Live: … · slide 2 of 5"): at least this much of it is always in sight. */
   line: 48,
   /** Each ghost button with its words; any of them with its icon alone (square). */
@@ -80,7 +86,15 @@ function groupWidth(width: number, crowded: boolean, force?: IconAloneButton): n
 /** How wide the whole bar must be at this width, on air (the longest), with LIVE and at least PX.line of its line. */
 function need(width: number, crowded: boolean, force?: IconAloneButton): number {
   const network = crowded ? (width < 1280 ? PX.network.compact : PX.network.full) : 0;
-  return PX.frame + PX.onAir + network + PX.live + PX.line + groupWidth(width, crowded, force);
+  return (
+    PX.frame +
+    PX.onAir +
+    network +
+    PX.live +
+    PX.line +
+    (crowded ? PX.crowdedAllowance : 0) +
+    groupWidth(width, crowded, force)
+  );
 }
 
 const MODES = [
