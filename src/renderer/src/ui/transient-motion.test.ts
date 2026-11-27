@@ -58,7 +58,9 @@ describe('the existing exit system is used only for safe operator surfaces', () 
     const phone = renderToStaticMarkup(createElement(Notice, { title: 'Placeholder phone notice' }));
     expect(phone).not.toContain('data-motion=');
     operator.mockReturnValue(true);
-    const operatorNotice = renderToStaticMarkup(createElement(Notice, { title: 'Placeholder operator notice' }));
+    const operatorNotice = renderToStaticMarkup(
+      createElement(Notice, { title: 'Placeholder operator notice' }),
+    );
     expect(operatorNotice).toContain('data-motion="notice"');
   });
 

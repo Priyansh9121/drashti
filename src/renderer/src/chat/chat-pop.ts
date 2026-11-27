@@ -1,8 +1,8 @@
 import type { ChatMessage } from '../../../shared/chat';
 
 export const CHAT_POP_MS = 10_000;
-/** Its fade's length, the one place it is set: app.css's token (the notices' --dur-notice), read by ChatPop.tsx. */
-export const CHAT_POP_FADE_TOKEN = 'dur-notice';
+/** Its fade uses the operator transient exit token, read by ChatPop.tsx and its CSS. */
+export const CHAT_POP_FADE_TOKEN = 'dur-surface-exit';
 export const CHAT_POP_CHARS = 160;
 
 export interface ChatPop {

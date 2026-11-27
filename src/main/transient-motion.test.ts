@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const css = () => readFileSync(join(__dirname, '..', 'renderer', 'src', 'ui', 'transient-motion.css'), 'utf8');
+const css = () =>
+  readFileSync(join(__dirname, '..', 'renderer', 'src', 'ui', 'transient-motion.css'), 'utf8');
 const time = (name: string) => {
   const value = new RegExp(`--dur-surface-${name}:\\s*(\\d+)ms;`, 'u').exec(css())?.[1];
   expect(value, `missing surface timing: ${name}`).toBeDefined();
@@ -42,4 +43,3 @@ describe('operator transient motion budgets', () => {
     expect(text).not.toMatch(/will-change|translate3d|backdrop-filter|\bfilter\s*:/u);
   });
 });
-

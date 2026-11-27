@@ -39,8 +39,8 @@ const message = (who: { id: string; name: string }, text: string): ChatMessage =
 };
 
 const T0 = 1_000_000;
-/** The fade's length as the window reads it from app.css's --dur-notice (motion.test.ts holds the token at 200 ms). */
-const FADE = 200;
+/** The popup uses the shorter operator exit token (transient-motion.test.ts holds its budget). */
+const FADE = 100;
 
 describe('which messages pop up', () => {
   it('none from the first view: what was in the chat as the window opened is no news', () => {
@@ -124,8 +124,8 @@ describe('it stays about 10 s, then fades (no fade with reduced motion)', () => 
     expect(popPhase(pop, T0 + CHAT_POP_MS + FADE - 1, FADE)).toBe('leaving');
     expect(popPhase(pop, T0 + CHAT_POP_MS + FADE, FADE)).toBe('gone');
     expect(popPhase(null, T0, FADE)).toBe('gone');
-    // Set in one place: the notices' token in app.css.
-    expect(CHAT_POP_FADE_TOKEN).toBe('dur-notice');
+    // Set in one place, with the operator transient exit budget.
+    expect(CHAT_POP_FADE_TOKEN).toBe('dur-surface-exit');
   });
 
   it('with reduced motion (or interface motion Off): up for 10 s, then gone at once', () => {

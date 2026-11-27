@@ -7,7 +7,8 @@ import { cx } from './cx';
 import type { Icon } from './icons';
 import { Check } from './icons';
 import { Kbd } from './Kbd';
-import { leave, useArrival } from './motion';
+import { useArrival } from './motion';
+import { leaveTransient } from './transient-motion';
 
 /*
  * Small menus: one under a button, or one at the pointer (right-click).
@@ -93,7 +94,7 @@ export function Menu({
       const lost = now === null || now === document.body || (ref.current?.contains(now) ?? false);
       if (lost && opener?.isConnected) opener.focus();
       // It leaves as it came (ui/motion.ts), in about 70% of the time.
-      leave(ref.current, 'pop');
+      leaveTransient(ref.current, 'pop');
     },
     [opener],
   );

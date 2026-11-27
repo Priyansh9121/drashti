@@ -1,0 +1,137 @@
+/*
+ * alpha.24 motionui: one quiet arrival, then still. Only the operator page opts in (index.html);
+ * the hall, stage, stream and phones never take these tokens or entrances. Existing motion.ts
+ * owns opening, preferences and inert exit copies. No layout, filters, loops or retained layers.
+ */
+:root:has(> body.operator) {
+  --dur-surface-tooltip: 100ms;
+  --dur-surface-menu: 160ms;
+  --dur-surface-notice: 160ms;
+  --dur-surface-dialog: 180ms;
+  --dur-surface-scrim: 120ms;
+  --dur-surface-sheet: 180ms;
+  --dur-surface-tooltip-exit: 80ms;
+  --dur-surface-exit: 100ms;
+  --dur-surface-sheet-exit: 120ms;
+  --surface-rise: 4px;
+  --surface-slide: 8px;
+}
+
+/* Lively has a little more distance, only with the graphics chip the existing system requires. */
+:root[data-interface-motion='lively'][data-chip='yes']:has(> body.operator) {
+  --surface-rise: 6px;
+  --surface-slide: 12px;
+}
+
+body.operator [data-motion='scrim'] {
+  animation: fade-in var(--dur-surface-scrim) var(--ease-out) both;
+}
+body.operator [data-motion='dialog'] {
+  --surface-x: 0px;
+  --surface-y: var(--surface-rise);
+  animation: surface-in var(--dur-surface-dialog) var(--ease-out) both;
+}
+body.operator [data-motion='sheet'] {
+  --surface-x: var(--surface-slide);
+  --surface-y: 0px;
+  animation: surface-in var(--dur-surface-sheet) var(--ease-out) both;
+}
+body.operator [data-motion='pop'] {
+  --surface-x: 0px;
+  --surface-y: calc(var(--surface-rise) * -1);
+  animation: surface-in var(--dur-surface-menu) var(--ease-out) both;
+}
+body.operator [data-motion='notice'],
+body.operator [data-transient='chat']:not([data-leaving]) {
+  --surface-x: 0px;
+  --surface-y: calc(var(--surface-rise) * -1);
+  animation: surface-in var(--dur-surface-notice) var(--ease-out) both;
+}
+/* A tooltip starts only after its position is measured; its anchor and show control stay still. */
+body.operator [data-transient='tooltip'] {
+  --surface-x: 0px;
+  --surface-y: var(--surface-rise);
+  animation: surface-in var(--dur-surface-tooltip) var(--ease-out) both;
+}
+
+/* The chat's real card fades on its ten-second deadline. Dismiss/open use the same inert copy as menus. */
+body.operator [data-transient='chat'] {
+  transition-property: opacity, transform;
+  transition-duration: var(--dur-surface-exit);
+  transition-timing-function: var(--ease-in);
+}
+body.operator [data-transient='chat'][data-leaving='true'] {
+  animation: none;
+  transform: translateY(calc(var(--surface-rise) * -1));
+}
+
+/*
+ * These selectors also work inside motion.ts's closed shadow copies, which inherit the operator's
+ * tokens. Their root has no <html> and never replays an entrance. No change to Dialog.tsx is needed.
+ */
+[data-leaving='dialog'],
+[data-leaving='sheet'] {
+  animation: fade-out var(--dur-surface-sheet-exit) var(--ease-in) both;
+}
+[data-leaving='dialog'] > * {
+  --surface-x: 0px;
+  --surface-y: var(--surface-rise);
+  animation: surface-out var(--dur-surface-sheet-exit) var(--ease-in) both;
+}
+[data-leaving='sheet'] > * {
+  --surface-x: var(--surface-slide);
+  --surface-y: 0px;
+  animation: surface-out var(--dur-surface-sheet-exit) var(--ease-in) both;
+}
+[data-leaving='pop'],
+[data-leaving='notice'] {
+  --surface-x: 0px;
+  --surface-y: calc(var(--surface-rise) * -1);
+  animation: surface-out var(--dur-surface-exit) var(--ease-in) both;
+}
+[data-leaving='pop'][data-transient='tooltip'] {
+  animation-duration: var(--dur-surface-tooltip-exit);
+}
+
+/* Moving an ancestor would move a show control too. Its whole surface and dim therefore stay still. */
+body.operator
+  :is([data-motion], [data-transient]):is(
+    [data-show-control],
+    [data-show-control] *,
+    :has([data-show-control])
+  ) {
+  animation: none !important;
+  transition: none !important;
+}
+/* An old caller may still ask motion.ts to copy a sheet containing a show control: it draws nothing. */
+[data-leaving]:is([data-show-control], [data-show-control] *, :has([data-show-control])) {
+  visibility: hidden !important;
+}
+[data-leaving]:is([data-show-control], [data-show-control] *, :has([data-show-control])),
+[data-leaving]:is([data-show-control], [data-show-control] *, :has([data-show-control])) * {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Hide existing copies synchronously; transient-motion.ts also removes their closed shadow hosts. */
+:root[data-interface-motion='off'] body.operator [data-leaving-host] {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  body.operator [data-leaving-host] {
+    display: none;
+  }
+}
+
+@keyframes surface-in {
+  from {
+    opacity: 0;
+    transform: translate(var(--surface-x), var(--surface-y));
+  }
+}
+@keyframes surface-out {
+  to {
+    opacity: 0;
+    transform: translate(var(--surface-x), var(--surface-y));
+  }
+}
