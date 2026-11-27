@@ -54,7 +54,6 @@ import {
 } from '../playlists/playlist-store';
 import { PlaylistsUnread } from '../playlists/PlaylistsUnread';
 import { startRepeat } from '../playlists/repeat-actions';
-import { ScreensSaidNotice } from '../screens/ScreensSaid';
 import { StoppedScreens } from '../screens/StoppedScreens';
 import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { OnAirBadges } from '../stream/OnAirBadges';
@@ -329,8 +328,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
           they never cover the show's controls. */}
       <EngineUnread />
       <StoppedScreens />
-      {/* A display plugged in, given its job by itself (Session 55): said here too; Simple Mode changes no screen. */}
-      <ScreensSaidNotice onChange={null} />
+      {/* A display plugged in, given its job by itself (Session 55), and Stage on with no Stage screen: said in the
+          status bar, as in Pro Mode (alpha.24), with no Change… (Simple Mode changes no screen). */}
       <NoSoundNotice />
       <StreamPageStopped />
       {/* Drashti's sound stopped: its sound player kept failing (x53): said here too. */}

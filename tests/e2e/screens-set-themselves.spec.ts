@@ -111,7 +111,7 @@ test('a display plugged in is used at once, asking nothing: the first the audien
   expect(await groups(win)).toEqual(['Audience (audience): 1', 'Stage (stage): 1']);
   expect(await pending(win)).toBeNull();
   await expect.poll(() => openOutputs(app)).toBe(2);
-  // In the window's flow, never over the show controls.
+  // In the status bar (alpha.24; in the window's flow under the top bar before), never over the show controls.
   await clearOfShowControls(win, said(win));
   await expectNoSeriousA11yIssues(win, 'the screens’ one line', '[data-testid="screens-said"]');
   await app.close();

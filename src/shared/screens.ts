@@ -188,6 +188,19 @@ export interface ScreensSaid {
   displayIds: number[];
 }
 
+/**
+ * The line's words in sight, in the status bar (alpha.24, lead 2's screensaid; the release lead's rules: in the window's
+ * flow under the top bar it had moved the whole window down as it came): a few words, whole (never "…"), so that it and
+ * the access line ("No access list") both fit at CI's 1024 × 645. The whole line (`text`) is its tooltip and what a
+ * screen reader reads.
+ */
+export function saidShort(said: Pick<ScreensSaid, 'kind' | 'displayIds'>): string {
+  if (said.kind === 'no-stage') return 'No Stage screen';
+  if (said.kind === 'mirroring') return 'Screen mirrored';
+  const given = said.displayIds.length;
+  return given > 1 ? `${String(given)} new screens set up` : 'New screen set up';
+}
+
 /** The job a display's use stands for: a stage group's is the stage, any other group's the audience picture. */
 export function jobOf(use: Pick<DisplayUse, 'role'> | undefined): DisplayJob {
   if (use?.role === undefined || use.role === null) return 'none';

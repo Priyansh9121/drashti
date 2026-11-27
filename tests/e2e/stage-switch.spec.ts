@@ -99,7 +99,7 @@ async function connectTablet(port: number, token: string): Promise<WebSocket> {
   return ws;
 }
 
-/** The line under the top bar: no screen is set to Stage, with Set up Stage screen…. */
+/** The screens' line (in the status bar since alpha.24): no screen is set to Stage, with Set up Stage screen…. */
 const noStageLine = (win: Page) => win.locator('[data-testid="screens-said"][data-kind="no-stage"]');
 
 test('(a) the controls alone: Stage starts off; on says no screen is set to Stage, with Set up Stage screen… (Screens); on and off every time, from the top bar, the status bar and Mod+2; kept as it was left across a restart', async () => {

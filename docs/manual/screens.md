@@ -19,13 +19,13 @@
 
 ## A display plugged in
 
-**What it is.** Drashti uses a projector or screen the moment it is plugged in, asking nothing: the first shows the audience picture, the next the stage. A line under the top bar says what happened, with **Change…**. The display with these controls is never taken.
+**What it is.** Drashti uses a projector or screen the moment it is plugged in, asking nothing: the first shows the audience picture, the next the stage. The status bar along the bottom says **New screen set up**, with **Change…**; rest the mouse on it for the whole line. The display with these controls is never taken.
 
 **When you would use it.** Every time a projector is plugged in.
 
 **How:**
 
-1. Plug the projector in. The line under the top bar names it.
+1. Plug the projector in. The status bar says **New screen set up**; rest the mouse on it to see its name.
 2. Press **Change…** to give it another job.
 3. Extend, never mirror: on a Mac, **System Settings**, **Displays**, then **Use as: Extended display**; on Windows, Windows+P, then **Extend**.
 
@@ -57,7 +57,7 @@
 2. Drashti asks first while those screens show something: press **Turn off**.
 3. The status bar says **Audience off** or **Stage off**, with **Turn on**.
 4. **Audience** is on again every time Drashti starts. **Stage** starts off in a new library, then as it was left.
-5. Stage on with no screen set to Stage says **No screen is set to Stage.**: press **Set up Stage screen…**, then **Stage** beside the display that shows the stage.
+5. Stage on with no screen set to Stage says **No Stage screen** in the status bar: press **Set up Stage screen…** there, then **Stage** beside the display that shows the stage.
 
 After an audience screen is turned on or reloaded mid-show, the picture already up is prepared first. Next then loads ahead as usual. The existing wait for a picture stays at three seconds.
 
