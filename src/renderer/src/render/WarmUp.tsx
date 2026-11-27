@@ -1,4 +1,13 @@
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import type { EngineState, SlideLayer } from '../../../shared/engine/state';
 import { initialEngineState } from '../../../shared/engine/state';
@@ -411,12 +420,32 @@ interface NativeCoverCopy {
   box: HTMLDivElement;
   incoming: HTMLElement;
   transform: string;
-  moving: boolean;
+  /**
+   * While shown: 'still' (the wide copy, its incoming slide a layer of its own), 'nudge' (the 4:3 copy, a CSS px
+   * over every other frame), 'places' (the painted wide copy: paintedCoverPlace in turn).
+   */
+  moving: 'still' | 'nudge' | 'places';
   curve: SVGSVGElement | null;
+  /** How many times it has been shown (the painted wide copy's turn). */
+  turns: number;
+}
+
+/**
+ * Where the painted wide copy's incoming slide is drawn each time it is shown (a24-coverpipe), in turn: part-way in,
+ * as its warm scene left it (`from`), then all the way in (its shaded surface over the LIVE box's whole rounded clip);
+ * each on whole device pixels, then `half` CSS px over (half a device pixel). On air, the LIVE picture's Cover is
+ * painted with the window's own drawing, and where its shaded surface falls on the device's pixels, and on the
+ * box's rounded clip, picks the way the graphics chip draws it: these four are those ways.
+ */
+export function paintedCoverPlace(turn: number, from: string, half: number): string {
+  const base = Math.floor(turn / 2) % 2 === 0 ? from : '';
+  const over = turn % 2 === 1 ? `translateX(${String(half)}px)` : '';
+  return [base, over].filter((part) => part !== '' && part !== 'none').join(' ') || 'none';
 }
 
 interface NativeCoverCopies {
   root: HTMLDivElement;
+  painted: HTMLDivElement;
   width: number;
   height: number;
   copies: NativeCoverCopy[];
@@ -437,13 +466,18 @@ function clippingCorner(el: HTMLElement): number {
  * The LIVE picture's shaded render surfaces (X12 wide, traced on CI's Mac). A filtered picture or canvas was not
  * enough: the native JPEG and words must compose their RGBA surface outside the warm-up's opacity group, under
  * that group's black result. A transformed wide copy beside a path makes the clipped MSAA passes; the moving 4:3
- * copy makes the unclipped ones. Only generated warm-up scenes are copied, never anything from the show.
+ * copy makes the unclipped ones. On air the LIVE picture's Cover is painted with the window's own drawing, under the
+ * box's rounded clip alone, so a third, painted wide copy is drawn the same way (a24-coverpipe: with Depth's 4 px gaps
+ * the LIVE box is 8 px narrower, and the first wide Cover on CI's Mac drew its shade multisampled under that clip, a
+ * kind none of the other copies made): on the grid, at paintedCoverPlace's four places, black, outside the copies'
+ * own rounded clip. Only generated warm-up scenes are copied, never anything from the show.
  * The existing warm-up pulse calls this; it adds no frame loop or timer and keeps nothing after the warm-up.
  */
 function primeNativeCovers(
   tree: ShadowRoot,
   host: HTMLDivElement,
   root: HTMLDivElement,
+  painted: HTMLDivElement,
   previous: NativeCoverCopies | null,
   frame: number,
 ): NativeCoverCopies | null {
@@ -453,6 +487,8 @@ function primeNativeCovers(
   if (bounds.width <= 0 || bounds.height <= 0 || width <= 0 || height <= 0) return null;
   const sx = width / bounds.width;
   const sy = height / bounds.height;
+  // Device pixels a CSS px (the painted copy's half-pixel place).
+  const ratio = window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
   // Clear of the LIVE box's rounded corners (a21): a copy drawn there showed in their antialiased edge (each layer under
   // the box's rounded clip is clipped on its own, outside the black above it). A rounded clip of their own, twice the
   // box's and 2 px more, keeps the copies rounded-clipped as the show's Cover is, and off the box's edge.
@@ -460,8 +496,13 @@ function primeNativeCovers(
   const rounded = `${String(corner * sx)}px / ${String(corner * sy)}px`;
   if (root.style.borderRadius !== rounded) root.style.borderRadius = rounded;
   let made = previous;
-  if (made?.root !== root || made.width !== width || made.height !== height) {
-    const keys = ['deck-cover-wide/calm/off-grid', 'deck-cover-four-three/calm/off-grid'];
+  if (made?.root !== root || made.painted !== painted || made.width !== width || made.height !== height) {
+    // The wide Cover twice: as a layer of its own beside a path, and painted with the window's own drawing.
+    const keys = [
+      'deck-cover-wide/calm/off-grid',
+      'deck-cover-four-three/calm/off-grid',
+      'deck-cover-wide/calm/off-grid',
+    ];
     const sources = keys.map((key) => tree.querySelector<HTMLElement>(`[data-warm-scene="${key}"]`));
     // During's native layers paint from the paused clock before their first copy is taken.
     if (
@@ -472,13 +513,23 @@ function primeNativeCovers(
     )
       return null;
     root.replaceChildren();
+    painted.replaceChildren();
     const copies = sources.map((source, i): NativeCoverCopy => {
       if (!source) throw new Error('The graphics warm-up could not draw its picture.');
       const box = document.createElement('div');
       Object.assign(box.style, { position: 'absolute', inset: '0', visibility: 'hidden' });
-      box.dataset['warmUiCover'] = i === 0 ? 'wide' : 'four-three';
+      if (i < 2) box.dataset['warmUiCover'] = i === 0 ? 'wide' : 'four-three';
+      else box.dataset['warmUiPainted'] = 'wide';
       const clone = source.cloneNode(true) as HTMLElement;
       clone.style.mixBlendMode = 'normal';
+      if (i === 2) {
+        // On the grid, as the LIVE picture places a slide (its scene's own is half a pixel off it), and black: it lies
+        // under the box's own rounded clip alone, as the show's Cover does, so its antialiased corners show only black.
+        const placed = clone.firstElementChild;
+        if (placed instanceof HTMLElement) placed.style.transform = '';
+        for (const out of clone.querySelectorAll<HTMLElement>('[data-slide-out]'))
+          out.style.visibility = 'hidden';
+      }
       box.append(clone);
       const incoming = clone.querySelector<HTMLElement>('[data-slide-in]');
       if (!incoming) throw new Error('The graphics warm-up could not draw its picture.');
@@ -495,10 +546,11 @@ function primeNativeCovers(
         curve.append(path);
         box.append(curve);
       }
-      root.append(box);
-      return { box, incoming, transform: incoming.style.transform, moving: i !== 0, curve };
+      (i === 2 ? painted : root).append(box);
+      const moving = i === 0 ? 'still' : i === 1 ? 'nudge' : 'places';
+      return { box, incoming, transform: incoming.style.transform, moving, curve, turns: 0 };
     });
-    made = { root, width, height, copies };
+    made = { root, painted, width, height, copies };
   }
   // Both surfaces are drawn, two frames at a time: one cannot hide the other's leading edge from the GPU.
   const shown = Math.floor(frame / 2) % made.copies.length;
@@ -512,9 +564,18 @@ function primeNativeCovers(
         width: String(240 * sx) + 'px',
         height: String(135 * sy) + 'px',
       });
-    if (i === shown && copy.moving) {
+    if (i === shown && copy.moving === 'nudge') {
       copy.incoming.style.transform = copy.transform + ` translateX(${String((frame % 2) * sx)}px)`;
       copy.incoming.style.filter = frame % 2 ? 'brightness(0.986)' : 'brightness(0.985)';
+    }
+    if (i === shown && copy.moving === 'places') {
+      // Its next place as it comes into view; each frame the Cover's kind of shade (a colour matrix over its surface),
+      // all but black.
+      if (frame % 2 === 0) {
+        copy.incoming.style.transform = paintedCoverPlace(copy.turns, copy.transform, sx / ratio / 2);
+        copy.turns += 1;
+      }
+      copy.incoming.style.filter = frame % 2 ? 'brightness(0.0015)' : 'brightness(0.001)';
     }
   });
   return made;
@@ -1095,6 +1156,7 @@ export function WarmUp({
   const canvasHost = useRef<HTMLDivElement | null>(null);
   const [uiParent, setUiParent] = useState<HTMLElement | null>(null);
   const uiDrawing = useRef<HTMLDivElement | null>(null);
+  const uiPainted = useRef<HTMLDivElement | null>(null);
   const uiCopies = useRef<NativeCoverCopies | null>(null);
   useLayoutEffect(() => {
     uiCopies.current = null;
@@ -1185,10 +1247,11 @@ export function WarmUp({
       drewFrame.current = true;
       if (pulse.current) pulse.current.style.transform = `translateX(${String(n % 2)}px)`;
       const drawing = uiDrawing.current;
+      const painted = uiPainted.current;
       const host = canvasHost.current;
-      if (page === 'live' && step.phase === 'during' && tree && drawing && host) {
+      if (page === 'live' && step.phase === 'during' && tree && drawing && painted && host) {
         try {
-          uiCopies.current = primeNativeCovers(tree, host, drawing, uiCopies.current, n);
+          uiCopies.current = primeNativeCovers(tree, host, drawing, painted, uiCopies.current, n);
         } catch {
           finish('error');
         }
@@ -1249,6 +1312,7 @@ export function WarmUp({
         const drawn = [
           ...(tree?.querySelectorAll('img') ?? []),
           ...(uiDrawing.current?.querySelectorAll('img') ?? []),
+          ...(uiPainted.current?.querySelectorAll('img') ?? []),
         ];
         await Promise.all(drawn.map((img) => img.decode().catch(() => undefined)));
         if (!warming()) return;
@@ -1406,14 +1470,23 @@ export function WarmUp({
         uiParent &&
         step.phase === 'during' &&
         createPortal(
-          <div
-            key={`${String(canvas.width)}x${String(canvas.height)}`}
-            ref={uiDrawing}
-            data-warm-ui-drawing=""
-            aria-hidden="true"
-            inert
-            style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0, pointerEvents: 'none' }}
-          />,
+          <Fragment key={`${String(canvas.width)}x${String(canvas.height)}`}>
+            <div
+              ref={uiDrawing}
+              data-warm-ui-drawing=""
+              aria-hidden="true"
+              inert
+              style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0, pointerEvents: 'none' }}
+            />
+            {/* The painted wide copy's own: no clip of its own, under the LIVE box's rounded clip alone (a24-coverpipe). */}
+            <div
+              ref={uiPainted}
+              data-warm-ui-drawing="painted"
+              aria-hidden="true"
+              inert
+              style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }}
+            />
+          </Fragment>,
           uiParent,
         )}
     </>
