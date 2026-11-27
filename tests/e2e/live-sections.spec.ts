@@ -178,7 +178,6 @@ async function chromiumNames(win: Page): Promise<{ role: string; name: string }[
 }
 
 test('a screen reader is given each section’s heading in its own words, never in the capitals it is drawn in: Chromium’s names of the heading, its button and the section (alpha.24, lead 2’s item 38)', async () => {
-  test.setTimeout(120_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
