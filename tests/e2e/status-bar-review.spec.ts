@@ -134,6 +134,39 @@ async function fits(win: Page, where: string) {
           )
             faults.push(`visible words cut: ${nodeWords}`);
         }
+        if (faults.length) {
+          const children = [...root.children].filter((el) => el.getBoundingClientRect().width > 0);
+          const style = getComputedStyle(root);
+          let minimum =
+            Number.parseFloat(style.paddingLeft) +
+            Number.parseFloat(style.paddingRight) +
+            Number.parseFloat(style.columnGap) * (children.length - 1);
+          const sizes: string[] = [];
+          for (const el of children) {
+            const id = el.getAttribute('data-testid');
+            let width = el.getBoundingClientRect().width;
+            if (id === 'screens-summary' || id === 'sound-status' || id === 'sound-warning') width = 24;
+            else if (id === 'today-calendar') {
+              const label = el.querySelector('.truncate');
+              if (label) {
+                const range = document.createRange();
+                range.selectNodeContents(label);
+                const look = getComputedStyle(el);
+                width =
+                  range.getBoundingClientRect().width +
+                  13 +
+                  Number.parseFloat(look.columnGap) +
+                  Number.parseFloat(look.paddingLeft) +
+                  Number.parseFloat(look.paddingRight);
+              }
+            } else if (el.getAttribute('aria-live') === 'polite') width = 0;
+            minimum += width;
+            sizes.push(`${id ?? el.tagName}: ${width.toFixed(2)}`);
+          }
+          faults.push(
+            `minimum width with summary/Sound at their 24 px target minimum (passing news 0): ${minimum.toFixed(2)} / ${root.clientWidth}; ${sizes.join('; ')}`,
+          );
+        }
         return faults;
       }),
       where,
@@ -326,6 +359,19 @@ for (const mode of ['pro', 'simple'] as const)
         await expect(win.getByTestId('sound-warning')).toBeVisible();
         expect.soft(await steady(win), `${mode} ${size.width}, calendar and all warnings`).toEqual(before);
         await fits(win, `${mode} ${size.width}, calendar and all warnings`);
+        await tell(app, IPC.screens.said, {
+          id: 11000 + size.width,
+          kind: 'mirroring',
+          displayIds: [],
+          text: 'The computer screen is mirrored onto PLACEHOLDER PJ. Extend the displays to show a separate audience picture.',
+        });
+        await expect(win.getByTestId('screens-said')).toHaveAttribute('data-kind', 'mirroring');
+        expect
+          .soft(await steady(win), `${mode} ${size.width}, calendar, mirroring and all warnings`)
+          .toEqual(before);
+        await fits(win, `${mode} ${size.width}, calendar, mirroring and all warnings`);
+        await win.getByTestId('screens-said').getByRole('button', { name: 'Dismiss' }).click();
+        await expect(win.getByTestId('screens-said')).toHaveCount(0);
         await tell(app, IPC.screenSwitches.changed, { audience: true, stage: true });
         await win.evaluate(() => (globalThis as PageGlobals).drashti.sound.setMuted('audio', false));
         await tell(app, IPC.audio.status, { chosen: null, devices: [], state: 'default', checked: true });
