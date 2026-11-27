@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   COLOURS_AT_ONCE,
+  COMPACT_HEADER_GAP,
   COUNT_IF_NARROW,
   HELP_ROOM,
   HIDDEN_IF_NARROWER,
@@ -27,6 +28,8 @@ import {
 const PX = {
   /** The bar's sides (2 × 16), the name with its mark, and the gaps either side of the states (2 × 16). */
   frame: 32 + 95 + 32,
+  /** Phones on below 1280 px: two 12 px outer gaps give the live states 8 px more; the button group is unchanged. */
+  compactFrame: 32 + 95 + 24,
   /** The longest the stream says beside LIVE ("On air · reconnecting" and REC) and the gap after it. */
   onAir: 216 + 16,
   /** The network's badge ("Network on · 3 devices"; its count alone below 1280 px) and the gap after it. */
@@ -86,8 +89,9 @@ function groupWidth(width: number, crowded: boolean, force?: IconAloneButton): n
 /** How wide the whole bar must be at this width, on air (the longest), with LIVE and at least PX.line of its line. */
 function need(width: number, crowded: boolean, force?: IconAloneButton): number {
   const network = crowded ? (width < 1280 ? PX.network.compact : PX.network.full) : 0;
+  const frame = crowded && width < 1280 ? PX.compactFrame : PX.frame;
   return (
-    PX.frame +
+    frame +
     PX.onAir +
     network +
     PX.live +
@@ -163,6 +167,11 @@ describe('the top bar’s words', () => {
 });
 
 describe('the top bar holding still (topbar, alpha.24)', () => {
+  it('Phones on below 1280 px gives the live states 8 px more with two 12 px outer gaps; the button group’s target sizes and spacing stay as they were', () => {
+    expect(COMPACT_HEADER_GAP).toBe('max-[1280px]:gap-3');
+    expect(PX.frame - PX.compactFrame).toBe(8);
+  });
+
   it('the ? beside Stream, Phones and Announcements keep their room while Help is off, so turning Help on or off moves nothing in the bar (a25 list item 6), in the compact room the bar’s widths above count', () => {
     expect(HELP_ROOM).toEqual({ compact: true, keepRoom: true });
   });
