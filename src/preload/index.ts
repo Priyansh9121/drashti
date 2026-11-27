@@ -1,3 +1,4 @@
+import { fadeInterface, stopInterfaceFade } from '../shared/interface-fade';
 import { contextBridge, ipcRenderer, type IpcRendererEvent, webUtils } from 'electron';
 import type { DrashtiBridge } from '../shared/bridge';
 import type { EventChannel, EventContract, InvokeArgs, InvokeChannel, InvokeResult } from '../shared/ipc';
@@ -5,7 +6,7 @@ import type { AppearanceNow } from '../shared/appearance/appearances';
 import { drawAppearance, type AppearanceRoot } from '../shared/appearance/draw';
 import { IPC } from '../shared/ipc';
 import { summariesOf } from '../shared/library';
-import { crossFades } from './cross-fade';
+import { crossFades, softCrossFades } from './cross-fade';
 import { bridgeFor, pageOf } from './page-groups';
 import { EngineViewStamp } from './engine-seen';
 
@@ -1036,45 +1037,46 @@ if (OWN_WINDOWS.includes(pageOf(here))) {
       made.observe(dom.document, { childList: true });
     }
   }
-  // Lively (Session 40): one appearance to the next in a short cross-fade of the whole window, never while the
+  // Safe interface pictures cross-fade in Calm and Lively, with no root or show control captured; never while the
   // show is changing (a change in the last 800 ms, or one arriving during it, which ends it at once).
   let showChangedAt = 0;
-  let fading: { skipTransition(): void } | null = null;
   ipcRenderer.on(IPC.engine.message, () => {
     showChangedAt = Date.now();
-    fading?.skipTransition();
+    stopInterfaceFade();
   });
   let drawn = now;
   ipcRenderer.on(IPC.appearance.changed, (_event, next: AppearanceNow) => {
     const doc = dom.document as unknown as {
       startViewTransition?: (change: () => void) => { skipTransition(): void; finished: Promise<void> };
     };
-    const looksOtherwise = drawn !== null && (drawn.id !== next.id || drawn.base !== next.base);
+    const looksOtherwise =
+      drawn !== null && (drawn.id !== next.id || drawn.base !== next.base || drawn.depth !== next.depth);
     drawn = next;
     const quiet = Date.now() - showChangedAt > 800;
     const reduced = (
       globalThis as unknown as { matchMedia?: (q: string) => { matches: boolean } }
     ).matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     // Lively's cross-fade, with a graphics chip only (cross-fade.ts; alpha.24's review of uimotion, MUST-1).
-    const fades = crossFades({
+    const facts = {
       looksOtherwise,
       motion: next.motion,
       chip: next.chip,
       quiet,
       reduced: reduced === true,
       canFade: typeof doc.startViewTransition === 'function',
-    });
-    if (fades && doc.startViewTransition) {
-      const fade = doc.startViewTransition(() => {
+    };
+    const fades = crossFades(facts);
+    fadeInterface(
+      () => {
         draw(next);
-        // Session 42: the new band sweeps in once (app.css, data-band-sweep: a and b in turn, so it plays again).
-        const root = dom.document.documentElement;
-        if (root) root.dataset['bandSweep'] = root.dataset['bandSweep'] === 'a' ? 'b' : 'a';
-      });
-      fading = fade;
-      void fade.finished.finally(() => {
-        if (fading === fade) fading = null;
-      });
-    } else draw(next);
+        if (fades) {
+          // The band is decoration alone; show controls and output pictures are never captured.
+          const root = dom.document.documentElement;
+          if (root) root.dataset['bandSweep'] = root.dataset['bandSweep'] === 'a' ? 'b' : 'a';
+        }
+      },
+      'look',
+      softCrossFades(facts),
+    );
   });
 }

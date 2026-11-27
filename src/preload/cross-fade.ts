@@ -23,5 +23,5 @@ export function crossFades(f: CrossFadeFacts): boolean {
 
 /** A scoped, stationary fade, including Calm; Lively’s band sweep keeps its separate existing gate. */
 export function softCrossFades(f: CrossFadeFacts): boolean {
-  return crossFades(f);
+  return (f.motion === 'calm' || f.motion === 'lively') && crossFades({ ...f, motion: 'lively' });
 }

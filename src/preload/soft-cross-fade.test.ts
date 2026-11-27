@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { softCrossFades } from './cross-fade';
 
-const READY = { looksOtherwise: true, motion: 'calm', chip: 'yes', quiet: true, reduced: false, canFade: true };
+const READY = {
+  looksOtherwise: true,
+  motion: 'calm',
+  chip: 'yes',
+  quiet: true,
+  reduced: false,
+  canFade: true,
+};
 
 describe('safe stationary appearance fades', () => {
   it('cross-fades in Calm as well as Lively', () => {

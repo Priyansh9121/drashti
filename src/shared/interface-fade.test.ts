@@ -97,7 +97,7 @@ describe('soft interface fades keep the show live', () => {
     for (const kind of ['help', 'mode'] as const) {
       const p = await page();
       p.root.dataset['interfaceMotion'] = 'calm';
-      p.fadeInterface(() => {}, kind);
+      p.fadeInterface(() => undefined, kind);
       expect(p.startViewTransition, kind).toHaveBeenCalledTimes(1);
       expect(p.root.dataset['interfaceFade']).toBe(kind);
       p.finish();
@@ -150,11 +150,13 @@ describe('soft interface fades keep the show live', () => {
           constructor(changed: () => void) {
             observed = changed;
           }
-          observe() {}
+          observe() {
+            return undefined;
+          }
           disconnect = disconnect;
         },
       );
-      p.fadeInterface(() => {}, 'help');
+      p.fadeInterface(() => undefined, 'help');
       if (held === 'reduced') {
         p.reduced.matches = true;
         p.reduced.dispatchEvent(new Event('change'));
@@ -187,43 +189,5 @@ describe('soft interface fades keep the show live', () => {
     p.fadeInterface(change, 'mode');
     expect(change).toHaveBeenCalledTimes(1);
     expect(p.root.dataset['interfaceFade']).toBeUndefined();
-  });
-});
-
-
-describe('the controls using a deferred browser snapshot', () => {
-  it('keeps one mode fade when the IPC event and reply repeat the same choice', async () => {
-    const p = await page(true);
-    let changed: (mode: 'pro' | 'simple') => void = () => {};
-    vi.stubGlobal('window', { drashti: { app: {
-      onModeChanged: (listener: typeof changed) => { changed = listener; },
-      getMode: () => new Promise(() => {}),
-      setMode: async () => { changed('simple'); return { ok: true, mode: 'simple' }; },
-    } } });
-    const store = await import('../renderer/src/operator/mode-store');
-    store.useMode.setState({ mode: 'pro' });
-    store.connectMode();
-    await store.enterSimpleMode();
-    expect(p.startViewTransition).toHaveBeenCalledTimes(1);
-    expect(p.skipTransition).not.toHaveBeenCalled();
-    p.update();
-    expect(store.useMode.getState().mode).toBe('simple');
-    p.finish();
-    await p.finished;
-  });
-
-  it('two rapid Help toggles end off, with no stale callback restoring a question or its key hints', async () => {
-    const p = await page(true);
-    const storage = { getItem: () => null, setItem: () => {} };
-    vi.stubGlobal('window', { localStorage: storage, sessionStorage: storage });
-    const help = await import('../renderer/src/help/help-store');
-    help.toggleHelp();
-    help.toggleHelp();
-    p.stopInterfaceFade();
-    p.update();
-    expect(help.useHelp.getState()).toMatchObject({ on: false, round: 1 });
-    expect(p.root.dataset['interfaceFade']).toBeUndefined();
-    p.finish();
-    await p.finished;
   });
 });

@@ -78,11 +78,20 @@ describe('the controls using a deferred browser snapshot', () => {
   it('keeps one mode fade when the IPC event and reply repeat the same choice', async () => {
     const p = await page(true);
     let changed: (mode: 'pro' | 'simple') => void = () => undefined;
-    vi.stubGlobal('window', { drashti: { app: {
-      onModeChanged: (listener: typeof changed) => { changed = listener; },
-      getMode: () => new Promise(() => undefined),
-      setMode: () => { changed('simple'); return Promise.resolve({ ok: true, mode: 'simple' }); },
-    } } });
+    vi.stubGlobal('window', {
+      drashti: {
+        app: {
+          onModeChanged: (listener: typeof changed) => {
+            changed = listener;
+          },
+          getMode: () => new Promise(() => undefined),
+          setMode: () => {
+            changed('simple');
+            return Promise.resolve({ ok: true, mode: 'simple' });
+          },
+        },
+      },
+    });
     const store = await import('../operator/mode-store');
     store.useMode.setState({ mode: 'pro' });
     store.connectMode();

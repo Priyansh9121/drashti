@@ -1,4 +1,7 @@
 import { create } from 'zustand';
+import { flushSync } from 'react-dom';
+import { fadeInterface, stopInterfaceFade } from '../../../shared/interface-fade';
+import { sinceShowChanged } from '../engine/show-changed';
 import { readPersisted, writePersisted } from '../ui/persist';
 
 /*
@@ -32,11 +35,22 @@ export const useHelp = create<HelpState>(() => ({
 /** Turn Help on or off, and remember it on this computer. */
 export function setHelp(on: boolean): void {
   writePersisted(HELP_KEY, on);
+  stopInterfaceFade();
   const was = useHelp.getState();
-  if (was.on !== on) useHelp.setState({ on, round: on ? was.round + 1 : was.round });
+  if (was.on !== on)
+    fadeInterface(
+      () => {
+        flushSync(() => {
+          useHelp.setState({ on, round: on ? was.round + 1 : was.round });
+        });
+      },
+      'help',
+      sinceShowChanged() > 800,
+    );
 }
 
 export function toggleHelp(): void {
+  stopInterfaceFade();
   setHelp(!useHelp.getState().on);
 }
 
