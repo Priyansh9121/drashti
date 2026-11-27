@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { emptyLayers, type Layers, type LiveCursor } from '../../../shared/engine/state';
 import type { MediaSummary, PlaylistItemInfo } from '../../../shared/playlists';
-import { liveLine } from './StatusLine';
+import { liveCaptionsShown, liveLine } from './StatusLine';
+import { captionsFor, type CaptionsShown } from '../../../shared/captions';
 
 /*
  * LIVE's line in the top bar (alpha.24, livesay): since uitop it is the only place the word LIVE is said, so it says
@@ -301,4 +302,52 @@ describe('LIVE’s line in the top bar, LIVE said once (alpha.24, livesay)', () 
     expect(line(emptyLayers())).toEqual({ onAir: false, text: 'Nothing live' });
     expect(line(layers({ messages: [] }))).toEqual({ onAir: false, text: 'Nothing live' });
   });
+  it('names a public caption band up alone as Captions, without copying recognised speech into the live line', () => {
+    const facts = { live: nowhere, layers: emptyLayers(), presentation: undefined, item: undefined, media };
+    expect(liveLine({ ...facts, captions: true })).toEqual({ onAir: true, text: 'Live: Captions' });
+    expect(liveLine({ ...facts, layers: undefined, captions: true })).toEqual({
+      onAir: true,
+      text: 'Live: Captions',
+    });
+    expect(liveLine({ ...facts, captions: false })).toEqual({ onAir: false, text: 'Nothing live' });
+  });
+
+  it('keeps LIVE for a cleared presentation while a public caption band remains, naming the band', () => {
+    expect(
+      liveLine({
+        live: slideAt(1),
+        layers: emptyLayers(),
+        presentation: 'Placeholder Kirtan',
+        item: undefined,
+        media,
+        captions: true,
+      }),
+    ).toEqual({
+      onAir: true,
+      text: 'Live: Placeholder Kirtan · slide 2 of 5 (cleared) · Captions',
+    });
+  });
+
+  it('counts the stream’s caption band even without the hall’s, while an empty public translation with stage-only words never counts', () => {
+    const shown: CaptionsShown = {
+      lines: ['Placeholder recognised speech'],
+      language: 'en',
+      audience: false,
+      size: 'medium',
+      place: 'bottom',
+    };
+    expect(captionsFor(shown, 'hall')).toBeNull();
+    expect(liveCaptionsShown(shown)).toBe(true);
+    expect(liveCaptionsShown(null)).toBe(false);
+    expect(liveCaptionsShown(undefined)).toBe(false);
+    const stageOnly: CaptionsShown = {
+      ...shown,
+      lines: [],
+      kind: 'translation',
+      stage: { lines: ['Placeholder stage-only speech'], language: 'en' },
+    };
+    expect(captionsFor(stageOnly, 'stage')).not.toBeNull();
+    expect(liveCaptionsShown(stageOnly)).toBe(false);
+  });
+
 });
