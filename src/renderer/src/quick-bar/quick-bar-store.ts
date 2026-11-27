@@ -3,7 +3,7 @@ import type { QuickPin, QuickRowKind } from '../../../shared/quick-bar';
 import { movedPin, pinKey, QUICK_BAR_MAX, withoutPin, withPin } from '../../../shared/quick-bar';
 import { fillMessage } from '../../../shared/messages';
 import { playOrder } from '../../../shared/order';
-import { useEngine } from '../engine/engine-store';
+import { getCurrentEngineState } from '../engine/engine-store';
 import type { FileTarget } from '../files/file-menu';
 import { dispatch, goLive, playItem, runInTurn, useNotice } from '../operator/actions';
 import { itemOrder } from '../playlists/rows';
@@ -163,7 +163,7 @@ async function putUpMessage(pin: Extract<QuickPin, { kind: 'message' }>): Promis
     gone(pin, 'in Messages');
     return;
   }
-  const timers = useEngine.getState().state?.timers ?? [];
+  const timers = getCurrentEngineState()?.timers ?? [];
   const filled = fillMessage(template, {}, (id) => timers.find((t) => t.id === id)?.name ?? 'timer');
   if (!filled.message) {
     say(`“${template.name}” has words to fill in: show it from Messages.`);

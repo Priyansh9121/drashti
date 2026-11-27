@@ -224,10 +224,18 @@ it('keeps the Go cleanup behind the same first frame without interrupting LIVE o
   expect(useEngine.getState().state).toBe(before);
   expect(useEngine.getState().liveState, 'cleanup must not redraw LIVE at Go').toBe(live);
   expect(useEngine.getState()).toMatchObject({ rev: 3, drawnRev: 1, liveRev: 2 });
+  const { getCurrentEngineState } = await import('./engine-store');
+  const current = getCurrentEngineState();
+  expect(current?.videoStart, 'current state includes cleanup while LIVE holds Go').toBeNull();
+  expect(current?.layers.background).toBe(live?.layers.background);
+  expect(current?.videoCue).toBeNull();
+  expect(current).not.toBe(before);
+  expect(current).not.toBe(live);
   cue.cueShown('placeholder-cue');
   expect(useEngine.getState().state?.videoStart).toBeNull();
   expect(useEngine.getState().state).toBe(useEngine.getState().liveState);
   expect(useEngine.getState()).toMatchObject({ rev: 3, drawnRev: 3, liveRev: 3 });
+  expect(useEngine.getState().state).toBe(current);
 });
 
 it.each([false, true])('publishes by Go + 250 ms without a shown signal (cleanup=%s)', async (cleanup) => {

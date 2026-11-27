@@ -6,6 +6,7 @@ import { whenCueStarted } from '../render/cue-started';
 import { noteShowChange } from './show-changed';
 
 interface EngineView {
+  /** Drawing snapshot; imperative show decisions use getCurrentEngineState() instead. */
   state: EngineState | null;
   /** LIVE alone receives the Go state immediately; the window's other render subscribers wait behind its picture. */
   liveState: EngineState | null;
@@ -55,6 +56,15 @@ export interface EngineSource {
 }
 
 let started = false;
+let currentMirror: EngineMirror | null = null;
+
+/**
+ * The current engine snapshot for imperative show decisions, including Go cleanup. Drawing and LIVE may still
+ * hold older snapshots. Before a source is connected there is no deferred publication: the window's copy is current.
+ */
+export function getCurrentEngineState(): EngineState | null {
+  return currentMirror ? currentMirror.state : useEngine.getState().state;
+}
 
 export interface EngineConnectionOptions {
   /** Operator only: LIVE receives Go immediately; other drawing and Go cleanup wait behind its first frame. */
@@ -70,6 +80,7 @@ export function connectEngineSource(source: EngineSource, options: EngineConnect
   if (started) return;
   started = true;
   const mirror = new EngineMirror();
+  currentMirror = mirror;
   let pending: { id: string; cancel: () => void } | null = null;
   const cancelPending = () => {
     const held = pending;

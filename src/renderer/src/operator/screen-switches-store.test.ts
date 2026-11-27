@@ -115,73 +115,74 @@ afterEach(() => {
 });
 
 describe('Audience and Stage in the operator window (Session 50)', () => {
-  it.each([false, true])('asks before Audience off after an empty scene’s Go, without shown (cleanup=%s)', async (cleanup) => {
-    const fake = await connected();
-    await screensAre('showing', 'showing');
-    vi.useFakeTimers();
-    const { connectEngineSource, useEngine } = await import('../engine/engine-store');
-    let send: (message: EngineMessage) => void = () => undefined;
-    connectEngineSource(
-      { onMessage: (listener) => (send = listener), resync: vi.fn() },
-      { deferCueCleanup: true },
-    );
-    const state = initialEngineState();
-    const background = {
-      kind: 'media' as const,
-      media: 'video' as const,
-      mediaId: 'placeholder-video',
-      fit: 'fit' as const,
-      loop: false,
-      startedAt: Date.now(),
-      cueId: 'placeholder-cue',
-    };
-    state.videoCue = {
-      id: 'placeholder-cue',
-      label: 'Placeholder video',
-      background,
-      playlist: null,
-      required: ['live'],
-      ready: ['live'],
-    };
-    send({ kind: 'snapshot', version: ENGINE_STATE_VERSION, rev: 1, state, sentAt: Date.now() });
-    expect(fake.store.switchAsksFirst('audience'), 'empty layers with no cover need no question').toBe(false);
-    const at = Date.now() + 120;
-    send({
-      kind: 'patch',
-      version: ENGINE_STATE_VERSION,
-      baseRev: 1,
-      rev: 2,
-      ops: [
-        { path: ['videoStart'], value: { id: 'placeholder-cue', at, mediaIds: [], soundIds: [] } },
-        { path: ['videoCue'], value: null },
-        { path: ['layers', 'background'], value: { ...background, seek: { at, toMs: 0 } } },
-      ],
-      sentAt: Date.now(),
-    });
-    vi.advanceTimersByTime(121);
-    if (cleanup) {
+  it.each([false, true])(
+    'asks before Audience off after an empty scene’s Go, without shown (cleanup=%s)',
+    async (cleanup) => {
+      const fake = await connected();
+      await screensAre('showing', 'showing');
+      vi.useFakeTimers();
+      const { connectEngineSource, useEngine } = await import('../engine/engine-store');
+      let send: (message: EngineMessage) => void = () => undefined;
+      connectEngineSource(
+        { onMessage: (listener) => (send = listener), resync: vi.fn() },
+        { deferCueCleanup: true },
+      );
+      const state = initialEngineState();
+      const background = {
+        kind: 'media' as const,
+        media: 'video' as const,
+        mediaId: 'placeholder-video',
+        fit: 'fit' as const,
+        loop: false,
+        startedAt: Date.now(),
+        cueId: 'placeholder-cue',
+      };
+      state.videoCue = {
+        id: 'placeholder-cue',
+        label: 'Placeholder video',
+        background,
+        playlist: null,
+        required: ['live'],
+        ready: ['live'],
+      };
+      send({ kind: 'snapshot', version: ENGINE_STATE_VERSION, rev: 1, state, sentAt: Date.now() });
+      expect(fake.store.switchAsksFirst('audience'), 'an empty scene needs no question').toBe(false);
+      const at = Date.now() + 120;
       send({
         kind: 'patch',
         version: ENGINE_STATE_VERSION,
-        baseRev: 2,
-        rev: 3,
-        ops: [{ path: ['videoStart'], value: null }],
+        baseRev: 1,
+        rev: 2,
+        ops: [
+          { path: ['videoStart'], value: { id: 'placeholder-cue', at, mediaIds: [], soundIds: [] } },
+          { path: ['videoCue'], value: null },
+          { path: ['layers', 'background'], value: { ...background, seek: { at, toMs: 0 } } },
+        ],
         sentAt: Date.now(),
       });
-    }
-    expect(useEngine.getState().state, 'the operator drawing still waits for shown or Go + 250').toBe(state);
-    expect(useEngine.getState().state?.layers.background).toBeNull();
-    expect(useEngine.getState().liveState?.layers.background?.kind).toBe('media');
-    expect(useEngine.getState().drawnRev).toBe(1);
-    await fake.store.toggleSwitch('audience');
-    expect(fake.store.useScreenSwitches.getState().asking, 'the current hall picture requires confirmation').toBe(
-      'audience',
-    );
-    expect(fake.asked).toEqual([null, 'audience']);
-    expect(fake.turns, 'never close the hall outputs before confirmation').toEqual([]);
-    await fake.store.confirmAsk();
-    expect(fake.turns).toEqual([['audience', false]]);
-  });
+      vi.advanceTimersByTime(121);
+      if (cleanup) {
+        send({
+          kind: 'patch',
+          version: ENGINE_STATE_VERSION,
+          baseRev: 2,
+          rev: 3,
+          ops: [{ path: ['videoStart'], value: null }],
+          sentAt: Date.now(),
+        });
+      }
+      expect(useEngine.getState().state, 'drawing still waits for shown or Go + 250').toBe(state);
+      expect(useEngine.getState().state?.layers.background).toBeNull();
+      expect(useEngine.getState().liveState?.layers.background?.kind).toBe('media');
+      expect(useEngine.getState().drawnRev).toBe(1);
+      await fake.store.toggleSwitch('audience');
+      expect(fake.store.useScreenSwitches.getState().asking).toBe('audience');
+      expect(fake.asked).toEqual([null, 'audience']);
+      expect(fake.turns, 'never close the hall outputs before confirmation').toEqual([]);
+      await fake.store.confirmAsk();
+      expect(fake.turns).toEqual([['audience', false]]);
+    },
+  );
 
   it('knows them from the main process, and follows each change it tells', async () => {
     const { store, change } = await connected();
