@@ -194,8 +194,10 @@ describe('the operator window’s keys, as its listener takes them', () => {
 
 // A window's own keys outside the keymap (alpha.24, hunt S3-3: the slide editor's Save, Find, Undo and Redo, the
 // Access List's Find): with a Gujarati or Hindi layout, Ctrl with the S key says "સ"; read as the S in its place on the
-// keyboard, as the keymap's own keys are (keyplat), but never in a field, an editable box or an IME's composition, and
-// a Latin layout's press always as it is.
+// keyboard, as the keymap's own keys are (keyplat). With Cmd or Ctrl, anywhere but an IME's composition, as a Latin
+// layout's Save and Find act while typing too (the release lead, 27 Nov: else an operator types Gujarati words, presses
+// Ctrl+S and believes they saved); a letter alone never in a field or an editable box, as keyplat's B; and a Latin
+// layout's press always as it is.
 describe('the key a window’s own shortcut reads (shortcutKey)', () => {
   it('reads another script’s letter as the Latin one in its place, outside a field', () => {
     expect(shortcutKey({ key: 'સ', code: 'KeyS', target: new StandInElement('DIV') })).toBe('S');
@@ -226,5 +228,41 @@ describe('the key a window’s own shortcut reads (shortcutKey)', () => {
         ['Enter', 'Enter'],
       ] as const)
         expect(shortcutKey({ key, code, target })).toBe(key);
+  });
+
+  it('with Cmd or Ctrl, reads it in a field and an editable box too, as a Latin layout’s Save and Find act there', () => {
+    const boxes = [new StandInElement('INPUT'), new StandInElement('TEXTAREA'), new StandInElement('DIV', true)];
+    for (const command of [{ ctrlKey: true }, { metaKey: true }])
+      for (const target of boxes) {
+        expect(shortcutKey({ key: 'સ', code: 'KeyS', ...command, target }), target.tagName).toBe('S');
+        expect(shortcutKey({ key: 'ફ', code: 'KeyF', ...command, target }), target.tagName).toBe('F');
+      }
+    // A Latin layout's Cmd/Ctrl+S in a box is its own S, as before.
+    expect(shortcutKey({ key: 's', code: 'KeyS', ctrlKey: true, target: boxes[2] })).toBe('s');
+  });
+
+  it('never during an IME’s composition, Cmd or Ctrl held or not: isComposing, or the composing key code 229', () => {
+    for (const target of [new StandInElement('DIV'), new StandInElement('DIV', true)])
+      for (const composing of [
+        { isComposing: true },
+        { keyCode: 229 },
+        { nativeEvent: { isComposing: true } },
+        { nativeEvent: { keyCode: 229 } },
+      ])
+        expect(
+          shortcutKey({ key: 'સ', code: 'KeyS', ctrlKey: true, target, ...composing }),
+          JSON.stringify(composing),
+        ).toBe('સ');
+  });
+
+  it('a letter alone (B and the like) keeps the field guard: in a field or a box it is the letter typed', () => {
+    for (const target of [
+      new StandInElement('INPUT'),
+      new StandInElement('TEXTAREA'),
+      new StandInElement('SELECT'),
+      new StandInElement('DIV', true),
+    ])
+      expect(shortcutKey({ key: 'વ', code: 'KeyB', target }), target.tagName).toBe('વ');
+    expect(shortcutKey({ key: 'વ', code: 'KeyB', target: new StandInElement('DIV') })).toBe('B');
   });
 });

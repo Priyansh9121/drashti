@@ -306,25 +306,24 @@ test('Undo and Redo for every change, by keys and by buttons, typing too; zoom t
   await app.close();
 });
 
-test('with a Gujarati or Hindi keyboard layout, the editor’s own keys act by their place on the keyboard: select all, duplicate, Undo, Redo, Find and Save (hunt S3-3)', async () => {
+test('with a Gujarati or Hindi keyboard layout, the editor’s own keys act by their place on the keyboard: select all, duplicate, Undo, Redo, Find, and Save while typing (hunt S3-3)', async () => {
   test.setTimeout(150_000);
   const { app, win } = await start();
   const presentationId = await importPlaceholder(win, 'Placeholder Layout Kirtan');
   const { ed, editor } = await editSlides(app, win, /^Placeholder Layout Kirtan/u);
   await sizeSlideEditor(app, ed, { width: 1280, height: 800 });
   const command = process.platform === 'darwin' ? { metaKey: true } : { ctrlKey: true };
-  // A key press with Cmd (Ctrl) as a Gujarati or Devanagari layout makes it, on the slide: the layout's letter, and
-  // the key's place on the keyboard (Chromium on Windows names the letter even with Ctrl held).
-  const press = (key: string, code: string, more: { shiftKey?: boolean } = {}) =>
+  // A key press with Cmd (Ctrl) as a Gujarati or Devanagari layout makes it, on the slide (or where the keyboard is):
+  // the layout's letter, and the key's place on the keyboard (Chromium on Windows names the letter even with Ctrl held).
+  const press = (key: string, code: string, more: { shiftKey?: boolean } = {}, focused = false) =>
     ed.evaluate(
-      ({ key: k, code: c, mods }) => {
-        document
-          .querySelector('[data-testid="editor-canvas"]')
+      ({ key: k, code: c, mods, focused: f }) => {
+        (f ? document.activeElement : document.querySelector('[data-testid="editor-canvas"]'))
           ?.dispatchEvent(
             new KeyboardEvent('keydown', { key: k, code: c, bubbles: true, cancelable: true, ...mods }),
           );
       },
-      { key, code, mods: { ...command, ...more } },
+      { key, code, mods: { ...command, ...more }, focused },
     );
   const elements = editor.getByTestId('editor-slide').locator('[data-element]');
   await expect(elements).toHaveCount(1);
@@ -346,16 +345,26 @@ test('with a Gujarati or Hindi keyboard layout, the editor’s own keys act by t
   await expect(find).toBeFocused();
   await ed.keyboard.press('Escape');
   await expect(editor.getByTestId('find-panel')).toHaveCount(0);
-  // Save (the S key's સ): the window closes, the duplicate saved.
-  await editor.getByTestId('editor-canvas').focus();
-  await press('સ', 'KeyS');
+  // Save (the S key's સ) while words are being typed in a text box, as a Latin layout's Cmd/Ctrl+S saves there too:
+  // the window closes, the words typed and the duplicate saved.
+  const p = await onEditorSlide(ed, 960, 540);
+  await ed.mouse.click(p.x, p.y);
+  await ed.keyboard.press('Enter');
+  const typing = editor.getByTestId('text-editing');
+  await expect(typing).toBeFocused();
+  await ed.keyboard.press('End');
+  await ed.keyboard.type(' placeholder typed');
+  await expect(typing).toContainText('placeholder typed');
+  await press('સ', 'KeyS', {}, true);
   await slideEditorClosed(app);
   const saved = await win.evaluate(
     (id) => (globalThis as PageGlobals).drashti.library.slidesForEdit(id),
     presentationId,
   );
   if (!saved.ok) throw new Error(saved.message);
-  expect(saved.doc.groups[0]?.slides[0]?.elements).toHaveLength(2);
+  const elementsSaved = saved.doc.groups[0]?.slides[0]?.elements ?? [];
+  expect(elementsSaved).toHaveLength(2);
+  expect(JSON.stringify(elementsSaved)).toContain('placeholder typed');
   await app.close();
 });
 
