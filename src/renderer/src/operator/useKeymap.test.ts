@@ -269,4 +269,14 @@ describe('the key a window’s own shortcut reads (shortcutKey)', () => {
       expect(shortcutKey({ key: 'વ', code: 'KeyB', target }), target.tagName).toBe('વ');
     expect(shortcutKey({ key: 'વ', code: 'KeyB', target: new StandInElement('DIV') })).toBe('B');
   });
+
+  it('never with Alt or Option: they type characters, not a shortcut’s letter (hunt3fix review SHOULD-1)', () => {
+    // A Mac's Option+Z types "Ω" and Option+P "π" on its U.S. layout; Windows' AltGr (Ctrl+Alt) types a layout's own.
+    expect(shortcutKey({ key: 'Ω', code: 'KeyZ', metaKey: true, altKey: true })).toBe('Ω');
+    expect(shortcutKey({ key: 'π', code: 'KeyP', altKey: true, target: new StandInElement('DIV') })).toBe(
+      'π',
+    );
+    expect(shortcutKey({ key: 'ૐ', code: 'KeyX', ctrlKey: true, altKey: true })).toBe('ૐ');
+    expect(shortcutKey({ key: 'Ω', code: 'KeyZ', metaKey: true, altKey: false })).toBe('Z');
+  });
 });
