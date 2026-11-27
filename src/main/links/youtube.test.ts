@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { linkQualities, type YouTubeChoice } from '../../shared/links';
+import { aboveTheUsual, linkQualities, qualityChoice, type YouTubeChoice } from '../../shared/links';
 import {
   choiceWords,
   downloadArgs,
@@ -443,6 +443,121 @@ describe('reading yt-dlp’s answers', () => {
       ],
       initial: 1440,
     });
+  });
+
+  /** A phone's upright video (a Short), as yt-dlp lists it: each format's width and height, 1080 × 1920 down. */
+  const upright = (extra: Record<string, unknown> = {}) =>
+    details({
+      formats: [
+        { format_id: '137', width: 1080, height: 1920, vcodec: 'avc1.640028', acodec: 'none', filesize: 40_000_000 },
+        { format_id: '248', width: 1080, height: 1920, vcodec: 'vp9', acodec: 'none', filesize: 30_000_000 },
+        { format_id: '136', width: 720, height: 1280, vcodec: 'avc1.4d401f', acodec: 'none', filesize: 20_000_000 },
+        { format_id: '135', width: 480, height: 854, vcodec: 'avc1.4d401e', acodec: 'none', filesize: 10_000_000 },
+        { format_id: '134', width: 360, height: 640, vcodec: 'avc1.4d401e', acodec: 'none', filesize: 5_000_000 },
+        { format_id: '140', vcodec: 'none', acodec: 'mp4a.40.2', filesize: 1_600_000 },
+      ],
+      ...extra,
+    });
+
+  it('names an upright video’s qualities by their short side (hunt S3-2): 1080 × 1920 is 1080p, the one to begin with and never above 1080p; it downloads at its own height', () => {
+    const video = read(upright());
+    expect(video.heights).toEqual([
+      { height: 1920, side: 1080, bytes: 40_000_000 + 1_600_000 },
+      { height: 1280, side: 720, bytes: 20_000_000 + 1_600_000 },
+      { height: 854, side: 480, bytes: 10_000_000 + 1_600_000 },
+      { height: 640, side: 360, bytes: 5_000_000 + 1_600_000 },
+    ]);
+    expect(linkQualities(video, false)).toEqual({
+      options: [
+        { value: 1920, label: '1080p', bytes: 40_000_000 + 1_600_000 },
+        { value: 1280, label: '720p', bytes: 20_000_000 + 1_600_000 },
+        { value: 854, label: '480p', bytes: 10_000_000 + 1_600_000 },
+        { value: 640, label: '360p', bytes: 5_000_000 + 1_600_000 },
+      ],
+      initial: 1920,
+    });
+    expect([1920, 1280, 854, 640].map((height) => aboveTheUsual(video, height))).toEqual([
+      false,
+      false,
+      false,
+      false,
+    ]);
+    // A Download with no choice takes its 1080p, said so in the log; yt-dlp is asked for its real height.
+    expect(qualityChoice(video, false, undefined)).toEqual({ ok: true, choice: { type: 'mp4', height: 1920 } });
+    expect(choiceWords({ type: 'mp4', height: 1920 }, video)).toBe('MP4, 1080p');
+    expect(choiceWords({ type: 'mp4', height: 854 }, video)).toBe('MP4, 480p');
+    const args = downloadArgs(PATHS, LINK, { type: 'mp4', height: 1920 }, WORK);
+    expect(args).toContain('bv*[height<=1920]+ba/b[height<=1920]');
+    expect(args).toContain('res:1920,vcodec:h264,acodec:aac');
+  });
+
+  it('an upright 1440p, 4K or 8K is above 1080p by its short side, and the 1080p one begins (hunt S3-2)', () => {
+    const video = read(
+      details({
+        formats: [
+          { width: 4320, height: 7680, vcodec: 'av01.0.16M.08', acodec: 'none', filesize: 900_000_000 },
+          { width: 2160, height: 3840, vcodec: 'vp9', acodec: 'none', filesize: 400_000_000 },
+          { width: 1440, height: 2560, vcodec: 'vp9', acodec: 'none', filesize: 150_000_000 },
+          { width: 1080, height: 1920, vcodec: 'avc1.640028', acodec: 'none', filesize: 40_000_000 },
+          { width: 720, height: 1280, vcodec: 'avc1.4d401f', acodec: 'none', filesize: 20_000_000 },
+        ],
+      }),
+    );
+    const { options, initial } = linkQualities(video, false);
+    expect(options.map((o) => o.label)).toEqual(['4320p (8K)', '2160p (4K)', '1440p', '1080p', '720p']);
+    expect(options.map((o) => o.value)).toEqual([7680, 3840, 2560, 1920, 1280]);
+    expect(initial).toBe(1920);
+    expect([7680, 3840, 2560, 1920, 1280].map((height) => aboveTheUsual(video, height))).toEqual([
+      true,
+      true,
+      true,
+      false,
+      false,
+    ]);
+    expect(choiceWords({ type: 'mp4', height: 3840 }, video)).toBe('MP4, 2160p (4K)');
+  });
+
+  it('a landscape video is as before, with its widths or without (hunt S3-2’s guard): named, begun and judged by its height', () => {
+    const plain = read(details());
+    const withWidths = read(
+      details({
+        formats: [
+          { format_id: '137', width: 1920, height: 1080, vcodec: 'avc1.640028', acodec: 'none', filesize: 50_000_000 },
+          { format_id: '248', width: 1920, height: 1080, vcodec: 'vp9', acodec: 'none', filesize: 40_000_000 },
+          { format_id: '313', width: 3840, height: 2160, vcodec: 'vp9', acodec: 'none', filesize_approx: 300_000_000 },
+          { format_id: '136', width: 1280, height: 720, vcodec: 'avc1.4d401f', acodec: 'none', tbr: 2000 },
+          { format_id: '140', vcodec: 'none', acodec: 'mp4a.40.2', filesize: 1_600_000 },
+          { format_id: 'sb0', vcodec: 'none', acodec: 'none', width: 160, height: 90 },
+        ],
+      }),
+    );
+    expect(withWidths).toEqual(plain);
+    expect(JSON.stringify(withWidths.heights)).toBe(JSON.stringify(plain.heights));
+    expect(linkQualities(withWidths, false)).toEqual(linkQualities(plain, false));
+    expect([2160, 1080, 720].map((height) => aboveTheUsual(withWidths, height))).toEqual([true, false, false]);
+    expect(choiceWords({ type: 'mp4', height: 1080 }, withWidths)).toBe('MP4, 1080p');
+    // A square video and a wide film's (1920 × 804) by their height too, as before.
+    const square = read(
+      details({ formats: [{ width: 1080, height: 1080, vcodec: 'avc1.640028', acodec: 'none', filesize: 9 }] }),
+    );
+    expect(square.heights).toEqual([{ height: 1080, bytes: 9 }]);
+    const film = read(
+      details({ formats: [{ width: 1920, height: 804, vcodec: 'avc1.640028', acodec: 'none', filesize: 9 }] }),
+    );
+    expect(linkQualities(film, false)).toEqual({ options: [{ value: 804, label: '804p', bytes: 9 }], initial: 804 });
+  });
+
+  it('an upright video whose formats give no width is named by its height, as before (hunt S3-2)', () => {
+    const formats = (JSON.parse(upright()) as { formats: Record<string, unknown>[] }).formats.map(
+      ({ width: _width, ...rest }) => rest,
+    );
+    const video = read(details({ formats }));
+    expect(video.heights.map((h) => h.height)).toEqual([1920, 1280, 854, 640]);
+    expect(video.heights.every((h) => !('side' in h))).toBe(true);
+    const { options, initial } = linkQualities(video, false);
+    expect(options.map((o) => o.label)).toEqual(['1920p', '1280p', '854p', '640p']);
+    expect(initial).toBe(854);
+    expect(aboveTheUsual(video, 1920)).toBe(true);
   });
 
   it('refuses a live stream still going, one not started, one just ended, and a playlist, in plain words', () => {
