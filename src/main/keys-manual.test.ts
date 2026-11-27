@@ -179,12 +179,15 @@ describe('the manual’s Keys chapter: every window’s keys, on Windows and on 
       .map((r) => `${r.section} › ${r.what}`);
     expect(differ).toEqual([]);
     const fKey = /^⇧?F\d{1,2}$/u;
+    // Both Macs' columns say the Touch Bar: the Intel MacBook Pros have one (most of 2016 to 2020), and so do the
+    // 13-inch ones with Apple M1 (2020) and M2 (2022) (a24-review-keyplat MUST-1).
     const unsaid = rows
       .filter((r) => !r.same && r.silicon.some((k) => fKey.test(k)))
-      .filter(
-        (r) => !(r.cells[2] ?? '').includes('(fn)') || !(r.cells[3] ?? '').includes('(fn or Touch Bar)'),
-      )
+      .filter((r) => [r.cells[2], r.cells[3]].some((c) => !(c ?? '').includes('(fn or Touch Bar)')))
       .map((r) => `${r.section} › ${r.what}`);
+    // A Mac's F-key never says "(fn)" alone, in either column.
+    const fnAlone = rows.filter((r) => r.cells.slice(2).some((c) => c.includes('(fn)'))).map((r) => r.what);
+    expect(fnAlone).toEqual([]);
     expect(unsaid).toEqual([]);
     // Nor in one column for every computer: a Mac's F-keys need their words.
     expect(rows.filter((r) => r.same && r.win.some((k) => fKey.test(k))).map((r) => r.what)).toEqual([]);
