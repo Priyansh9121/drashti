@@ -4,7 +4,7 @@ Every show action has a key, so the show can be run from the keyboard alone. The
 
 ## The keys sheet
 
-**What it is.** **Help › Keyboard Shortcuts…**: every key, as your computer writes it. Pro Mode's. In both modes the buttons show their keys while **Help** is on in the status bar, or while you hold **Alt** (**Option ⌥** on a Mac): let go of it, then press the key.
+**What it is.** **Help › Keyboard Shortcuts…** lists the keys that work in this mode, as your computer writes them. Simple Mode has its own sheet. **Seeing the keys** names the key to hold: **Alt** (**⌥** on a Mac). With **Help** off, hold it to see the buttons’ keys; let go of it, then press the key. With **Help** on in the status bar, the keys stay in sight.
 
 **When you would use it.** When you forget a key, or to learn them.
 
@@ -32,7 +32,9 @@ Every show action has a key, so the show can be run from the keyboard alone. The
 
 ### The operator window, in Pro Mode and Simple Mode
 
-Simple Mode has no keys for Screens, Search, the quick bar, the list of keys, Remove or Move; there **Ctrl+1** and **Ctrl+2** (**⌘1** and **⌘2** on a Mac) only turn the screens on, and Undo puts back what Clear all took down.
+**Space on a button.** Space presses a button reached with **Tab**, as **Enter** does. On the show’s own controls (slide rows, Next, Back, Black-out and the clears), the sound levels’ mute switches and the Simple/Pro switch, Space stays **Next**. Space stays **Next** on a button clicked with the mouse too. A menu or dialog keeps its own keys.
+
+Simple Mode has no keys for Screens, Search, the quick bar, Remove or Move; there **Ctrl+1** and **Ctrl+2** (**⌘1** and **⌘2** on a Mac) only turn the screens on, and Undo puts back what Clear all took down.
 
 | What it does                       | Every computer                           |
 | ---------------------------------- | ---------------------------------------- |
@@ -41,7 +43,7 @@ Simple Mode has no keys for Screens, Search, the quick bar, the list of keys, Re
 | Black-out                          | **B** or **.**                           |
 | Stop Repeat Slides                 | **Esc**                                  |
 | Remove the chosen rows (in a list) | **Delete** or **Backspace**              |
-| The list of keys (Pro Mode)        | **?**                                    |
+| The list of keys                   | **?**                                    |
 
 | What it does                                                                                   | Windows                                           | Mac with Apple silicon                        | Mac with Intel                                |
 | ---------------------------------------------------------------------------------------------- | ------------------------------------------------- | --------------------------------------------- | --------------------------------------------- |
@@ -71,13 +73,13 @@ Simple Mode has no keys for Screens, Search, the quick bar, the list of keys, Re
 
 ## Single-letter keys
 
-**What it is.** A switch at the top of the keys sheet that turns **B**, **.** and **?** off. **Black-out** still works from its button, a MIDI pad and the phone remote.
+**What it is.** A switch at the top of Pro Mode’s keys sheet that turns **B**, **.** and **?** off. **Black-out** still works from its button, a MIDI pad and the phone remote.
 
 **When you would use it.** For someone who works the computer by speaking to it or with a switch, so that a word said never blacks out the hall.
 
 **How:**
 
-1. Choose **Help**, then **Keyboard Shortcuts…**.
+1. In Pro Mode, choose **Help**, then **Keyboard Shortcuts…**.
 2. Turn off **Single-letter keys** at its top.
 3. The list says **Off** beside those three keys. **F12** still puts the wallpaper up.
 

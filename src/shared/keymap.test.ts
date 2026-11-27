@@ -5,12 +5,15 @@ import {
   fKeyFirstStep,
   fKeyHint,
   KEY_GROUPS,
+  keyGroups,
+  keyLabel,
   KEYMAP,
   keyMatches,
   keyText,
   latinKey,
   PAGE_KEYMAP,
   shortcutText,
+  SIMPLE_IDLE,
   SIMPLE_KEYMAP,
   SHOW_F_KEYS,
   SINGLE_KEYS,
@@ -169,6 +172,51 @@ describe('keymap', () => {
     expect([...listed].sort()).toEqual(KEYMAP.map((b) => b.action).sort());
     expect(new Set(listed).size).toBe(listed.length);
     for (const g of KEY_GROUPS) expect(g.actions.length).toBeGreaterThan(0);
+  });
+
+  // Simple Mode's keys sheet (a25 item 3, in alpha.24 by the owner's 48-item list): only the keys that act there, in the
+  // same groups and order as Pro Mode's sheet. Not Screens, Search, the quick bar or a list's keys (Simple Mode changes no
+  // screen setup and no library: operator/actions.ts lets them go); Audience and Stage said as Simple Mode does them.
+  it('gives each mode’s keys sheet its own keys: Pro Mode every key, Simple Mode the keys that act there', () => {
+    expect(keyGroups(false)).toBe(KEY_GROUPS);
+    const simple = keyGroups(true);
+    const listed = simple.flatMap((g) => g.actions);
+    const acting = SIMPLE_KEYMAP.map((b) => b.action).filter((a) => !SIMPLE_IDLE.includes(a));
+    expect([...listed].sort()).toEqual([...acting].sort());
+    expect(new Set(listed).size).toBe(listed.length);
+    for (const g of simple) expect(g.actions.length, g.title).toBeGreaterThan(0);
+    // In Pro Mode's order, group by group.
+    const proOrder = KEY_GROUPS.flatMap((g) => g.actions);
+    expect(listed).toEqual(proOrder.filter((a) => listed.includes(a)));
+    for (const a of [
+      'next',
+      'previous',
+      'clearAll',
+      'toggleBlackout',
+      'toggleWallpaper',
+      'oops',
+      'undo',
+      'showKeys',
+    ])
+      expect(listed, a).toContain(a);
+    for (const a of [
+      'openScreens',
+      'findInLibrary',
+      'quickBar',
+      'removeSelected',
+      'moveItemUp',
+      'moveItemDown',
+    ])
+      expect(listed, a).not.toContain(a);
+    // Simple Mode turns Audience and Stage on, never off.
+    const named = (action: string, simpleMode: boolean) => {
+      const binding = KEYMAP.find((b) => b.action === action);
+      return binding ? keyLabel(binding, simpleMode) : '';
+    };
+    expect(named('toggleAudience', false)).toBe('Audience on or off');
+    expect(named('toggleAudience', true)).toBe('Audience on');
+    expect(named('toggleStage', true)).toBe('Stage on');
+    expect(named('next', true)).toBe('Next slide');
   });
 
   it('writes each key as the computer shows it', () => {

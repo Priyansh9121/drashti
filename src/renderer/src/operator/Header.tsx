@@ -234,6 +234,7 @@ export function Header({
               icon={LayoutGrid}
               onClick={toSimple.onClick}
               onDoubleClick={toSimple.onDoubleClick}
+              data-space-next=""
               className={iconClass('simple', crowded)}
             >
               <Words button="simple" crowded={crowded}>

@@ -466,9 +466,11 @@ const SceneBody = memo(function SceneBody({
    */
   picturesFirst?: boolean;
   /**
-   * The operator's LIVE preview alone (QA23-CUELIVE-1): its own React work for a cue's Go moment (the scene's swap, the
-   * cued slot's activation) runs after its cued picture has set its rate at Go, never ahead of it. On alpha.22's gate 3
-   * (CI's Mac) LIVE's picture set its rate 23-27 ms after Go behind the operator window's work. Every screen as before.
+   * The operator window's LIVE preview and Screens previews (QA23-CUELIVE-1): their own React work for a cue's Go
+   * moment runs after LIVE's cued picture has started, never ahead of it: LIVE's own slot's activation once its rate is
+   * set at Go; the scene's swap and a Screens preview's activation once its first moving frame is shown (golive). On
+   * alpha.22's gate 3 (CI's Mac) LIVE's picture set its rate 23-27 ms after Go behind the operator window's work. Every
+   * screen as before.
    */
   cueStartFirst?: boolean;
   /**

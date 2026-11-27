@@ -16,7 +16,7 @@ import {
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { countsDown } from '../../../shared/timers';
 import { BoxCanvas } from '../boxes/BoxCanvas';
-import { useEngine } from '../engine/engine-store';
+import { getCurrentEngineState, useEngine } from '../engine/engine-store';
 import { StageLayoutView } from '../render/StageLayoutView';
 import { StageView } from '../render/StageView';
 import { PlacedInParent } from '../render/Placed';
@@ -67,7 +67,7 @@ import {
  */
 
 /** The layout every stage screen shows now (Session 55, the engine's state): its id, or null for Standard. */
-const chosenNow = () => useEngine.getState().state?.stage?.layout?.id ?? null;
+const chosenNow = () => getCurrentEngineState()?.stage?.layout?.id ?? null;
 
 const ALIGN_NAMES = { left: 'Left', center: 'Middle', right: 'Right' } as const;
 
