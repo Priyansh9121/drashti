@@ -815,18 +815,16 @@ test('Screens: Adjust the picture… moves a corner by its numbers, the keys and
   const layoutZ = (key: string, shiftKey: boolean) =>
     win.evaluate(
       ({ key: k, shiftKey: shift, mods }) =>
-        document
-          .querySelector('[data-testid="adjust-preview"]')
-          ?.dispatchEvent(
-            new KeyboardEvent('keydown', {
-              key: k,
-              code: 'KeyZ',
-              shiftKey: shift,
-              bubbles: true,
-              cancelable: true,
-              ...mods,
-            }),
-          ),
+        document.querySelector('[data-testid="adjust-preview"]')?.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: k,
+            code: 'KeyZ',
+            shiftKey: shift,
+            bubbles: true,
+            cancelable: true,
+            ...mods,
+          }),
+        ),
       { key, shiftKey, mods: process.platform === 'darwin' ? { metaKey: true } : { ctrlKey: true } },
     );
   await layoutZ('ઍ', true);
