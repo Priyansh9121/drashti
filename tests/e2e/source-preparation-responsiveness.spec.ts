@@ -335,15 +335,16 @@ test('a source preparation makes its PDF reading window only once live commands 
       void state.promise.then(settle, settle);
     }, sourceId);
     prepStarted = true;
-    // Next and Back every tenth of a second for over a second, as an operator going through the slides.
+    // Next and Back every tenth of a second for over a second, as an operator going through the slides; Main's clock
+    // read just after the last one (the review's M1: never a pause after it, so the bound below keeps its margin).
     for (let i = 0; i < 12; i++) {
+      if (i > 0) await letTimePass(win, 100, 'an operator’s tenth of a second between live commands');
       const done = await win.evaluate(
         (back: boolean) =>
           (globalThis as PageGlobals).drashti.engine.dispatch({ type: back ? 'back' : 'next' }),
         i % 2 !== 0,
       );
       expect(done.ok, `live command ${String(i + 1)}`).toBe(true);
-      await letTimePass(win, 100, 'an operator’s tenth of a second between live commands');
     }
     const lastCommandAt = await app.evaluate(() => performance.now());
     const during = await app.evaluate(

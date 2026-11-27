@@ -5,6 +5,11 @@
  * traces: no task ran there meanwhile), and a Next pressed then waited behind it. Main notes every show command here; a
  * reading starts only once none has come for STILL_MS, or after MAX_WAIT_MS of them, so it never starts in the middle
  * of an operator's run of Next and Back. The reading itself runs in that low-priority process and goes on as before.
+ *
+ * The 5 s cap is for each reading, not for a whole preparation: a deck with several originals, a reading resumed once
+ * the show is idle, or Insert pages… (a count, then the pages) can wait up to 5 s for each while the commands keep
+ * coming. And it only keeps the window's making out of a run of commands: a Next pressed just as a reading starts after
+ * a pause (Edit slides opened, then Next) can still wait behind the window's making, as every Next could before.
  */
 
 /** How long the live commands pause before a reading starts. */
