@@ -11,12 +11,19 @@ import { describe, expect, it } from 'vitest';
 
 const source = readFileSync(join(__dirname, '..', 'renderer', 'src', 'operator', 'LivePreview.tsx'), 'utf8');
 
-/** The opening tag of the <Button …> that carries this test id. */
+/** The opening tag of the <Button …> that carries this test id (its braces skipped: an arrow's > is not its end). */
 function buttonWith(testId: string): string {
   const at = source.indexOf(`data-testid="${testId}"`);
   const start = source.lastIndexOf('<Button', at);
-  const end = source.indexOf('>', at);
-  return start === -1 || at === -1 ? '' : source.slice(start, end + 1);
+  if (at === -1 || start === -1) return '';
+  let depth = 0;
+  for (let i = start; i < source.length; i++) {
+    const ch = source[i];
+    if (ch === '{') depth += 1;
+    else if (ch === '}') depth -= 1;
+    else if (ch === '>' && depth === 0) return source.slice(start, i + 1);
+  }
+  return '';
 }
 
 describe('LIVE’s timer controls', () => {
