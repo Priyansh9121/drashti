@@ -4,27 +4,20 @@ import { describe, expect, it } from 'vitest';
 import { BLACK, WHITE } from '../../../shared/appearance/appearances';
 import { FollowPreview } from './AppearanceDialog';
 import { AppearancePreview } from './AppearancePreview';
+import { DEPTH_COLOURS } from './DepthPreview';
 
 /*
  * The Appearance window's picture of Follow the computer (the alpha.25 list's item 9): Follow the computer draws the
  * operator window in B · Depth (styles/look-depth.css), so its picture shows Depth, Black's and White's, as the window
  * will look: the columns as rounded panels a gap apart on the darker ground, each with its 1 px light along the top and
  * no edge, the side columns one surface up, the top bar and the bar of clears on the ground with no line, and LIVE's
- * light red ring round the live picture; never a gradient or a blur. Depth's own colours are look-depth.css's (read here
- * from the file). An appearance chosen by name keeps its flat picture. Drawn to markup: unit tests run without a page.
+ * light red ring round the live picture; never a gradient or a blur. Depth's own colours are look-depth.css's
+ * (src/main/look-depth.test.ts holds them to the file). An appearance chosen by name keeps its flat picture. Drawn to markup: unit tests run without a page.
  */
 
-const css =
-  Object.values(
-    import.meta.glob<string>('../styles/look-depth.css', { query: '?raw', import: 'default', eager: true }),
-  )[0]?.replace(/\/\*[\s\S]*?\*\//gu, '') ?? '';
-
-/** A token of look-depth.css in a base: its value in `:root[data-window-look='depth'][data-base='…'] { … }`. */
-function token(base: 'dark' | 'light', name: string): string {
-  const at = css.indexOf(`:root[data-window-look='depth'][data-base='${base}'] {`);
-  const body = at < 0 ? '' : css.slice(css.indexOf('{', at) + 1, css.indexOf('}', at));
-  return new RegExp(`${name}:\\s*([^;]+);`, 'u').exec(body)?.[1]?.trim() ?? '';
-}
+/** Depth's own colours in a base (src/main/look-depth.test.ts holds DepthPreview.tsx's to look-depth.css's). */
+const token = (base: 'dark' | 'light', name: 'ground' | 'light' | 'ring'): string =>
+  DEPTH_COLOURS[base][name];
 
 interface Tag {
   attrs: Record<string, string>;
@@ -56,8 +49,7 @@ function pictures(): Tag[][] {
 const part = (picture: Tag[], name: string) => picture.find((t) => t.attrs['data-part'] === name);
 
 describe('the Appearance window: Follow the computer’s picture', () => {
-  it('draws Black and White in Depth, each on its ground (look-depth.css’s), in that order', () => {
-    expect(css, 'look-depth.css read').not.toBe('');
+  it('draws Black and White in Depth, each on its ground, in that order', () => {
     const drawn = pictures();
     expect(drawn).toHaveLength(2);
     for (const [picture, base] of [
@@ -65,7 +57,7 @@ describe('the Appearance window: Follow the computer’s picture', () => {
       [drawn[1] ?? [], 'light'],
     ] as const) {
       expect(picture[0]?.attrs['data-look'], `${base}: drawn in Depth`).toBe('depth');
-      expect(styleOf(picture[0])['background'], `${base}: the ground`).toBe(token(base, '--depth-ground'));
+      expect(styleOf(picture[0])['background'], `${base}: the ground`).toBe(token(base, 'ground'));
     }
   });
 
@@ -74,7 +66,7 @@ describe('the Appearance window: Follow the computer’s picture', () => {
       [pictures()[0] ?? [], BLACK, 'dark'],
       [pictures()[1] ?? [], WHITE, 'light'],
     ] as const) {
-      const light = `inset 0 1px 0 ${token(base, '--elev-light')}`;
+      const light = `inset 0 1px 0 ${token(base, 'light')}`;
       for (const [name, colour] of [
         ['left', a.colours['panel-2']],
         ['middle', a.colours.panel],
@@ -111,9 +103,7 @@ describe('the Appearance window: Follow the computer’s picture', () => {
     ] as const) {
       const live = styleOf(part(picture, 'live'));
       expect(live['border-color'], `${a.name}: LIVE's frame`).toBe(a.colours['live-edge']);
-      expect(live['box-shadow'], `${a.name}: LIVE's ring`).toBe(
-        `0 0 0 1px ${token(base, '--state-live-ring')}`,
-      );
+      expect(live['box-shadow'], `${a.name}: LIVE's ring`).toBe(`0 0 0 1px ${token(base, 'ring')}`);
       const styles = picture.map((t) => t.attrs['style'] ?? '').join(';');
       expect(styles, `${a.name}: no gradient`).not.toMatch(/gradient\(/u);
       // Every shadow a ring or an inset light: no blur.

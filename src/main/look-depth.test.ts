@@ -292,6 +292,25 @@ describe('B · Depth: styles/look-depth.css', () => {
     ).toBe('calc(-1 * var(--depth-gap))');
   });
 
+  it('Follow the computer’s picture in the Appearance window draws in Depth’s own colours, this file’s', () => {
+    // The alpha.25 list's item 9: appearance/DepthPreview.tsx draws Follow the computer's picture as Depth draws the
+    // window (follow-preview.test.ts reads what it draws); its ground, a panel's light and LIVE's ring are these.
+    const file = join(renderer, 'appearance', 'DepthPreview.tsx');
+    const preview = existsSync(file) ? readFileSync(file, 'utf8') : '';
+    for (const base of ['dark', 'light'] as const) {
+      const look = block(`${SCOPE}[data-base='${base}']`);
+      const own = new RegExp(
+        `\\b${base}: \\{ ground: '(#[0-9a-f]+)', light: '(#[0-9a-f]+)', ring: '(#[0-9a-f]+)' \\}`,
+        'u',
+      ).exec(preview);
+      expect(own?.slice(1), `${base}: DepthPreview.tsx's colours`).toEqual([
+        look['--depth-ground'],
+        look['--elev-light'],
+        look['--state-live-ring'],
+      ]);
+    }
+  });
+
   it('LIVE is a red ring and a light red tint, never a glow: the live picture and the live row', () => {
     // Inside its frame exactly as before (the light along its top: warm-up.spec compares the picture's own pixels).
     expect(block(`${SCOPE} [data-testid='live-preview']`)['box-shadow']).toBe(
