@@ -16,113 +16,91 @@
 // Then (Session 18) it gives this computer's installers the names that never change
 // (build/downloads.json: Drashti-mac-apple-silicon.dmg and so on), so GitHub's
 // releases/latest/download/<name> link always gives the newest.
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PACKAGING_SECRETS, failureReport } from './packaging-failure.mjs';
+import { signingPlan } from './signing-plan.mjs';
 
-const env = { ...process.env };
-const has = (name) => typeof process.env[name] === 'string' && process.env[name].trim() !== '';
 const temp = mkdtempSync(join(process.env.RUNNER_TEMP ?? tmpdir(), 'drashti-signing-'));
 const writeSecret = (name, data) => {
   const file = join(temp, name);
   writeFileSync(file, data, { mode: 0o600 });
   return file;
 };
-const SIGNING_VARS = [
-  'CSC_LINK',
-  'CSC_KEY_PASSWORD',
-  'WIN_CSC_LINK',
-  'WIN_CSC_KEY_PASSWORD',
-  'APPLE_API_KEY',
-  'APPLE_API_KEY_ID',
-  'APPLE_API_ISSUER',
-  'APPLE_ID',
-  'APPLE_APP_SPECIFIC_PASSWORD',
-  'APPLE_TEAM_ID',
-];
-// Start from nothing: only what this script sets below can turn signing on.
-for (const name of SIGNING_VARS) delete env[name];
-const extra = [];
-let signed = false;
-let notarised = false;
-let how = 'unsigned (no certificate given)';
-
-if (process.platform === 'darwin' && has('MAC_CERT_P12')) {
-  env.CSC_LINK = writeSecret('developer-id.p12', Buffer.from(process.env.MAC_CERT_P12.trim(), 'base64'));
-  env.CSC_KEY_PASSWORD = process.env.MAC_CERT_PASSWORD ?? '';
-  env.CSC_IDENTITY_AUTO_DISCOVERY = 'true';
-  signed = true;
-  how = 'signed with a Developer ID';
-  if (has('APPLE_API_KEY_P8') && has('APPLE_API_KEY_ID') && has('APPLE_API_ISSUER')) {
-    env.APPLE_API_KEY = writeSecret('app-store-connect.p8', process.env.APPLE_API_KEY_P8.trim() + '\n');
-    env.APPLE_API_KEY_ID = process.env.APPLE_API_KEY_ID.trim();
-    env.APPLE_API_ISSUER = process.env.APPLE_API_ISSUER.trim();
-    notarised = true;
-    how += ', and notarised';
-  } else how += ', not notarised (no App Store Connect key given)';
-} else if (process.platform === 'win32' && has('WIN_CERT_PFX')) {
-  env.WIN_CSC_LINK = writeSecret('code-signing.pfx', Buffer.from(process.env.WIN_CERT_PFX.trim(), 'base64'));
-  env.WIN_CSC_KEY_PASSWORD = process.env.WIN_CERT_PASSWORD ?? '';
-  signed = true;
-  how = 'signed with a code-signing certificate';
-} else if (
-  process.platform === 'win32' &&
-  ['AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET'].every(has) &&
-  ['AZURE_SIGNING_ENDPOINT', 'AZURE_SIGNING_ACCOUNT', 'AZURE_SIGNING_PROFILE', 'AZURE_PUBLISHER_NAME'].every(
-    has,
-  )
-) {
-  // The account, profile and publisher are names, not secrets; the credentials stay in the environment.
-  extra.push(
-    `-c.win.azureSignOptions.endpoint=${process.env.AZURE_SIGNING_ENDPOINT.trim()}`,
-    `-c.win.azureSignOptions.codeSigningAccountName=${process.env.AZURE_SIGNING_ACCOUNT.trim()}`,
-    `-c.win.azureSignOptions.certificateProfileName=${process.env.AZURE_SIGNING_PROFILE.trim()}`,
-    `-c.win.azureSignOptions.publisherName=${process.env.AZURE_PUBLISHER_NAME.trim()}`,
-  );
-  signed = true;
-  how = 'signed with Azure Trusted Signing';
-}
-if (!signed) env.CSC_IDENTITY_AUTO_DISCOVERY = 'false';
-// No certificate on a Mac (Session 18): signed ad hoc all through, so that a downloaded copy is one macOS
-// "could not verify" (opened once with Open Anyway in System Settings, Privacy & Security), not one it
-// calls "damaged" (an app whose own signature does not cover it, as electron-builder leaves an unsigned
-// one: there is no Open Anyway for that). Without the hardened runtime, which only notarisation needs
-// and whose library validation stops an app signed ad hoc from starting.
-if (!signed && process.platform === 'darwin') {
-  extra.push('-c.mac.identity=-', '-c.mac.hardenedRuntime=false');
-  how = 'signed ad hoc (no certificate given)';
-}
+// Which certificate signs, if any: scripts/signing-plan.mjs (its tests: src/main/release-checks/signing-plan.test.ts).
+const { env, extra, how, record } = signingPlan({
+  platform: process.platform,
+  given: process.env,
+  writeSecret,
+});
 console.log(`Signing: ${how}.`);
 
 // electron-builder's own script, run by this Node: no shell anywhere (Session 30, SEC-1: on Windows a shell
 // read every argument again, and pnpm there is a .cmd that needs one).
+// Its output is passed on to the log as it comes, and its last part kept: if it fails, the run's page gets those
+// lines too (scripts/packaging-failure.mjs), which stay when a job's log is lost (the third signed dry run's was).
 const builder = createRequire(import.meta.url).resolve('electron-builder/cli.js');
-const result = spawnSync(process.execPath, [builder, '--publish', 'never', ...extra], {
+const child = spawn(process.execPath, [builder, '--publish', 'never', ...extra], {
   env,
-  stdio: 'inherit',
+  stdio: ['inherit', 'pipe', 'pipe'],
+});
+const kept = [];
+let keptBytes = 0;
+const keep = (chunk) => {
+  kept.push(chunk);
+  keptBytes += chunk.length;
+  while (keptBytes > 256 * 1024 && kept.length > 1) keptBytes -= kept.shift().length;
+};
+child.stdout.on('data', (chunk) => {
+  process.stdout.write(chunk);
+  keep(chunk);
+});
+child.stderr.on('data', (chunk) => {
+  process.stderr.write(chunk);
+  keep(chunk);
+});
+const status = await new Promise((resolve) => {
+  child.on('error', () => resolve(1));
+  child.on('close', (code) => resolve(code ?? 1));
 });
 rmSync(temp, { recursive: true, force: true });
-writeFileSync(
-  'release-signing.json',
-  `${JSON.stringify({ platform: process.platform, signed, notarised })}\n`,
-);
-if (result.status !== 0) process.exit(result.status ?? 1);
+writeFileSync('release-signing.json', `${JSON.stringify(record)}\n`);
 
-// The names that never change, for this computer's installers.
-const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
-const { files } = JSON.parse(readFileSync(join('build', 'downloads.json'), 'utf8'));
-const out = join('release', version);
-let missing = 0;
-for (const f of files.filter((x) => x.platform === process.platform)) {
-  const built = join(out, f.built.replace('{version}', version));
-  if (!existsSync(built)) {
-    console.log(`Missing: ${built} (for ${f.for})`);
-    missing++;
-    continue;
+// exitCode, not exit(): a pipe's writes on macOS and Windows are asynchronous, and the last lines matter most.
+if (status !== 0) {
+  const report = failureReport(Buffer.concat(kept).toString('utf8'), {
+    status,
+    secrets: PACKAGING_SECRETS.map((name) => process.env[name]),
+  });
+  console.log(report.annotation);
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, report.summary);
+  process.exitCode = status;
+} else {
+  // The names that never change, for this computer's installers.
+  const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
+  const { files } = JSON.parse(readFileSync(join('build', 'downloads.json'), 'utf8'));
+  const out = join('release', version);
+  let missing = 0;
+  for (const f of files.filter((x) => x.platform === process.platform)) {
+    const built = join(out, f.built.replace('{version}', version));
+    if (!existsSync(built)) {
+      console.log(`Missing: ${built} (for ${f.for})`);
+      missing++;
+      continue;
+    }
+    renameSync(built, join(out, f.name));
+    console.log(`${f.name}  (for ${f.for})`);
   }
-  renameSync(built, join(out, f.name));
-  console.log(`${f.name}  (for ${f.for})`);
+  process.exitCode = missing === 0 ? 0 : 1;
 }
-process.exit(missing === 0 ? 0 : 1);

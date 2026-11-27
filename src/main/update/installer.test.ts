@@ -2,8 +2,8 @@ import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { Authenticode, SignatureReader } from './installer';
-import { samePublisher, windowsInstaller, windowsSignatures } from './installer';
+import type { Authenticode, SignatureReader, SquirrelUpdater } from './installer';
+import { macInstaller, samePublisher, windowsInstaller, windowsSignatures } from './installer';
 
 /* Windows: a signed Drashti installs only an update signed by the same publisher (made-up names only). */
 
@@ -101,6 +101,25 @@ describe('the Windows installer and signatures (Session 14)', () => {
     expect(samePublisher('CN=Placeholder Software, O=One', 'CN=Placeholder Software, O=Two')).toBe(false);
     expect(samePublisher('CN=Placeholder Software', 'CN=Placeholder Software')).toBe(true);
     expect(samePublisher('O=Placeholder', 'O=Placeholder')).toBe(false);
+  });
+});
+
+describe('the Mac installer without a Developer ID (QA24-SIGN-1)', () => {
+  it('says what is true of an ad hoc copy and of one signed with Drashti’s own certificate alike', async () => {
+    const updater: SquirrelUpdater = {
+      setFeedURL: () => undefined,
+      checkForUpdates: () => undefined,
+      on: () => undefined,
+      removeAllListeners: () => undefined,
+    };
+    const i = macInstaller(() => false, updater);
+    expect(i.mode).toBe('by-hand');
+    // Own-signed copies are signed, so never "not signed": what both lack is an Apple Developer ID.
+    expect(await i.prepare('/placeholder/Drashti-update.zip', '1.0.1')).toEqual({
+      ok: false,
+      message:
+        'This copy of Drashti is not signed with an Apple Developer ID, so a Mac cannot install the update by itself: quit Drashti, open the downloaded file and drag Drashti into Applications.',
+    });
   });
 });
 
