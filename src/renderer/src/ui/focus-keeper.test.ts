@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as FocusKeeper from './focus-keeper';
 
 /*
  * Recovery choices and timing, with a small DOM stand-in (the real Chromium keyboard, scroll and ring checks are in
@@ -36,12 +37,9 @@ class Element extends EventTarget {
   matches(selector: string): boolean {
     return selector.split(',').some((part) => {
       let s = part.trim();
-      let excluded = false;
-      s = s.replace(/:not\(([^)]+)\)/gu, (_, inner: string) => {
-        excluded ||= this.matches(inner);
-        return '';
-      });
+      const excluded = [...s.matchAll(/:not\(([^)]+)\)/gu)].some((m) => this.matches(m[1] ?? ''));
       if (excluded) return false;
+      s = s.replace(/:not\(([^)]+)\)/gu, '');
       if (s.includes(':disabled')) {
         if (!this.hasAttribute('disabled')) return false;
         s = s.replace(':disabled', '');
@@ -56,8 +54,8 @@ class Element extends EventTarget {
     });
   }
   closest(selector: string): Element | null {
-    for (let at: Element | null = this; at; at = at.parentElement) if (at.matches(selector)) return at;
-    return null;
+    if (this.matches(selector)) return this;
+    return this.parentElement?.closest(selector) ?? null;
   }
   getClientRects(): object[] {
     return this.isConnected && this.closest('[hidden]') === null ? [{}] : [];
@@ -113,7 +111,10 @@ class Page {
     const observer = this.observer;
     if (!observer) return;
     if (record.type === 'childList' && observer.options.childList !== true) return;
-    if (record.type === 'attributes' && !observer.options.attributeFilter?.includes(record.attributeName ?? ''))
+    if (
+      record.type === 'attributes' &&
+      !observer.options.attributeFilter?.includes(record.attributeName ?? '')
+    )
       return;
     observer.callback([record]);
   }
@@ -128,7 +129,7 @@ class Page {
 }
 
 let page: Page;
-let keeper: typeof import('./focus-keeper');
+let keeper: typeof FocusKeeper;
 const html = (el: Element) => el as unknown as HTMLElement;
 
 beforeEach(async () => {
