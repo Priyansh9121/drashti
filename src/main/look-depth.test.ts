@@ -284,12 +284,13 @@ describe('B · Depth: styles/look-depth.css', () => {
       'calc(-1 * var(--depth-gap))',
     );
     // Back, Next and the next picture's row and Oops's line with it, so they line up with the picture's edges as in a
-    // flat look (lead 2's lookcheck of a24-lookgap: they were 4 px inside them; look-depth.spec measures it).
+    // flat look (lead 2's lookcheck of a24-lookgap: they were 4 px inside them; look-depth.spec measures it): by their
+    // own padding (px-3) less the gap, never a margin past the column's room.
     expect(
       block(
         `${SCOPE} [data-testid='column-right'] :is(:has(> [data-testid='show-back']), :has(> [data-testid='show-oops']))`,
-      )['margin-inline'],
-    ).toBe('calc(-1 * var(--depth-gap))');
+      )['padding-inline'],
+    ).toBe('calc(var(--spacing) * 3 - var(--depth-gap))');
   });
 
   it('Follow the computer’s picture in the Appearance window draws in Depth’s own colours, this file’s', () => {
