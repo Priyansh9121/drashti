@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { launchApp, openLibrary, operatorPage, operatorReady, slidesOf } from './helpers';
-import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
+import { launchApp, openLibrary, operatorPage, operatorReady, type PageGlobals, slidesOf } from './helpers';
+import { KIRTAN, PICTURE, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 /*
  * LIVE said once (alpha.24, uitop; the owner's "too congested"; the release lead's review S3): with a slide up from
@@ -72,5 +72,89 @@ test('LIVE is said once, in the top bar; the LIVE column has no badge; the rows 
   await expect(kirtan.locator('xpath=..').locator('[data-live-edge]')).toHaveCount(1);
   await expect(kirtan).toContainText('Live');
   expect(await liveWordsSeen(win)).toEqual([true]);
+  await app.close();
+});
+
+function dispatch(win: Page, command: Parameters<PageGlobals['drashti']['engine']['dispatch']>[0]) {
+  return win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c), command);
+}
+
+/** The top bar's live line: its first badge (LIVE or Off) and its words. */
+function topBar(win: Page) {
+  const status = win.getByTestId('header-states').getByTestId('live-status');
+  return { status, badge: status.locator('[data-badge]').first(), text: status.getByTestId('live-text') };
+}
+
+test('with only a background or the picture-in-picture box up, the top bar still says LIVE in words and names it; nothing up, the wallpaper or Black-out alone, it says Nothing live; in Pro and Simple Mode (livesay)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  const { pictureMediaId } = await setUpPlaceholderShow(win);
+  const picture = { kind: 'media', mediaId: pictureMediaId, media: 'image', fit: 'fill', loop: false } as const;
+  const frame = win.getByTestId('live-preview');
+
+  for (const mode of ['pro', 'simple'] as const) {
+    await win.evaluate((m) => (globalThis as PageGlobals).drashti.app.setMode(m), mode);
+    await expect(win.getByTestId('simple-mode')).toHaveCount(mode === 'simple' ? 1 : 0);
+    const bar = topBar(win);
+
+    // Nothing up (the chosen wallpaper, or black, shows): Off, and Nothing live.
+    await expect(bar.badge, mode).toHaveText('Off');
+    await expect(bar.text, mode).toHaveText('Nothing live');
+    // Black-out alone: its own badge in words, never LIVE.
+    await dispatch(win, { type: 'toggleBlackout' });
+    await expect(bar.status.locator('[data-badge]').filter({ hasText: 'Black-out' }), mode).toHaveCount(1);
+    await expect(bar.badge, mode).toHaveText('Off');
+    await expect(bar.text, mode).toHaveText('Nothing live');
+    await dispatch(win, { type: 'toggleBlackout' });
+    // The Wallpaper on with nothing up: the same.
+    await dispatch(win, { type: 'setWallpaper', on: true });
+    await expect(bar.badge, mode).toHaveText('Off');
+    await expect(bar.text, mode).toHaveText('Nothing live');
+    await dispatch(win, { type: 'setWallpaper', on: false });
+
+    // A picture from Media up alone as the background: LIVE in words, and its name (before, only the LIVE picture's
+    // red frame said so: colour alone).
+    await dispatch(win, { type: 'setBackground', background: picture });
+    await expect(frame, mode).toHaveClass(/border-live-edge/u);
+    await expect(bar.badge, mode).toHaveText('Live');
+    await expect(bar.text, mode).toHaveText(`Live: Picture · ${PICTURE}`);
+    if (mode === 'pro') expect(await liveWordsSeen(win)).toEqual([true]);
+    // A colour.
+    await dispatch(win, { type: 'setBackground', background: { kind: 'color', color: '#1d4e89' } });
+    await expect(bar.badge, mode).toHaveText('Live');
+    await expect(bar.text, mode).toHaveText('Live: Background colour');
+    await dispatch(win, { type: 'clearLayer', layer: 'background' });
+    await expect(bar.badge, mode).toHaveText('Off');
+    await expect(bar.text, mode).toHaveText('Nothing live');
+
+    // The picture-in-picture box alone (Session 50: something on the screens too).
+    await dispatch(win, { type: 'showPip', source: { kind: 'media', mediaId: pictureMediaId } });
+    await expect(bar.badge, mode).toHaveText('Live');
+    await expect(bar.text, mode).toHaveText(`Live: Picture in picture · ${PICTURE}`);
+    await dispatch(win, { type: 'hidePip' });
+    await expect(bar.badge, mode).toHaveText('Off');
+    await expect(bar.text, mode).toHaveText('Nothing live');
+  }
+
+  // Pro Mode: a slide up over the picture, then cleared (F2): the picture stays up, so LIVE, the cleared slide's place
+  // and what is still up.
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
+  await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+  const bar = topBar(win);
+  await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
+  const slides = slidesOf(win, KIRTAN);
+  await slides.nth(1).click();
+  await expect(bar.text).toHaveText(`Live: ${KIRTAN} · slide 2 of 5`);
+  await dispatch(win, { type: 'setBackground', background: picture });
+  await expect(bar.text).toHaveText(`Live: ${KIRTAN} · slide 2 of 5`);
+  await win.keyboard.press('F2');
+  await expect(bar.badge).toHaveText('Live');
+  await expect(bar.text).toHaveText(`Live: ${KIRTAN} · slide 2 of 5 (cleared) · Picture · ${PICTURE}`);
+  // The background cleared too: Off, the cleared slide's place as before.
+  await dispatch(win, { type: 'clearLayer', layer: 'background' });
+  await expect(bar.badge).toHaveText('Off');
+  await expect(bar.text).toHaveText(`Live: ${KIRTAN} · slide 2 of 5 (cleared)`);
   await app.close();
 });
