@@ -942,6 +942,14 @@ const switchAtOnce = (win: Page, id: string, motions: readonly string[]) =>
       for (const m of ms) {
         await d.appearance.setMotion(m as 'calm' | 'lively' | 'off');
         while (document.documentElement.dataset['interfaceMotion'] !== m) await frame();
+        // Apply each intermediate style before switching back: otherwise Chromium can coalesce Off and Calm into
+        // one style update, so no cancellation happened and an original arrival could still be running.
+        document
+          .querySelector(`[data-testid="group-${section}-toggle"]`)
+          ?.closest('section')
+          ?.querySelector('[id$="-body"]')
+          ?.getAnimations();
+        await frame();
       }
       await frame();
       await frame();
@@ -967,8 +975,8 @@ test('a change of motion just after a section opens never plays its arrival agai
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
   await expect(win.locator('html')).toHaveAttribute('data-opened', '');
-  // Without a chip nothing arrives at all; the same is expected either way.
-  await chipless(win);
+  // Without a chip nothing arrives at all; with one the initial arrival plays exactly once.
+  const noChip = await chipless(win);
   const toggle = win.getByTestId(`group-${SECTION}-toggle`);
   for (const [motion, then] of [
     ['calm', ['off', 'calm']],
@@ -976,7 +984,12 @@ test('a change of motion just after a section opens never plays its arrival agai
   ] as const) {
     await interfaceMotion(win, motion);
     await letTimePass(win, 900, 'the show has not changed for a moment, as a fold waits for');
+    const started = watchFold(win, 800);
     const { took, running } = await switchAtOnce(win, SECTION, then);
+    const moved = await started;
+    expect(moved.arrivals, `${motion}: the initial arrival plays once`).toEqual(
+      noChip ? [] : [motion === 'calm' ? 'fade-in 200' : 'lively-open 250'],
+    );
     // Within the 0.45 s the section once kept its arrival for (foldArrivalMs), the case that replayed.
     console.log(`${motion}, then ${then.join(', then ')}: ${String(took)} ms after the press`);
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
