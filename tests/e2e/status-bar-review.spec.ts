@@ -27,9 +27,7 @@ const bar = (win: Page) => win.locator('footer[aria-label="Status"]');
 async function tell<C extends EventChannel>(app: ElectronApplication, channel: C, value: EventContract[C]) {
   await app.evaluate(
     ({ BrowserWindow }, { channel, value }) => {
-      const operator = BrowserWindow.getAllWindows().find((w) =>
-        /operator\.html/u.test(w.webContents.getURL()),
-      );
+      const operator = BrowserWindow.getAllWindows().find((w) => /index\.html/u.test(w.webContents.getURL()));
       if (!operator) throw new Error('no operator window');
       operator.webContents.send(channel, value);
     },
