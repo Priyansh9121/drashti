@@ -587,6 +587,8 @@ test('the link window waits for Download, saves the edited name and folder, and 
   await expect(win.getByTestId('link-text')).toBeFocused();
   await pasteLink(win, fileLink('clipAAAAAAAAAAA', 'Placeholder.mp4'), false);
   await expect(win.getByTestId('link-name')).toHaveValue('Placeholder');
+  // A Dropbox file has the one quality it was saved at: no Quality choice (alpha.24).
+  await expect(win.getByTestId('link-quality')).toHaveCount(0);
   expect(readdirSync(chosen)).toEqual([]);
   expect(existsSync(join(work, 'Videos', 'Drashti downloads'))).toBe(false);
   await win.getByTestId('link-name').fill('Chosen: clip.mp3');

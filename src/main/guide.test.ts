@@ -5,6 +5,7 @@ import { GUIDES } from '../shared/guides';
 import { MANUAL_CHAPTERS } from '../shared/manual';
 import { KEYMAP } from '../shared/keymap';
 import { type Block, type Inline, inlineText, parseMarkdown } from '../shared/markdown';
+import { keysOn, WINDOW_KEYS } from '../shared/window-keys';
 
 /*
  * The guides' keys and Drashti's (Session 15; both ways since Sessions 31–36, DOC-3): the volunteers' key
@@ -102,6 +103,17 @@ function cardKeys(): string[] {
 
 const bindings = KEYMAP.map((b) => ({ action: b.action, keys: b.keys.map(written) }));
 const all = new Set(bindings.flatMap((b) => b.keys));
+/**
+ * Every other window's own keys (alpha.24: the manual's "Every other window’s keys", from WINDOW_KEYS, which
+ * keys-manual.test.ts checks the manual names on each computer), in the guides' spelling: the manual may name them
+ * too. Windows' own (Ctrl+Y) as a guide spells a Ctrl key, the Mac's Cmd.
+ */
+const windowKeys = new Set(
+  WINDOW_KEYS.flatMap((e) => [...keysOn(e, 'win32'), ...keysOn(e, 'darwin')]).flatMap((k) => [
+    written(k),
+    asMac(written(k)),
+  ]),
+);
 
 describe('the guides’ keys and Drashti’s, both ways', () => {
   it('the key card lists every key in the keymap', () => {
@@ -161,8 +173,10 @@ describe('the Drashti Manual’s keys and Drashti’s, both ways (x37, Session 6
     ).toEqual([]);
   });
 
-  it('every key a chapter names is in the keymap, or named as another’s', () => {
-    expect(keysIn(everyChapter).filter((k) => !all.has(k) && !(k in NOT_KEYMAP))).toEqual([]);
+  it('every key a chapter names is in the keymap, another window’s own, or named as another’s', () => {
+    expect(
+      keysIn(everyChapter).filter((k) => !all.has(k) && !windowKeys.has(k) && !(k in NOT_KEYMAP)),
+    ).toEqual([]);
   });
 });
 

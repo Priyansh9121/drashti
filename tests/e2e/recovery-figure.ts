@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
 import { killApp, launchApp, operatorPage, outputPage, relaunchApp, savedLive, setUpScreen } from './helpers';
-import { logLines } from './log-lines';
+import { instanceLines } from './log-lines';
 import { makeSlides } from './placeholder-slides';
 
 /*
@@ -17,16 +17,16 @@ export interface Phase {
   ms: number;
 }
 
-/** The last start's phase lines in a data folder's log, in order ("Start: <what> at <ms> ms"). */
+/**
+ * The last start's phase lines in a data folder's log, in order ("Start: <what> at <ms> ms"): from its first, the main
+ * process running (log-lines.ts, across the day's files).
+ */
 export function lastStartPhases(userData: string): Phase[] {
   if (!existsSync(join(userData, 'logs'))) return [];
   const phases: Phase[] = [];
-  for (const line of logLines(userData)) {
+  for (const line of instanceLines(userData)) {
     const m = /Start: (.+) at (\d+) ms$/u.exec(line);
-    if (!m) continue;
-    // Each start begins again with the main process running.
-    if (m[1] === 'the main process running') phases.length = 0;
-    phases.push({ what: m[1] ?? '', ms: Number(m[2]) });
+    if (m) phases.push({ what: m[1] ?? '', ms: Number(m[2]) });
   }
   return phases;
 }

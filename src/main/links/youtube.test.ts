@@ -1,6 +1,8 @@
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { linkQualities, type YouTubeChoice } from '../../shared/links';
 import {
+  choiceWords,
   downloadArgs,
   lookArgs,
   parseDetails,
@@ -96,6 +98,44 @@ describe('what Drashti asks of yt-dlp', () => {
       '--newline',
     ]);
     expect(args.join(' ')).not.toMatch(/height/u);
+  });
+
+  it('downloads an MP3 at the bitrate chosen in the window, from the best sound; the best when none is chosen', () => {
+    const quality = (choice: YouTubeChoice) => {
+      const args = downloadArgs(PATHS, LINK, choice, WORK);
+      return args[args.indexOf('--audio-quality') + 1];
+    };
+    expect(quality({ type: 'mp3', height: null })).toBe('0');
+    expect(quality({ type: 'mp3', height: null, kbps: 192 })).toBe('192K');
+    expect(quality({ type: 'mp3', height: null, kbps: 128 })).toBe('128K');
+    const args = downloadArgs(PATHS, LINK, { type: 'mp3', height: null, kbps: 128 }, WORK);
+    expect(args.slice(NOTHING_OF_THE_USERS.length, NOTHING_OF_THE_USERS.length + 8)).toEqual([
+      '-f',
+      'ba/b',
+      '-x',
+      '--audio-format',
+      'mp3',
+      '--audio-quality',
+      '128K',
+      '--newline',
+    ]);
+    expect(args.join(' ')).not.toMatch(/height/u);
+  });
+
+  it('downloads an MP4 at each height the window offers, never with an MP3 bitrate', () => {
+    for (const height of [360, 480, 720, 1080, 1440, 2160]) {
+      const args = downloadArgs(PATHS, LINK, { type: 'mp4', height }, WORK);
+      expect(args).toContain(`bv*[height<=${String(height)}]+ba/b[height<=${String(height)}]`);
+      expect(args).toContain(`res:${String(height)},vcodec:h264,acodec:aac`);
+      expect(args).not.toContain('--audio-quality');
+    }
+  });
+
+  it('says the choice in the log’s words: MP4 and its height, or MP3 and its bitrate', () => {
+    expect(choiceWords({ type: 'mp4', height: 720 })).toBe('MP4, 720p');
+    expect(choiceWords({ type: 'mp4', height: 2160 })).toBe('MP4, 2160p (4K)');
+    expect(choiceWords({ type: 'mp3', height: null })).toBe('MP3');
+    expect(choiceWords({ type: 'mp3', height: null, kbps: 128 })).toBe('MP3 at 128 kbps');
   });
 
   it('never passes cookies, a browser, a settings file, a plugin, a playlist or an update', () => {
@@ -333,6 +373,75 @@ describe('reading yt-dlp’s answers', () => {
         { height: 720, bytes: 25_000_000 + 1_600_000 },
       ],
       soundBytes: Math.round((100 * 245_000) / 8),
+    });
+  });
+
+  /** Read as the window reads them: yt-dlp's details first. */
+  const read = (json: string) => {
+    const r = parseDetails(json);
+    if (!r.ok) throw new Error(r.problem.message);
+    return r.details;
+  };
+
+  it('offers every height the video has for an MP4, tallest first, each about as big as said; the best up to 1080p to begin with', () => {
+    expect(linkQualities(read(details()), false)).toEqual({
+      options: [
+        { value: 2160, label: '2160p (4K)', bytes: 300_000_000 + 1_600_000 },
+        { value: 1080, label: '1080p', bytes: 50_000_000 + 1_600_000 },
+        { value: 720, label: '720p', bytes: 25_000_000 + 1_600_000 },
+      ],
+      initial: 1080,
+    });
+  });
+
+  it('offers the best sound for an MP3, then 192 and 128 kbps, each about as big as its length makes it', () => {
+    expect(linkQualities(read(details()), true)).toEqual({
+      options: [
+        { value: 0, label: 'Best', bytes: Math.round((100 * 245_000) / 8) },
+        { value: 192, label: '192 kbps', bytes: (100 * 192_000) / 8 },
+        { value: 128, label: '128 kbps', bytes: (100 * 128_000) / 8 },
+      ],
+      initial: 0,
+    });
+  });
+
+  it('a video that lists only its sound, or no formats at all, offers no video quality, and every sound one', () => {
+    const soundOnly = read(
+      details({ formats: [{ format_id: '140', vcodec: 'none', acodec: 'mp4a.40.2', filesize: 1_600_000 }] }),
+    );
+    expect(linkQualities(soundOnly, false)).toEqual({ options: [], initial: null });
+    expect(linkQualities(soundOnly, true).options.map((o) => o.value)).toEqual([0, 192, 128]);
+    const none = read(details({ formats: undefined }));
+    expect(linkQualities(none, false)).toEqual({ options: [], initial: null });
+    expect(linkQualities(none, true).initial).toBe(0);
+  });
+
+  it('says no size it cannot know (no length, no size or bitrate), and begins at the smallest when every height is above 1080p', () => {
+    const unknown = read(
+      details({
+        duration: null,
+        formats: [{ height: 720, vcodec: 'avc1.4d401f', acodec: 'none', tbr: 2000 }],
+      }),
+    );
+    expect(linkQualities(unknown, false)).toEqual({
+      options: [{ value: 720, label: '720p', bytes: null }],
+      initial: 720,
+    });
+    expect(linkQualities(unknown, true).options.map((o) => o.bytes)).toEqual([null, null, null]);
+    const tall = read(
+      details({
+        formats: [
+          { height: 2160, vcodec: 'vp9', acodec: 'none', filesize: 300_000_000 },
+          { height: 1440, vcodec: 'vp9', acodec: 'none', filesize: 150_000_000 },
+        ],
+      }),
+    );
+    expect(linkQualities(tall, false)).toEqual({
+      options: [
+        { value: 2160, label: '2160p (4K)', bytes: 300_000_000 },
+        { value: 1440, label: '1440p', bytes: 150_000_000 },
+      ],
+      initial: 1440,
     });
   });
 

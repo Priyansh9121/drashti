@@ -109,6 +109,13 @@ describe('the fake microphone’s sound file (tests only)', () => {
       on: ['disable-features=AudioServiceSandbox'],
       detail: 'ON in this copy of Drashti: disable-features=AudioServiceSandbox',
     });
+    // And the stream-clock seam (the stream's page playing a test clip on its own clock, alpha.23).
+    expect(fakeMediaSelfTest(() => false, 'HardwareMediaKeyHandling', true)).toEqual({
+      passed: false,
+      on: ['DRASHTI_TEST_STREAM_SOUND_FILE'],
+      detail: 'ON in this copy of Drashti: DRASHTI_TEST_STREAM_SOUND_FILE',
+    });
+    expect(fakeMediaSelfTest(() => false, 'HardwareMediaKeyHandling', false).passed).toBe(true);
   });
 
   it('macOS: the audio service reads only its own system folders in its sandbox, so with the file (tests only) its sandbox is off; never on Windows (it reads the file there), never without the file', () => {

@@ -123,7 +123,7 @@ It is for preparing slides: read pages before the sabha, not while slides are ch
 
 **How:**
 
-1. Right-click the row. With the keyboard, press **Shift+F10**; on a touch screen, hold a finger on it.
+1. Right-click the row (on a Mac, Control-click it too). With the keyboard, press **Shift+F10** (**Fn+Shift+F10** on a Mac laptop); on a touch screen, hold a finger on it.
 2. Choose what you need, such as **Rename…** or **Show in Finder** (**Show in Explorer** on Windows).
 3. **Delete…** asks first only when the file is on the screens or used.
 4. Press **Cmd+Z** (Ctrl+Z) to undo it.
