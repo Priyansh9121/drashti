@@ -524,3 +524,265 @@ test('Pro Mode at 1024 × 645 with every LIVE section open and a video playing: 
     await app.close();
   }
 });
+
+/*
+ * LIVE's own rows and lines (alpha.24, lead 2's liverows; a25 list items 27, 42, 43, 46). Until then a timer for the
+ * audience, a timer alone and Repeat Slides came in ABOVE LIVE's picture, and the picture-in-picture strip and LIVE's
+ * lines (a file missing, "Starting on …", the languages, …) UNDER it, between the picture and Next and Back: each pushed
+ * the picture, Back, Next and Oops (or Back, Next and Oops) down as it came and lifted them as it went, and the card's
+ * Go with them. Now they sit under the show controls (the time bars, the card, the zoom buttons); the time bars keep
+ * their room while the card or the zoom buttons are up under them, so a bar going never lifts Go, Cancel or + and −;
+ * the card goes to one row in a narrow column; and the practice show draws no card (its Go acted on the hall).
+ */
+
+/** A timer for the audience, made as a show makes one (placeholder-show.ts's), and its id. */
+async function makeTimer(win: Page): Promise<string> {
+  await win.evaluate(async () => {
+    const made = await (globalThis as PageGlobals).drashti.timers.create({
+      name: 'Placeholder starts in',
+      kind: 'countdown',
+      durationMs: 300_000,
+      targetTime: null,
+      allowsOverrun: false,
+    });
+    if (!made.ok) throw new Error(made.message);
+  });
+  let id = '';
+  await expect
+    .poll(async () => {
+      id = (await snapshot(win)).timers.find((t) => t.name === 'Placeholder starts in')?.id ?? '';
+      return id;
+    })
+    .not.toBe('');
+  return id;
+}
+
+/** LIVE's rows up: the timer for the audience (above the picture until alpha.24) and the picture-in-picture strip. */
+async function rowsUp(win: Page, timerId: string): Promise<void> {
+  expect((await dispatch(win, { type: 'showAudienceTimer', timerId })).ok).toBe(true);
+  await expect(win.getByTestId('live-audience-timer')).toBeVisible();
+  expect((await dispatch(win, { type: 'showPip', source: { kind: 'slides' } })).ok).toBe(true);
+  await expect(win.getByTestId('live-pip')).toBeVisible();
+}
+
+async function rowsDown(win: Page): Promise<void> {
+  expect((await dispatch(win, { type: 'hidePip' })).ok).toBe(true);
+  await expect(win.getByTestId('live-pip')).toHaveCount(0);
+  expect((await dispatch(win, { type: 'hideAudienceTimer' })).ok).toBe(true);
+  await expect(win.getByTestId('live-audience-timer')).toHaveCount(0);
+}
+
+for (const mode of ['pro', 'simple'] as const)
+  test(`${mode === 'pro' ? 'Pro' : 'Simple'} Mode at 1024 × 645 and 1410 × 900: LIVE’s own rows come and go (a timer for the audience, the picture-in-picture strip): LIVE’s picture, Back, Next${mode === 'pro' ? ' and Oops' : ''} never move, at any frame`, async () => {
+    test.setTimeout(150_000);
+    const { app } = await launchApp();
+    const rows: Geometry[] = [];
+    try {
+      const win = await operatorPage(app);
+      await operatorReady(win);
+      const timerId = await makeTimer(win);
+      await slidesUp(win);
+      if (mode === 'simple') {
+        await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+        await expect(win.getByTestId('simple-mode')).toBeVisible();
+      }
+      const selector = stillOf(mode);
+      for (const size of SIZES) {
+        const where = `${mode === 'pro' ? 'Pro' : 'Simple'} Mode at ${sizeName(size)}`;
+        await sizeOperatorWindow(app, win, size);
+        await liveColumnToTop(liveColumn(win));
+        const before = await settledStill(win, selector, where);
+        expect(before.length, `${where}: every still part is there`).toBe(mode === 'pro' ? 4 : 3);
+        rows.push(await geometry(win, `${where}: before LIVE's rows`));
+        expect(await startWatching(win, selector)).toBe(before.length);
+        await rowsUp(win, timerId);
+        await letTimePass(win, 500, 'LIVE’s rows up');
+        rows.push(await geometry(win, `${where}: LIVE's rows up`));
+        await rowsDown(win);
+        await letTimePass(win, 500, 'frames after LIVE’s rows went');
+        const watched = await stopWatching(win);
+        expect(watched.looks, `${where}: looked at every frame`).toBeGreaterThan(10);
+        expect(watched.moved, `${where}: what moved as LIVE’s rows came and went`).toEqual([]);
+        expect(await stillParts(win, selector), `${where}: LIVE's rows gone`).toEqual(before);
+      }
+    } finally {
+      await attachGeometry(rows);
+      await app.close();
+    }
+  });
+
+test('Pro Mode at 1024 × 645 and 1410 × 900: a cued video waiting while a video plays, the playing video taken off (its time bar goes): the card’s Go and Cancel never move, at any frame', async () => {
+  test.setTimeout(180_000);
+  const { app, win, hall, stream, ids } = await setupVideoCue();
+  const rows: Geometry[] = [];
+  try {
+    await slidesUp(win);
+    await expect(win.getByTestId('show-oops')).toBeEnabled();
+    const selector = `${stillOf('pro')}, button[aria-label="Go cued video"], button[aria-label="Cancel video cue"]`;
+    for (const [i, size] of SIZES.entries()) {
+      const where = `Pro Mode at ${sizeName(size)}`;
+      const playing = ids[i % 2] ?? '';
+      const cued = ids[(i + 1) % 2] ?? '';
+      await sizeOperatorWindow(app, win, size);
+      await liveColumnToTop(liveColumn(win));
+      // A video going round, drawn alone on every picture page (a25 item 47: never a cue in a loop's first moments).
+      expect(
+        (
+          await dispatch(win, {
+            type: 'setBackground',
+            background: { kind: 'media', mediaId: playing, media: 'video', fit: 'fill', loop: true },
+          })
+        ).ok,
+      ).toBe(true);
+      await expect(win.locator('[data-testid="time-bar-row"][data-playing="background"]')).toBeVisible();
+      const loop = (await snapshot(win)).layers.background;
+      if (loop?.kind !== 'media' || loop.mediaId !== playing) throw new Error('no looping background');
+      const slot = `${playing}@${String(loop.startedAt)}`;
+      for (const [name, page] of [
+        ['LIVE', win],
+        ['the hall', hall],
+        ['the stream', stream],
+      ] as const)
+        await expect
+          .poll(() => drawsOnly(page, slot), { message: `${where}: ${name} draws the looping video alone` })
+          .toBe(true);
+      expect((await dispatch(win, { type: 'cueVideo', mediaId: cued })).ok).toBe(true);
+      await cueReady(win);
+      await expect(goButton(win)).toBeEnabled();
+      const before = await settledStill(win, selector, `${where}, a cue waiting`);
+      expect(before.length, `${where}: the picture, Back, Next, Oops, Go and Cancel are there`).toBe(6);
+      rows.push(await geometry(win, `${where}: a cue waiting, a video playing`));
+      expect(await startWatching(win, selector)).toBe(before.length);
+      expect((await dispatch(win, { type: 'clearLayer', layer: 'background' })).ok).toBe(true);
+      await expect(win.getByTestId('time-bars')).toHaveCount(0);
+      await letTimePass(win, 800, 'frames after the time bar went');
+      rows.push(await geometry(win, `${where}: the video taken off`));
+      const watched = await stopWatching(win);
+      expect(watched.looks, `${where}: looked at every frame`).toBeGreaterThan(10);
+      expect(watched.moved, `${where}: what moved as the time bar went`).toEqual([]);
+      expect(await stillParts(win, selector), `${where}: the video taken off`).toEqual(before);
+      await cancelButton(win).click();
+      await expect(win.getByTestId('video-cue')).toHaveCount(0);
+      await expect.poll(async () => (await snapshot(win)).videoCue ?? null).toBeNull();
+    }
+  } finally {
+    await attachGeometry(rows);
+    await app.close();
+  }
+});
+
+test('Pro Mode at 1024 × 645 with every LIVE section open, a video playing, LIVE’s rows up and a notice: the cued video’s card is one row and its Go is in sight, whole, without scrolling', async () => {
+  test.setTimeout(180_000);
+  const { app, win, ids } = await setupVideoCue();
+  const rows: Geometry[] = [];
+  try {
+    const timerId = await makeTimer(win);
+    await slidesUp(win);
+    await sizeOperatorWindow(app, win, CI_WINDOW);
+    expect(
+      (
+        await dispatch(win, {
+          type: 'setBackground',
+          background: { kind: 'media', mediaId: ids[0] ?? '', media: 'video', fit: 'fill', loop: true },
+        })
+      ).ok,
+    ).toBe(true);
+    await expect(win.locator('[data-testid="time-bar-row"][data-playing="background"]')).toBeVisible();
+    await openAllSections(win);
+    await rowsUp(win, timerId);
+    await app.evaluate(({ BrowserWindow }) => {
+      for (const w of BrowserWindow.getAllWindows())
+        if (w.webContents.getURL().includes('index.html'))
+          w.webContents.send('app:notice', { text: 'Placeholder notice' });
+    });
+    await expect(win.getByTestId('operator-notice')).toBeVisible();
+    const live = liveColumn(win);
+    await liveColumnToTop(live);
+    expect((await dispatch(win, { type: 'cueVideo', mediaId: ids[1] ?? '' })).ok).toBe(true);
+    await cueReady(win);
+    await expect(goButton(win)).toBeEnabled();
+    rows.push(
+      await geometry(
+        win,
+        'Pro Mode at 1024 × 645: every section open, a video, LIVE’s rows, a notice, a cue',
+      ),
+    );
+    // One row at CI's width: no taller than its Go and Cancel with the card's own room around them.
+    const card = await win.getByTestId('video-cue').boundingBox();
+    const go = await goButton(win).boundingBox();
+    if (!card || !go) throw new Error('no card or no Go');
+    expect(
+      card.height,
+      `the card (${String(card.height)} px) is one row, about its Go (${String(go.height)} px)`,
+    ).toBeLessThanOrEqual(go.height + 18.5);
+    await expect(goButton(win)).toBeInViewport({ ratio: 1 });
+    const seen = await live.evaluate((column) => {
+      const scroll = column.querySelector('[data-testid="live-scroll"]');
+      const go = column.querySelector('button[aria-label="Go cued video"]');
+      if (!scroll || !go) return 'no live-scroll or no Go';
+      const s = scroll.getBoundingClientRect();
+      const g = go.getBoundingClientRect();
+      const out: string[] = [];
+      if (g.top < s.top - 0.5 || g.bottom > s.bottom + 0.5)
+        out.push(
+          `Go ${g.top.toFixed(1)}-${g.bottom.toFixed(1)} outside live-scroll ${s.top.toFixed(1)}-${s.bottom.toFixed(1)}`,
+        );
+      if (scroll.scrollTop !== 0) out.push(`live-scroll scrolled ${String(scroll.scrollTop)}`);
+      if (column.scrollTop !== 0) out.push(`the column scrolled ${String(column.scrollTop)}`);
+      const hit = document.elementFromPoint(g.left + g.width / 2, g.top + g.height / 2);
+      if (!hit || !go.contains(hit))
+        out.push(
+          `Go's middle is under ${hit?.closest('[data-testid]')?.getAttribute('data-testid') ?? 'nothing'}`,
+        );
+      return out.join('; ');
+    });
+    expect(seen, 'Go in sight without scrolling').toBe('');
+  } finally {
+    await attachGeometry(rows);
+    await app.close();
+  }
+});
+
+test('Pro Mode, practising: the show’s cued video’s card is not drawn (its Go would act on the hall’s screens); the cue waits, and its card is back when practice ends', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp();
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-cue-practice-'));
+    const video = await makeTestVideo(win, join(dir, 'Placeholder practice clip.webm'), {
+      seconds: 4,
+      hue: 60,
+    });
+    const [videoId = ''] = await importAndGetIds(win, [video]);
+    await win.evaluate(async () => {
+      const d = (globalThis as PageGlobals).drashti;
+      const [p] = await d.library.listPresentations();
+      if (!p) throw new Error('no placeholder presentation');
+      const list = await d.playlists.create('Placeholder practice', null, false);
+      if (!list.ok) throw new Error(list.message);
+      const added = await d.playlists.addItems(list.ids[0] ?? '', null, [
+        { kind: 'presentation', presentationId: p.id },
+      ]);
+      if (!added.ok) throw new Error(added.message);
+    });
+    await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder practice' }).click();
+    await expect(win.getByTestId('open-playlist').getByTestId('playlist-item')).toHaveCount(1);
+    expect((await dispatch(win, { type: 'cueVideo', mediaId: videoId })).ok).toBe(true);
+    await expect(win.getByTestId('video-cue')).toBeVisible();
+    await win.getByTestId('open-playlist').getByRole('button', { name: 'Playlist actions' }).click();
+    await win.getByRole('menuitem', { name: 'Practise this playlist' }).click();
+    await expect(win.getByTestId('practice-banner')).toContainText('Practising “Placeholder practice”');
+    await win.getByTestId('practice-thumb').first().click();
+    await letTimePass(win, 500, 'a practice slide up');
+    await expect(win.getByTestId('video-cue'), 'no show cue in practice').toHaveCount(0);
+    await expect(goButton(win)).toHaveCount(0);
+    expect((await snapshot(win)).videoCue?.background.mediaId, 'the show’s cue waits').toBe(videoId);
+    await win.getByTestId('practice-leave').click();
+    await expect(win.getByTestId('practice-banner')).toHaveCount(0);
+    await expect(win.getByTestId('video-cue'), 'the cue’s card back after practice').toBeVisible();
+    await expect(cancelButton(win)).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
