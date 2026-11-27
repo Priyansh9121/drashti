@@ -68,13 +68,70 @@ export function glides(before: readonly number[], after: readonly number[]): num
 }
 
 /**
- * The copy of what folds away, Calm's or Lively's; none where a show control could end up under it (the release lead's
- * review, MUST-2): one among what moves, or anywhere else in the same scrolling part (a short window's LIVE block,
- * which scrolls with the sections, moving down as the column's end comes up). Then the insides go at once, as with Off.
+ * The copy of what folds away, Calm's or Lively's; none where it is held (copyHeld: a show control could end up under
+ * it). Then the insides go at once, as with Off.
  */
 export function foldCopy(move: FoldMove, showControlNear: boolean): 'fold' | 'fold-lively' | null {
   if (showControlNear) return null;
   return move === 'lively' ? 'fold-lively' : 'fold';
+}
+
+/** What holds back the copy of what folds away (lead 2's item 8). */
+export interface CopyHolds {
+  /** A show control among what moves as the insides go: the sections after it in the column. */
+  movingShowControl: boolean;
+  /** A show control higher in the column (or in the LIVE block), outside what moves. */
+  showControlAbove: boolean;
+  /** The LIVE block shares the column's scrolling part (a short window: it scrolls with the sections). */
+  liveBlockInScroller: boolean;
+  /** The column will scroll back as the insides go. */
+  scrollsBack: boolean;
+}
+
+/**
+ * Whether the copy of what folds away is held, as the glides are: by a show control among what moves (the release lead's
+ * review, MUST-2, case 1: Lower Thirds' Show moving up under it), by the LIVE block sharing the column's scrolling part
+ * (MUST-2, case 2: a short window, where Next and Back scroll with the sections), or by the column scrolling back (lead
+ * 2's hands-on pass, problem 1). A show control higher in the column never moves as a section under it folds, so alone
+ * it holds nothing (lead 2's item 8; the review's NOTE-5: held by one anywhere in the column, a real show's Calm fold
+ * was mostly at once).
+ */
+export function copyHeld(h: CopyHolds): boolean {
+  return h.movingShowControl || h.liveBlockInScroller || h.scrollsBack;
+}
+
+/** The insides as the browser has them: their own animations. */
+export interface ArrivingBody {
+  getAnimations(): readonly { finished: Promise<unknown>; animationName?: string }[];
+}
+
+/**
+ * Call `done` once the insides have arrived: as soon as their own arrival (a CSS animation on them) ends or is stopped,
+ * at once when none runs (a show control in them, Off), and at the latest after `latest` ms (a hidden window draws no
+ * frames). A change of motion mid-arrival stops it (Off, reduced motion, Calm from Lively), and the motion coming back
+ * started it again while Panel still said how it arrived (lead 2's item 8; the review of uimotion, NOTE-4). Returns a
+ * stop, for a section folded or gone first.
+ */
+export function whenArrived(body: ArrivingBody, done: () => void, latest = foldArrivalMs()): () => void {
+  // Its own CSS animations (a transition has no name): the arrival.
+  const arriving = body.getAnimations().filter((a) => typeof a.animationName === 'string');
+  if (arriving.length === 0) {
+    done();
+    return () => undefined;
+  }
+  let over = false;
+  const end = () => {
+    if (over) return;
+    over = true;
+    clearTimeout(timer);
+    done();
+  };
+  const timer = setTimeout(end, latest);
+  void Promise.all(arriving.map((a) => a.finished)).then(end, end);
+  return () => {
+    over = true;
+    clearTimeout(timer);
+  };
 }
 
 /** Where the parts were in the window (their tops), and where their scrolling part was scrolled to. */
@@ -151,11 +208,22 @@ function partsFrom(section: HTMLElement, clipper: HTMLElement | null): HTMLEleme
 const holdsShowControl = (parts: readonly HTMLElement[]) =>
   parts.some((p) => p.hasAttribute('data-show-control') || p.querySelector('[data-show-control]') !== null);
 
-/** A show control in the same scrolling part as the section, but not in its insides (which go). */
-function showControlNear(section: HTMLElement, body: HTMLElement, clipper: HTMLElement | null): boolean {
-  if (holdsShowControl(partsFrom(section, clipper).slice(1))) return true;
-  const around = clipper ?? document.body;
-  return [...around.querySelectorAll('[data-show-control]')].some((c) => !body.contains(c));
+/** The LIVE block (operator/LiveColumn.tsx): in a short window it scrolls with the sections, in one scrolling part. */
+const LIVE_BLOCK = '[data-testid="live-still"]';
+
+/** What could hold the copy of `body` folding away in `section` (copyHeld): the show controls around it, the column. */
+function copyHolds(section: HTMLElement, body: HTMLElement, clipper: HTMLElement | null): CopyHolds {
+  const moving = partsFrom(section, clipper).slice(1);
+  const among = (c: Element) => moving.some((p) => p === c || p.contains(c));
+  const others = [...(clipper ?? document.body).querySelectorAll('[data-show-control]')].filter(
+    (c) => !body.contains(c),
+  );
+  return {
+    movingShowControl: others.some(among),
+    showControlAbove: others.some((c) => !among(c)),
+    liveBlockInScroller: clipper?.querySelector(LIVE_BLOCK) !== null,
+    scrollsBack: clipper !== null && scrollsBack(clipper, body.getBoundingClientRect().height),
+  };
 }
 
 /**
@@ -196,13 +264,9 @@ export function pressFold(button: HTMLElement, opening: boolean, bodyId: string)
   const section = button.closest('section');
   const clipper = clipperOf(section);
   const body = opening ? null : document.getElementById(bodyId);
-  // No copy where a show control could come under it, nor where the column will scroll back under it.
-  const near =
-    body !== null &&
-    section !== null &&
-    (showControlNear(section, body, clipper) ||
-      (clipper !== null && scrollsBack(clipper, body.getBoundingClientRect().height)));
-  const kind = body && section ? foldCopy(move, near) : null;
+  // No copy where a show control could come under it, nor where the column will scroll back under it (copyHeld).
+  const held = body !== null && section !== null && copyHeld(copyHolds(section, body, clipper));
+  const kind = body && section ? foldCopy(move, held) : null;
   if (body && kind) {
     const box = clipper?.getBoundingClientRect() ?? {
       top: 0,
