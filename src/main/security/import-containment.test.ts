@@ -221,3 +221,32 @@ describe('alpha.24 media and caption source reads', () => {
     }
   });
 });
+
+describe('alpha.24 folder capability through directory aliases', () => {
+  it('recognises a rejected media link even when a document reaches its parent through another directory alias', async () => {
+    const { selected, outside } = await fixture();
+    const target = join(outside, 'private-placeholder.png');
+    const link = join(selected, 'picture.png');
+    await writeFile(target, 'Placeholder image bytes.');
+    await symlink(target, link, 'file');
+    const alias = join(outside, 'selected-alias');
+    await symlink(selected, alias, 'dir');
+    await writeFile(
+      join(selected, 'Chosen.pro6'),
+      pp6Presentation({
+        groups: [
+          { name: 'Verse', slides: [{ background: { path: join(alias, 'picture.png'), kind: 'image' } }] },
+        ],
+      }),
+    );
+    const db = openDatabase(':memory:');
+    const media = new MediaStore(db, { dir: join(outside, 'media'), freeBytes: () => 1024 ** 4 });
+    const stage = vi.spyOn(media, 'stage');
+    try {
+      await runImport({ db, media, runId: randomUUID(), paths: [selected], options: {} });
+      expect(stage).not.toHaveBeenCalled();
+    } finally {
+      db.close();
+    }
+  });
+});
