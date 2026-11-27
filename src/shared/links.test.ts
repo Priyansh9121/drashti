@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { checkLink, chosenHeight, downloadHostAllowed, type VideoDetails } from './links';
+import {
+  checkLink,
+  chosenHeight,
+  downloadHostAllowed,
+  qualityChoice,
+  qualityWords,
+  type VideoDetails,
+} from './links';
 
 /*
  * Made-up links only (PLAN §6): no real Dropbox file or folder is named here.
@@ -192,5 +199,69 @@ describe('the YouTube quality a download asks for (Session 25c)', () => {
 
   it('is none when every height is above the setting', () => {
     expect(chosenHeight({ ...video, heights: [{ height: 2160, bytes: null }] }, 1080, null)).toBeNull();
+  });
+});
+
+describe('the quality a Download takes: the window’s Quality (alpha.24)', () => {
+  const video: VideoDetails = {
+    title: 'Placeholder video',
+    duration: 100,
+    heights: [2160, 1440, 1080, 720, 360].map((height) => ({ height, bytes: null })),
+    soundBytes: null,
+  };
+
+  it('is the usual when none is chosen: the best up to 1080p, or the best sound', () => {
+    expect(qualityChoice(video, false, undefined)).toEqual({
+      ok: true,
+      choice: { type: 'mp4', height: 1080 },
+    });
+    expect(qualityChoice(video, false, null)).toEqual({ ok: true, choice: { type: 'mp4', height: 1080 } });
+    expect(qualityChoice(video, true, undefined)).toEqual({
+      ok: true,
+      choice: { type: 'mp3', height: null },
+    });
+    expect(qualityChoice(video, true, 0)).toEqual({ ok: true, choice: { type: 'mp3', height: null } });
+  });
+
+  it('is the height chosen while the video offers it, above 1080p too; for an MP3 the bitrate chosen', () => {
+    expect(qualityChoice(video, false, 720)).toEqual({ ok: true, choice: { type: 'mp4', height: 720 } });
+    expect(qualityChoice(video, false, 2160)).toEqual({ ok: true, choice: { type: 'mp4', height: 2160 } });
+    expect(qualityChoice(video, true, 192)).toEqual({
+      ok: true,
+      choice: { type: 'mp3', height: null, kbps: 192 },
+    });
+    expect(qualityChoice(video, true, 128)).toEqual({
+      ok: true,
+      choice: { type: 'mp3', height: null, kbps: 128 },
+    });
+  });
+
+  it('refuses in words a height the video does not offer, and a bitrate not offered', () => {
+    expect(qualityChoice(video, false, 480)).toEqual({
+      ok: false,
+      message: 'That quality is not offered by this video. Choose another under Quality.',
+    });
+    expect(qualityChoice(video, false, 0)).toMatchObject({ ok: false });
+    expect(qualityChoice(video, true, 320)).toEqual({
+      ok: false,
+      message: 'Choose Best, 192 kbps or 128 kbps for the sound.',
+    });
+  });
+
+  it('keeps today’s words when no height is at 1080p or below and none was chosen', () => {
+    const tall = { ...video, heights: [{ height: 2160, bytes: null }] };
+    expect(qualityChoice(tall, false, undefined)).toEqual({
+      ok: false,
+      message: 'This video has no quality at or below 1080p. Paste another YouTube link.',
+    });
+    expect(qualityChoice(tall, false, 2160)).toEqual({ ok: true, choice: { type: 'mp4', height: 2160 } });
+    expect(qualityChoice(tall, true, undefined)).toEqual({ ok: true, choice: { type: 'mp3', height: null } });
+  });
+
+  it('says a choice in the status bar’s words: its height, or MP3 and its bitrate', () => {
+    expect(qualityWords({ type: 'mp4', height: 720 })).toBe('720p');
+    expect(qualityWords({ type: 'mp4', height: 2160 })).toBe('2160p (4K)');
+    expect(qualityWords({ type: 'mp3', height: null })).toBe('MP3');
+    expect(qualityWords({ type: 'mp3', height: null, kbps: 192 })).toBe('MP3 at 192 kbps');
   });
 });

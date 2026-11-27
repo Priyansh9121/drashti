@@ -1,11 +1,12 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { ChildProcess } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { clearOfShowControls } from './fit';
 import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { logLines } from './log-lines';
 import { freePort, rtmpListener, setUpStream, testFfmpeg } from './stream-helpers';
 
 /*
@@ -42,12 +43,9 @@ async function inputs(win: Page, withMicrophone: boolean): Promise<void> {
   expect(r).toBe('ok');
 }
 
-/** Drashti's log lines that match. */
-function logLines(userData: string, pattern: RegExp): string[] {
-  const dir = join(userData, 'logs');
-  return readdirSync(dir)
-    .flatMap((f) => readFileSync(join(dir, f), 'utf8').split('\n'))
-    .filter((l) => pattern.test(l));
+/** Drashti's log lines that match, every file of the log (log-lines.ts). */
+function logMatches(userData: string, pattern: RegExp): string[] {
+  return logLines(userData).filter((l) => pattern.test(l));
 }
 
 test('No sound shows beside ON AIR, in Pro and Simple Mode, with no microphone; its notice never covers the show controls; a microphone clears it, and its beep raises nothing for 60 s', async () => {
@@ -80,7 +78,7 @@ test('No sound shows beside ON AIR, in Pro and Simple Mode, with no microphone; 
   } catch (error) {
     console.log(
       `No sound did not show. The status: ${JSON.stringify((await status(win)).noSound)}; the stream's log:\n` +
-        logLines(userData, /stream|[Ss]ound|[Ee]ncod/u)
+        logMatches(userData, /stream|[Ss]ound|[Ee]ncod/u)
           .slice(-40)
           .join('\n'),
     );
@@ -137,6 +135,6 @@ test('No sound shows beside ON AIR, in Pro and Simple Mode, with no microphone; 
   await expect.poll(sleepHeld).toBe(false);
   await app.close();
   // Said in the log once when it began and once when it ended, never every second.
-  expect(logLines(userData, /No sound: /u)).toHaveLength(1);
-  expect(logLines(userData, /The stream has sound again/u)).toHaveLength(1);
+  expect(logMatches(userData, /No sound: /u)).toHaveLength(1);
+  expect(logMatches(userData, /The stream has sound again/u)).toHaveLength(1);
 });
