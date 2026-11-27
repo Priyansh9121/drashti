@@ -1,6 +1,6 @@
 # Start here
 
-Drashti puts slides, pictures, videos and sound on the hall's screens. This manual goes through every part of its window, one chapter each, and tells each feature the same way: what it is, when you would use it, and how, in short steps. On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows the menu bar is hidden: press Alt to show it.
+Drashti puts slides, pictures, videos and sound on the hall's screens. This manual goes through every part of its window, one chapter each, and tells each feature the same way: what it is, when you would use it, and how, in short steps. On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows the menu bar is hidden: tap **Alt** to show it.
 
 ## The window at a glance
 
