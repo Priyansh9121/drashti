@@ -119,7 +119,7 @@ export const PANEL_HELP = {
     chapter: 'playlists',
     feature: 'The open playlist',
     doc: 'operator',
-    text: 'The playlist you opened is where things go live: one click on a row puts it up, and a presentation’s, deck’s or PDF’s name folds its slide rows; type a row’s number and press Enter to put it up. Cmd-click (Ctrl-click on Windows) only marks a row; drag or Alt+Up/Down moves it, within its deck on a slide row, and its menu has Rename, Remove and Undo; the playlist’s ⋯ has Duplicate and Practise this playlist. A video input from Media can be a row too: without that named input on this computer it says Not on this computer and Next goes past it.',
+    text: 'The playlist you opened is where things go live: one click on a row puts it up, and a presentation’s, deck’s or PDF’s name folds its slide rows; type a row’s number and press Enter to put it up. Cmd-click (Ctrl-click on Windows) only marks a row; drag or Alt+Up/Down (Option+Up/Down on a Mac) moves it, within its deck on a slide row, and its menu has Rename, Remove and Undo; the playlist’s ⋯ has Duplicate and Practise this playlist. A video input from Media can be a row too: without that named input on this computer it says Not on this computer and Next goes past it.',
     guide: '**Middle:**',
   },
   controls: {
