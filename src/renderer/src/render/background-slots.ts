@@ -144,6 +144,19 @@ function arrive(slots: Slots, ready: Slot, at: number | undefined): Slots {
   return { shown: ready, incoming: null, leaving: null, fade: null };
 }
 
+/**
+ * A cued video's showing coming in, given new settings with no cue id while it had one: Go has made it the background
+ * and, before this page started it at Go's moment, the same video was put up again (going round, say: the engine
+ * takes that as the same playback carrying on, its start and Go's moment kept, without the cue's id). It keeps its
+ * cue's id, so the page still starts it at that moment (BackgroundMedia.tsx starts a slot coming in by it), its decoder
+ * carrying on. Without it (a25 item 47, alpha.24's cuerace) it stayed coming in, out of sight, for ever: the screens
+ * kept what was up before, and no next cue was ever prepared over it.
+ */
+function keepingGo(was: SlotLayer, layer: SlotLayer): SlotLayer {
+  if (was.kind !== 'media' || !was.cueId || layer.kind !== 'media' || layer.cueId) return layer;
+  return { ...layer, cueId: was.cueId };
+}
+
 export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
   switch (event.type) {
     case 'joinPair':
@@ -208,7 +221,7 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
         };
       if (slots.incoming?.key === key) {
         const { cued: _cued, ...incoming } = slots.incoming;
-        return { ...slots, incoming: { ...incoming, layer } };
+        return { ...slots, incoming: { ...incoming, layer: keepingGo(incoming.layer, layer) } };
       }
       // The picture going away is wanted again (Back during a dissolve): it comes back whole, at once.
       if (slots.leaving?.key === key)
