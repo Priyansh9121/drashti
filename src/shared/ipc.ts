@@ -317,6 +317,12 @@ export const IPC = {
     showGuides: 'app:show-guides',
     /** main -> operator: Help › Drashti Manual… was chosen (x37, Session 60), in either mode. */
     showManual: 'app:show-manual',
+    /**
+     * Help › Show Help (alpha.24, helpmenu): the operator window's Help switch as it stands (at its start and each
+     * change), for the item's tick; and main -> operator: the item was chosen, the switch to turn on or off.
+     */
+    help: 'app:help',
+    helpChosen: 'app:help-chosen',
     /** main -> operator: Help › Report a Problem… was chosen (x49), in either mode. */
     showReport: 'app:show-report',
     /** main -> operator: an item of the Tools menu was chosen (Session 60, x36; Pro Mode): which (shared/setup-tools.ts). */
@@ -1667,6 +1673,7 @@ export interface InvokeContract {
   [IPC.app.simpleFirstRun]: { args: []; result: boolean };
   [IPC.app.simpleFirstRunSeen]: { args: []; result: null };
   [IPC.app.safeAreas]: { args: []; result: boolean };
+  [IPC.app.help]: { args: [on: boolean]; result: null };
   [IPC.app.noGpu]: { args: []; result: boolean };
   [IPC.app.singleKeys]: { args: []; result: boolean };
   [IPC.app.setSingleKeys]: {
@@ -2386,6 +2393,7 @@ export interface EventContract {
   [IPC.app.showKeys]: { at: number };
   [IPC.app.showGuides]: { at: number };
   [IPC.app.showManual]: { at: number };
+  [IPC.app.helpChosen]: { on: boolean };
   [IPC.app.showReport]: { at: number };
   [IPC.report.changed]: { at: number };
   [IPC.app.showTool]: { tool: ToolsMenuItem; at: number };

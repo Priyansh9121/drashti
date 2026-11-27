@@ -1,10 +1,11 @@
 import './help.css';
-import { useLayoutEffect } from 'react';
+import { useEffect, useLayoutEffect } from 'react';
 import type { ReactNode } from 'react';
 import { useMode } from '../operator/mode-store';
 import { cx } from '../ui/cx';
 import { Tooltip } from '../ui/Tooltip';
 import { connectKeyHints, toggleHelp, useHelp } from './help-store';
+import { connectHelpMenu } from './help-menu';
 
 /*
  * The status bar's Help switch (alpha.24, the owner's "non-congusted UI"; help-store.ts): where the bar's ? was, in Pro
@@ -55,6 +56,8 @@ export function HelpSwitch({
   const simple = useMode((s) => s.mode === 'simple');
   // Before the window's first drawing: a key never shows and then goes as it opens.
   useLayoutEffect(() => connectKeyHints(window), []);
+  // Help › Show Help in the menu bar, ticked as this switch is, both ways (alpha.24, helpmenu).
+  useEffect(() => connectHelpMenu(window.drashti.app), []);
   return (
     <>
       <Tooltip content={helpTip(platform, simple)}>

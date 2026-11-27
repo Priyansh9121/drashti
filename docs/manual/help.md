@@ -4,7 +4,7 @@
 
 ## The Help menu
 
-**What it is.** **Drashti Manual…** (this manual), **Guides…** (the operator's, the presenter's, the admin's and the setup day's guides), **Keyboard Shortcuts…**, **Report a Problem…**, on the access-list owner's computer **Automatic Error Reports…** (the admin's guide, section 30), **Save Diagnostics** (the log of today, yesterday, the last 7 days or one day), **Caption and Translation Models…** (the admin's offline models for captions and translation, Pro Mode) and **Check for Updates…**.
+**What it is.** **Drashti Manual…** (this manual), **Guides…** (the operator's, the presenter's, the admin's and the setup day's guides), **Show Help** (the status bar's **Help**, below, ticked while it is on), **Keyboard Shortcuts…**, **Report a Problem…**, on the access-list owner's computer **Automatic Error Reports…** (the admin's guide, section 30), **Save Diagnostics** (the log of today, yesterday, the last 7 days or one day), **Caption and Translation Models…** (the admin's offline models for captions and translation, Pro Mode) and **Check for Updates…**.
 
 **When you would use it.** Whenever you need help, or after a problem.
 
@@ -24,10 +24,10 @@
 
 **How:**
 
-1. Press **Help** in the status bar (in a narrow window, its round **?**). It stays pressed while it is on.
+1. Press **Help** in the status bar (in a narrow window, its round **?**), or choose **Help**, then **Show Help** in the menu bar. It stays pressed, and **Show Help** ticked, while it is on.
 2. Press the **?** on the panel's heading, and read its sentences under the heading.
 3. Press **Open the manual** to read more, or **Got it** to close them.
-4. Press **Help** again to put every **?** and key away.
+4. Press **Help** again (or choose **Show Help** again) to put every **?** and key away.
 
 ![What is this? opened on the Messages panel](../screenshots/what-is-this.png)
 
