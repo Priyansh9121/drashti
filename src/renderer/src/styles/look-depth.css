@@ -148,17 +148,14 @@
   /*
    * The panels' rounded corners, with no rounded clip (the release lead's review, S1: a rounded clip over a column's
    * scrolling parts may cost a layer drawn afresh at every frame): each column stays square and clips square, and a
-   * no-blur ring of the ground's own colour lies over its four corners, under everything the column holds (the
-   * re-review of 6e6d4fea2, SHOULD-1: over it, the ring would be a layer of its own wherever something composited lies
-   * under it, a playing video, a glide, a scroller). Each column is its own stacking context (isolate, above), so the
-   * ring is drawn over the column's own background and light, and all the column holds over the ring.
+   * no-blur ring of the ground's own colour lies over its four corners, above whatever reaches them.
    */
   :root[data-window-look='depth']
-    :is([data-testid='column-left'], [data-testid='column-middle'], [data-testid='column-right'])::before {
+    :is([data-testid='column-left'], [data-testid='column-middle'], [data-testid='column-right'])::after {
     content: '';
     position: absolute;
     inset: 0;
-    z-index: -1;
+    z-index: 100;
     border-radius: var(--radius-panel);
     box-shadow: 0 0 0 var(--radius-panel) var(--depth-ground);
     pointer-events: none;
@@ -166,12 +163,8 @@
   :root[data-window-look='depth'] :is([data-testid='column-middle'], [data-testid='column-right']) {
     overflow: clip;
   }
-  /*
-   * The open playlist, and a presentation's slides when none is open, lie on the middle's own panel (the same colour), so
-   * its light shows, and nothing of theirs covers its rounded corners (the ring lies under them: Windows run 45939169984,
-   * look-depth.spec's corners, the slide grid at all four).
-   */
-  :root[data-window-look='depth'] :is([data-testid='centre-playlist'], [data-testid='slide-grid']) {
+  /* The open playlist lies on the middle's own panel, so its light shows. */
+  :root[data-window-look='depth'] [data-testid='centre-playlist'] {
     background-color: transparent;
   }
 
@@ -190,29 +183,6 @@
     + [role='separator']:is(:focus-visible, :active)
     > span {
     background-color: var(--color-accent);
-  }
-
-  /*
-   * What lies at the left column's corners while it is up, over the ring under what the column holds (the release
-   * lead's review of copylook ee108ee50, MUST-1): an Undo line (the column's foot itself), and the Library sheet (over
-   * the playlists, from the column's top, down to the foot while nothing else is there). Their corners there are the
-   * panel's: a rounded background, no clip, so no layer; the sheet draws no line along the panel's top or foot.
-   */
-  :root[data-window-look='depth'] [data-testid='undo-removal'] {
-    border-bottom-left-radius: var(--radius-panel);
-    border-bottom-right-radius: var(--radius-panel);
-  }
-  :root[data-window-look='depth'] [data-testid='library-sheet'] {
-    border-top-left-radius: var(--radius-panel);
-    border-top-right-radius: var(--radius-panel);
-    border-top-color: transparent;
-  }
-  :root[data-window-look='depth']
-    [data-testid='column-left']:not(:has([data-testid='undo-removal'], [data-testid='undo-room']))
-    [data-testid='library-sheet'] {
-    border-bottom-left-radius: var(--radius-panel);
-    border-bottom-right-radius: var(--radius-panel);
-    border-bottom-color: transparent;
   }
 
   /* The left column: its parts apart by space and type, not lines; the Library button a filled pill. */

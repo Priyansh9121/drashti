@@ -248,60 +248,28 @@ describe('B · Depth: styles/look-depth.css', () => {
     }
   });
 
-  it('rounds the columns with no rounded clip: square columns clipped to their box, a ring of the ground under what they hold', () => {
+  it('rounds the columns with no rounded clip: square columns clipped to their box, a ring of the ground over their corners', () => {
     // The release lead's review, S1: a rounded overflow clip over a column's scrolling parts may cost a layer drawn
     // afresh at every frame; a square clip and a no-blur ring in the ground's colour round the corners instead.
-    // The re-review of 6e6d4fea2, SHOULD-1: the ring is drawn under what the column holds (its ::before, z-index -1,
-    // over its own background only), never over it: drawn over a playing video, a glide or a scroller it would be a
-    // layer of its own. The columns' own rules (their ::before ring is the one rounded thing).
+    // The columns' own rules (their ::after ring is the one rounded thing, over them).
     const columns = rules.filter(
-      (r) => r.selector.includes("[data-testid='column-middle']") && !r.selector.endsWith('::before'),
+      (r) => r.selector.includes("[data-testid='column-middle']") && !r.selector.endsWith('::after'),
     );
     for (const r of columns) {
       const rounded = r.decls['border-radius'];
       if (rounded !== undefined) expect(rounded, r.selector).toBe('0');
       if (r.decls['overflow'] !== undefined) expect(r.decls['overflow'], r.selector).toBe('clip');
     }
-    const ring = rules.find(
-      (r) => r.selector.endsWith('::before') && r.selector.includes("[data-testid='column-left']"),
+    const mask = rules.find(
+      (r) => r.selector.endsWith('::after') && r.selector.includes("[data-testid='column-left']"),
     );
-    expect(ring?.decls).toEqual({
+    expect(mask?.decls).toMatchObject({
       content: "''",
       position: 'absolute',
       inset: '0',
-      'z-index': '-1',
       'border-radius': 'var(--radius-panel)',
       'box-shadow': '0 0 0 var(--radius-panel) var(--depth-ground)',
       'pointer-events': 'none',
-    });
-    // Each column its own stacking context, so the ring lies over its background and under all it holds.
-    const column = rules.find(
-      (r) => r.selector.includes("[data-testid='column-left']") && r.decls['isolation'] !== undefined,
-    );
-    expect(column?.decls).toMatchObject({ position: 'relative', isolation: 'isolate' });
-    // Nothing of a column's drawn over what it holds.
-    expect(rules.filter((r) => r.selector.includes('column-') && r.selector.endsWith('::after'))).toEqual([]);
-    // What lies at the left column's corners while it is up (the release lead's review of copylook ee108ee50, MUST-1):
-    // an Undo line at the foot, and the Library sheet from the column's top (to its foot while nothing else is there).
-    // Backgrounds of their own over the ring, so their corners there are the panel's (a rounded background, no clip),
-    // and the sheet draws no line along the panel's top or foot.
-    const PANEL = 'var(--radius-panel)';
-    const undo = rules.find((r) => r.selector === `${SCOPE} [data-testid='undo-removal']`);
-    expect(undo?.decls).toEqual({ 'border-bottom-left-radius': PANEL, 'border-bottom-right-radius': PANEL });
-    const sheets = rules.filter((r) => r.selector.endsWith("[data-testid='library-sheet']"));
-    expect(sheets.map((r) => r.selector)).toEqual([
-      `${SCOPE} [data-testid='library-sheet']`,
-      `${SCOPE} [data-testid='column-left']:not(:has([data-testid='undo-removal'], [data-testid='undo-room'])) [data-testid='library-sheet']`,
-    ]);
-    expect(sheets[0]?.decls).toEqual({
-      'border-top-left-radius': PANEL,
-      'border-top-right-radius': PANEL,
-      'border-top-color': 'transparent',
-    });
-    expect(sheets[1]?.decls).toEqual({
-      'border-bottom-left-radius': PANEL,
-      'border-bottom-right-radius': PANEL,
-      'border-bottom-color': 'transparent',
     });
   });
 

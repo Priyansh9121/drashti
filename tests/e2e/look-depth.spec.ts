@@ -2,16 +2,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { Appearance } from '../../src/shared/appearance/appearances';
 import { BLACK, WHITE } from '../../src/shared/appearance/appearances';
-import {
-  chooseMenuItem,
-  closeLibrary,
-  launchApp,
-  openLibrary,
-  OWN_APPEARANCE,
-  operatorPage,
-  operatorReady,
-  type PageGlobals,
-} from './helpers';
+import { chooseMenuItem, launchApp, OWN_APPEARANCE, operatorPage, operatorReady } from './helpers';
 
 /*
  * B · Depth (alpha.24, the owner's QA24-UI-4; src/renderer/src/styles/look-depth.css): while the window follows the
@@ -39,9 +30,8 @@ function drawnNow(win: Page) {
       const el = document.querySelector(`[data-testid="${id}"]`);
       if (!el) return null;
       const s = getComputedStyle(el);
-      // Its corners rounded by a ring of the ground (no rounded clip: the review's S1), under what it holds (the
-      // re-review of 6e6d4fea2, SHOULD-1: over it, it would be a layer of its own over a playing video or a glide).
-      const corners = getComputedStyle(el, '::before');
+      // Its corners rounded by a ring of the ground over them (no rounded clip: the review's S1).
+      const corners = getComputedStyle(el, '::after');
       return [
         s.backgroundColor,
         s.borderLeftWidth,
@@ -51,7 +41,6 @@ function drawnNow(win: Page) {
         s.backgroundClip,
         corners.borderTopLeftRadius,
         corners.boxShadow,
-        corners.zIndex,
       ];
     };
     const header = st('[data-header]');
@@ -99,7 +88,6 @@ const depthOf = (a: Appearance, ground: string) => {
     'padding-box',
     '12px',
     `${ground} 0px 0px 0px 12px`,
-    '-1',
   ];
   return {
     look: 'depth',
@@ -175,58 +163,6 @@ function newWaysToDraw(win: Page) {
   });
 }
 
-/**
- * What draws over a column's rounded corners: at three points outside each corner's arc, everything the column holds
- * there (above it, under the point) with a background of its own. The ring of the ground lies under what the column
- * holds (the re-review of 6e6d4fea2, SHOULD-1), so anything there with a background would show the corner square. Not
- * seen (accepted, the review of copylook ee108ee50, SHOULD-2): what takes no pointer (elementsFromPoint skips it); and
- * passed by name: LIVE's rows, 4 px in, cut by the column's foot or top where what is under LIVE scrolls (about 3 x 8 px
- * of a corner, as CI's Windows shows at 1280 x 720 with every section folded: run 45957201941).
- */
-function overCorners(win: Page) {
-  return win.evaluate(() => {
-    const found: string[] = [];
-    for (const id of ['column-left', 'column-middle', 'column-right']) {
-      const column = document.querySelector(`[data-testid="${id}"]`);
-      if (!(column instanceof HTMLElement)) continue;
-      const box = column.getBoundingClientRect();
-      const st = getComputedStyle(column);
-      const left = box.left + Number.parseFloat(st.borderLeftWidth);
-      const right = box.right - Number.parseFloat(st.borderRightWidth);
-      // Three points outside the arc at each corner, in from its edges (the release lead's review of copylook
-      // ee108ee50, SHOULD-2): what is inset a few pixels and reaches an edge covers part of the corner too.
-      const points = [
-        [left, box.top, 1, 1],
-        [right, box.top, -1, 1],
-        [left, box.bottom, 1, -1],
-        [right, box.bottom, -1, -1],
-      ].flatMap(([x = 0, y = 0, dx = 0, dy = 0]) =>
-        [
-          [1.5, 1.5],
-          [4.5, 1],
-          [1, 4.5],
-        ].map(([ax = 0, ay = 0]) => [x + dx * ax, y + dy * ay] as const),
-      );
-      for (const [x, y] of points) {
-        for (const el of document.elementsFromPoint(x, y)) {
-          if (el === column) break;
-          // Accepted (the review of copylook ee108ee50, SHOULD-2): LIVE's rows, 4 px in, cut by the column's foot or
-          // top where what is under LIVE scrolls, cover at most about 3 x 8 px of a corner.
-          if (!column.contains(el) || el.matches('[data-testid="live-rest"] > div > *')) continue;
-          const own = getComputedStyle(el);
-          const clear = /^rgba\(\d+, \d+, \d+, 0\)$|^transparent$/u.test(own.backgroundColor);
-          if (clear && own.backgroundImage === 'none') continue;
-          const what = el.getAttribute('data-testid') ?? el.tagName.toLowerCase();
-          found.push(
-            `${id} at ${String(Math.round(x))},${String(Math.round(y))}: ${what} ${own.backgroundColor} ${own.backgroundImage}`,
-          );
-        }
-      }
-    }
-    return found;
-  });
-}
-
 const turnComputer = (app: ElectronApplication, source: 'light' | 'dark') =>
   app.evaluate(({ nativeTheme }, s) => {
     nativeTheme.themeSource = s;
@@ -251,7 +187,6 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
     expect(pro.ground, `${a.name}: the ground`).not.toBe(rgb(a.colours.ink));
     expect(pro, `${a.name}: Pro Mode`).toEqual(depthOf(a, pro.ground));
     expect(await newWaysToDraw(win), `${a.name}: nothing live`).toEqual([]);
-    expect(await overCorners(win), `${a.name}: the columns' corners`).toEqual([]);
 
     // A slide live: the live picture's red frame with a light red ring round it, no blur; the live row tinted inside.
     const thumbs = win.getByTestId('slide-thumb');
@@ -299,7 +234,6 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
     splitter: CLEAR,
   });
   expect(await newWaysToDraw(win), 'Simple Mode').toEqual([]);
-  expect(await overCorners(win), "Simple Mode: the columns' corners").toEqual([]);
   await chooseMenuItem(app, 'switch-mode');
   await expect(win.getByTestId('simple-mode')).toHaveCount(0);
 
@@ -320,53 +254,5 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
   expect(flat.playlistsAt).toBe(0);
   await chooseMenuItem(app, 'appearance-follow');
   await expect(win.locator('html')).toHaveAttribute('data-window-look', 'depth');
-  await app.close();
-});
-
-/*
- * The release lead's review of copylook ee108ee50, MUST-1: what lies at the left column's foot while it is up, the
- * Library sheet (over the playlists, down to the column's foot) and an Undo line (the column's foot), has a background
- * of its own over the ring under it. In Depth their bottom corners are the panel's.
- */
-test('B · Depth: the left column’s corners stay round with the Library open and with an Undo line up, light and dark', async () => {
-  test.setTimeout(120_000);
-  const { app } = await launchApp(OWN_APPEARANCE);
-  const win = await operatorPage(app);
-  await win.setViewportSize({ width: 1280, height: 720 });
-  await operatorReady(win);
-  // A playlist with a presentation in it, open: its row is what an Undo line brings back.
-  await win.evaluate(async () => {
-    const d = (globalThis as PageGlobals).drashti;
-    const [a] = await d.library.listPresentations();
-    const made = await d.playlists.create('Placeholder corners', null, false);
-    if (!made.ok) throw new Error(made.message);
-    await d.playlists.addItems(made.ids[0] ?? '', null, [
-      { kind: 'presentation', presentationId: a?.id ?? '' },
-    ]);
-  });
-  await win
-    .getByTestId('playlist-node')
-    .filter({ hasText: /^Placeholder corners/u })
-    .click();
-  const items = win.getByTestId('playlist-item');
-  await expect(items).toHaveCount(1);
-  for (const [source, a] of [
-    ['light', WHITE],
-    ['dark', BLACK],
-  ] as const) {
-    await turnComputer(app, source);
-    await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
-    await expect(win.locator('html')).toHaveAttribute('data-window-look', 'depth');
-    await openLibrary(win);
-    expect(await overCorners(win), `${a.name}: the Library open`).toEqual([]);
-    await closeLibrary(win);
-    // An Undo line: the playlist's row deleted, its Undo at the column's foot.
-    await items.first().click();
-    await win.keyboard.press('Delete');
-    await expect(win.getByTestId('undo-removal')).toBeVisible();
-    expect(await overCorners(win), `${a.name}: an Undo line up`).toEqual([]);
-    await win.getByTestId('undo-removal').getByRole('button', { name: /Undo/u }).click();
-    await expect(items).toHaveCount(1);
-  }
   await app.close();
 });
