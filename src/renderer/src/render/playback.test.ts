@@ -10,6 +10,7 @@ import {
 import { holdClock, pauseClock } from './clock';
 import { RESEEK_STEP_S } from './cue-presentation';
 import { catchUpLeftMs, type PlaybackCatchUp, startPlayback } from './playback';
+import { GO_HOLD_PAGE } from './schedule-go-check';
 
 /*
  * A file played once with an end point stops there (Session 15): within two
@@ -403,6 +404,89 @@ describe('a file played once to an end point', () => {
       vi.advanceTimersByTime(2);
       expect(v.playbackRate).toBe(1);
       expect(v.seeks).toBe(seeks);
+    } finally {
+      stop();
+    }
+  });
+
+  // goearly (a24-bgblack-crossfade303.md): on CI's Mac a page busy at Go set its cued picture's rate 22-138 ms late, its
+  // Go check waiting behind the task in hand. A visible page's cue Go is checked 25 ms early too, and that check holds
+  // the page until Go and starts it there: nothing begun in those last 25 ms comes before the start.
+  it("starts a visible page's cued Go in a check asked 25 ms early, held to the moment", () => {
+    const tasks: { run: () => void; options: { delay: number; priority: string; signal: AbortSignal } }[] =
+      [];
+    vi.stubGlobal('scheduler', {
+      postTask: (run: () => void, options: { delay: number; priority: string; signal: AbortSignal }) => {
+        tasks.push({ run, options });
+        return Promise.resolve();
+      },
+    });
+    vi.stubGlobal('document', { visibilityState: 'visible' });
+    const v = new FakeMedia(8);
+    const timing = { loop: false, seek: { at: Date.now(), toMs: 1000, paused: true } };
+    const stop = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'cued',
+      startedAt: Date.now(),
+      prepareScheduledStart: true,
+      timing: () => timing,
+    });
+    try {
+      vi.advanceTimersByTime(20);
+      const at = Date.now() + 120;
+      timing.seek = { at, toMs: 1000, paused: false };
+      stop.resync();
+      const early = tasks.find((task) => task.options.delay === 95);
+      expect(early, 'a check asked 25 ms before Go').toBeDefined();
+      expect(early?.options.priority).toBe('user-blocking');
+      vi.advanceTimersByTime(95);
+      expect(v.playbackRate, 'not before Go').toBe(0);
+      // The page's clock runs on while that check holds the page (a ms at each look, here).
+      const look = () => {
+        vi.setSystemTime(Date.now() + 1);
+        return Date.now();
+      };
+      vi.spyOn(GO_HOLD_PAGE, 'now').mockImplementation(look);
+      vi.spyOn(GO_HOLD_PAGE, 'realNow').mockImplementation(look);
+      early?.run();
+      expect(Date.now() - at, 'held to Go').toBeGreaterThanOrEqual(0);
+      expect(Date.now() - at, 'and no longer').toBeLessThanOrEqual(1);
+      expect(v.playbackRate, 'started at Go, in that check').toBe(1);
+    } finally {
+      vi.restoreAllMocks();
+      // The same Go moment comes again in the next test (each begins at the same set time): never left marked as held.
+      GO_HOLD_PAGE.lastGo = null;
+      stop();
+    }
+  });
+
+  // a24-review-goearly MUST-1: only a cue's Go is checked early. LIVE's ordinary later start (a time-bar start, asked to
+  // go first but no cue: prioritizeScheduledStart alone) keeps its one check at its moment, even on a visible page.
+  it("asks a visible page's later start that is no cue's Go (LIVE's own, put first) for its one check at its moment, none early", () => {
+    const tasks: { run: () => void; options: { delay: number; priority: string; signal: AbortSignal } }[] =
+      [];
+    vi.stubGlobal('scheduler', {
+      postTask: (run: () => void, options: { delay: number; priority: string; signal: AbortSignal }) => {
+        tasks.push({ run, options });
+        return Promise.resolve();
+      },
+    });
+    vi.stubGlobal('document', { visibilityState: 'visible' });
+    const v = new FakeMedia(8);
+    const timing = { loop: false, seek: { at: Date.now(), toMs: 1000, paused: true } };
+    const stop = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'later',
+      startedAt: Date.now(),
+      prioritizeScheduledStart: true,
+      timing: () => timing,
+    });
+    try {
+      vi.advanceTimersByTime(20);
+      timing.seek = { at: Date.now() + 120, toMs: 1000, paused: false };
+      stop.resync();
+      expect(tasks, 'one check, at its moment').toHaveLength(1);
+      expect(tasks[0]?.options.delay).toBe(120);
+      expect(tasks[0]?.options.priority).toBe('user-blocking');
+      expect(GO_HOLD_PAGE.lastGo, 'never held').toBeNull();
     } finally {
       stop();
     }

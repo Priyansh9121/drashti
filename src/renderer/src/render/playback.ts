@@ -213,6 +213,9 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
         // A cue's Go on every page (a24-cuelive-mac5): an ordinary timer waits behind work queued before it is due,
         // a rendering step most of all (on CI's Mac the stream's ran 62 ms after Go and started 87 ms late).
         options.prioritizeScheduledStart === true || options.prepareScheduledStart === true,
+        // A cue's Go alone (goearly): checked 25 ms early as well on a visible page, which is held until Go and starts
+        // it there, so work begun just before Go waits behind the start (render/schedule-go-check.ts).
+        options.prepareScheduledStart === true ? at : undefined,
       );
       starting = { at, cancel };
     }
