@@ -144,6 +144,29 @@ export function cameraAllowed(
   return right && isOwnPage(url);
 }
 
+/** A permission belongs to this app document's main frame, never an embedded or foreign page. */
+export function permissionFrameAllowed(
+  contents: WebContents | null,
+  url: string,
+  mainFrame: boolean,
+  isOwnPage: (url: string) => boolean = ownPage,
+): boolean {
+  if (contents === null || !mainFrame || !isOwnPage(url)) return false;
+  const current = contents.getURL();
+  if (!isOwnPage(current)) return false;
+  try {
+    const asking = new URL(url);
+    const loaded = new URL(current);
+    return (
+      asking.protocol === loaded.protocol &&
+      asking.host === loaded.host &&
+      asking.pathname === loaded.pathname
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Permissions: every request (camera, microphone, notifications, ...) is
  * refused on every page, and every check fails, except the one the audio
@@ -156,24 +179,26 @@ export function cameraAllowed(
 export function applySessionSecurity(session: Session, rules: PermissionRules = {}): void {
   const own = rules.isOwnPage ?? ownPage;
   session.setPermissionRequestHandler((contents, permission, callback, details) => {
-    const url = details.requestingUrl || contents.getURL();
+    const url = details.requestingUrl;
     // MIDI for the operator window's own page, never SysEx; a screen's picture to a page that may capture it
     // now (Session 48); a camera alone to a screen's page (Session 50); nothing else is ever asked for and given.
     const media = 'mediaTypes' in details ? (details.mediaTypes ?? []) : null;
     const allowed =
-      (permission === 'midi' && (rules.isOperator?.(contents) ?? false) && isOperatorPage(url)) ||
-      screenPictureAllowed(permission, media, rules.mayCapture?.(contents) ?? false) ||
-      (cameraAllowed(
-        {
-          permission,
-          mediaTypes: media,
-          page: rules.cameraPage?.(contents) ?? null,
-          url,
-          mainFrame: details.isMainFrame,
-        },
-        own,
-      ) &&
-        (rules.cameraGranted?.() ?? true));
+      permissionFrameAllowed(contents, url, details.isMainFrame, own) &&
+      ((permission === 'midi' && (rules.isOperator?.(contents) ?? false) && isOperatorPage(url)) ||
+        screenPictureAllowed(permission, media, rules.mayCapture?.(contents) ?? false) ||
+        (cameraAllowed(
+          {
+            permission,
+            mediaTypes: media,
+            page: rules.cameraPage?.(contents) ?? null,
+            url,
+            mainFrame: details.isMainFrame,
+          },
+          own,
+        ) &&
+          (rules.cameraGranted?.() ?? true)));
+
     rules.log?.(`Permission ${allowed ? 'given' : 'refused'}: ${permission} for ${url}`);
     callback(allowed);
   });
@@ -182,17 +207,18 @@ export function applySessionSecurity(session: Session, rules: PermissionRules = 
     const audioPlayer = rules.isAudioPlayer?.(contents) ?? false;
     const operator = rules.isOperator?.(contents) ?? false;
     const allowed =
-      permissionCheckAllowed(permission, audioPlayer, url, operator) ||
-      cameraAllowed(
-        {
-          permission,
-          mediaTypes: details.mediaType === undefined ? null : [details.mediaType],
-          page: rules.cameraPage?.(contents) ?? null,
-          url,
-          mainFrame: details.isMainFrame,
-        },
-        own,
-      );
+      permissionFrameAllowed(contents, url, details.isMainFrame, own) &&
+      (permissionCheckAllowed(permission, audioPlayer, url, operator) ||
+        cameraAllowed(
+          {
+            permission,
+            mediaTypes: details.mediaType === undefined ? null : [details.mediaType],
+            page: rules.cameraPage?.(contents) ?? null,
+            url,
+            mainFrame: details.isMainFrame,
+          },
+          own,
+        ));
     rules.log?.(`Permission check ${allowed ? 'passed' : 'failed'}: ${permission} for ${url}`);
     return allowed;
   });
@@ -228,24 +254,26 @@ export function allowHangStacks(
 }
 
 /**
- * No pop-ups, no <webview>, and no navigating away from our own pages: not by a link, nor by a redirect,
- * nor in a frame (Sessions 31–36, SEC-15).
+ * Only Main changes app documents. A renderer may reload its exact current main page for window recovery;
+ * links to another document, redirects, subframe navigation, popups and webviews have no app use.
+ * Same-document anchors do not emit these events.
  */
 export function secureWebContents(
   contents: WebContents,
   isOwnPage: (url: string) => boolean = ownPage,
 ): void {
+  const recoveryReload = (url: string): boolean => isOwnPage(url) && url === contents.getURL();
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));
   contents.on('will-attach-webview', (event) => {
     event.preventDefault();
   });
   contents.on('will-navigate', (event) => {
-    if (!isOwnPage(event.url)) event.preventDefault();
+    if (!recoveryReload(event.url)) event.preventDefault();
   });
   contents.on('will-redirect', (event) => {
-    if (!isOwnPage(event.url)) event.preventDefault();
+    event.preventDefault();
   });
   contents.on('will-frame-navigate', (event) => {
-    if (!isOwnPage(event.url)) event.preventDefault();
+    if (!event.isMainFrame || !recoveryReload(event.url)) event.preventDefault();
   });
 }
