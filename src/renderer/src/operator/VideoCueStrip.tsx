@@ -3,6 +3,7 @@ import { videoCueReady } from '../../../shared/video-cue';
 import { addFileMenuItems, type FileTarget } from '../files/file-menu';
 import { useEngine } from '../engine/engine-store';
 import { Button } from '../ui/Button';
+import { cx } from '../ui/cx';
 import { dispatch } from './actions';
 import { useMode } from './mode-store';
 
@@ -20,7 +21,7 @@ function cueMenu(target: FileTarget) {
 }
 
 /** One first-frame preview, copied from LIVE's already loaded element, never another decoder. */
-function CuedFrame({ id, ready }: { id: string; ready: boolean }) {
+function CuedFrame({ id, ready, small }: { id: string; ready: boolean; small: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     if (!ready) return;
@@ -55,7 +56,10 @@ function CuedFrame({ id, ready }: { id: string; ready: boolean }) {
       width={128}
       height={72}
       aria-label="Cued first frame"
-      className="h-10 w-18 shrink-0 rounded-sm bg-black object-contain"
+      className={cx(
+        'h-10 w-18 shrink-0 rounded-sm bg-black object-contain',
+        small && '@max-[28rem]/cue:h-7 @max-[28rem]/cue:w-12',
+      )}
     />
   );
 }
@@ -66,39 +70,60 @@ export function VideoCueStrip() {
   const mode = useMode((s) => s.mode);
   if (!cue || mode !== 'pro') return null;
   const ready = videoCueReady(cue);
+  const said = `${cue.automatic ? 'Next video · Crossfade' : 'Cued video'} · ${cue.label}`;
+  // One row in a narrow column (alpha.24, lead 2's liverows; a25 list item 46, CI's 1024 × 645): under 28 rem the first
+  // frame is drawn smaller and the words go on one line (the name cut short, its state whole), so the card is some
+  // 16 px shorter and its Go higher, nearer Next. An error keeps its own line.
+  const row = !cue.error;
   return (
-    <div
-      data-testid="video-cue"
-      className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-panel-2 p-2 text-xs"
-    >
-      <CuedFrame id={cue.id} ready={ready} />
-      <div className="min-w-0 flex-1" role="status">
-        <div className="font-semibold">
-          {cue.automatic ? 'Next video · Crossfade' : 'Cued video'} · {cue.label}
+    <div className="@container/cue">
+      <div
+        data-testid="video-cue"
+        className={cx(
+          'flex flex-wrap items-center gap-2 rounded-md border border-line bg-panel-2 p-2 text-xs',
+          row && '@max-[28rem]/cue:flex-nowrap @max-[28rem]/cue:p-1.5',
+        )}
+      >
+        <CuedFrame id={cue.id} ready={ready} small={row} />
+        <div
+          className={cx(
+            'min-w-0 flex-1',
+            row && '@max-[28rem]/cue:flex @max-[28rem]/cue:items-baseline @max-[28rem]/cue:gap-1.5',
+          )}
+          role="status"
+        >
+          <div
+            className={cx('font-semibold', row && '@max-[28rem]/cue:min-w-0 @max-[28rem]/cue:truncate')}
+            title={said}
+          >
+            {said}
+          </div>
+          <div
+            className={cx(cue.error ? 'text-warning-fg' : 'text-muted', row && '@max-[28rem]/cue:shrink-0')}
+          >
+            {cue.error ?? (ready ? 'Cue ready' : 'Preparing first frame…')}
+          </div>
         </div>
-        <div className={cue.error ? 'text-warning-fg' : 'text-muted'}>
-          {cue.error ?? (ready ? 'Cue ready' : 'Preparing first frame…')}
-        </div>
+        <Button
+          size="sm"
+          variant="primary"
+          aria-label="Go cued video"
+          // A show control (alpha.24, the bug hunt's S3-1): it changes the screens at once and never moves.
+          instant
+          disabled={!ready}
+          onClick={() => void dispatch({ type: 'goVideoCue', cueId: cue.id })}
+        >
+          Go
+        </Button>
+        <Button
+          size="sm"
+          aria-label="Cancel video cue"
+          instant
+          onClick={() => void dispatch({ type: 'cancelVideoCue' })}
+        >
+          Cancel
+        </Button>
       </div>
-      <Button
-        size="sm"
-        variant="primary"
-        aria-label="Go cued video"
-        // A show control (alpha.24, the bug hunt's S3-1): it changes the screens at once and never moves.
-        instant
-        disabled={!ready}
-        onClick={() => void dispatch({ type: 'goVideoCue', cueId: cue.id })}
-      >
-        Go
-      </Button>
-      <Button
-        size="sm"
-        aria-label="Cancel video cue"
-        instant
-        onClick={() => void dispatch({ type: 'cancelVideoCue' })}
-      >
-        Cancel
-      </Button>
     </div>
   );
 }

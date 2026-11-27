@@ -69,46 +69,14 @@ function useLowerThirdShort(state: EngineState | null): { shown: number; total: 
 export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   // The show, or the practice show while it is on (Session 26g: drawn here, never on a screen).
   const state = useShowState();
-  const lowerThirdShort = useLowerThirdShort(state);
-  // Fonts the live slide names that this computer does not have (Sessions 31–36, I18N-1).
-  const live = state?.layers.slide?.slide;
-  const missingFonts = live
-    ? [
-        ...new Set(
-          live.elements.flatMap((e) => (e.kind === 'text' && e.text.trim() !== '' ? missingFontsOf(e) : [])),
-        ),
-      ]
-    : [];
-  // The live slide's background cue named a video input this computer had none of (Session 51): said while Media
-  // still has none of that name, never after one is added or named so (the slide's word stays until its cues run
-  // again), and not before the window has read the list.
-  const inputMissing = state?.layers.slide?.inputMissing ?? null;
-  const stillMissing = useInputNamed(inputMissing) === null && inputMissing !== null;
-  // Its background cue's file was missing as it went up (Session 52), named as the library names it: said while the
-  // slide is up, until its cues run again. Its sound cue's file the same (Session 53).
-  const fileMissing = state?.layers.slide?.fileMissing ?? null;
-  const soundMissing = state?.layers.slide?.soundMissing ?? null;
-  // The chosen wallpaper's pictures gone from the library (QA24-WALLBLACK-1): why LIVE is black with nothing up (or
-  // under the Wallpaper), said while it is (the show's, never practice's).
-  const chosenWallpaper = useWallpapers(
-    (s) => s.view?.wallpapers.find((w) => w.id === s.view?.chosenId) ?? null,
-  );
   const rev = useShowRev();
   const practising = usePractice((s) => s.on);
-  // The videos up that one of this computer's screens could not play (alpha.23, a22-halldrop): LIVE shows them, the
-  // screens named do not, so it says so while each stays up (the show's, never practice's).
-  const notOnList = useNotOnScreens((s) => s.list);
-  const notOn = practising ? [] : notOnScreensNow(notOnList, state);
-  const wallpaperGone = !practising && state !== null ? wallpaperMissingLive(state, chosenWallpaper) : null;
   const help = useWhatIsThis('live');
   // As the first audience group shows it in the live Look (its layers, languages and slide style).
   const audience = useFirstGroupLook('audience');
   const translationGroupId = useScreens(
     (value) => value.snapshot?.groups.find((group) => group.role === 'audience')?.id,
   );
-  const shownAs = audience?.look.languages
-    ? { name: audience.name, languages: audience.look.languages }
-    : null;
   const audienceOutputId = useScreens(
     (value) => value.snapshot?.groups.find((group) => group.role === 'audience')?.screens[0]?.id,
   );
@@ -219,11 +187,9 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
         {help.button}
       </div>
       {help.card && <div className="-mx-3">{help.card}</div>}
-      {/* The cued video's card and the live zoom's buttons are under Next, Back and the time bars since alpha.24 (lead
-          2's cuestill: operator/App.tsx, simple/SimpleApp.tsx, practice/PracticeShow.tsx), so they never move them. */}
-      {state?.repeat && <Repeating run={state.repeat} />}
-      {state?.layers.slide?.timer && <TimerAlone shown={state.layers.slide.timer} />}
-      {state?.layers.timer && <AudienceTimerUp state={state} />}
+      {/* LIVE's own rows (Repeat Slides, a timer alone, the audience's timer) and lines are under the show controls
+          since alpha.24 (lead 2's liverows: LiveLines below), as the cued video's card and the live zoom's buttons are
+          (cuestill), so the picture, Back, Next and Oops never move as one comes or goes. */}
       <div
         className={cx(
           // The live border and its red underglow come and go in the same frame as the screens: no fade.
@@ -247,10 +213,64 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
             warm: the warm-up's last step there draws nothing but black). */}
         {warming && !chipless && <PanelWarmUp />}
       </div>
-      <PreparedTranslationStatus state={state} />
-      <PipLiveStrip />
       {/* The time bar for what plays (Session 54), where a page asks for it under the picture. */}
       {bars && <PlayingBars />}
+    </section>
+  );
+}
+
+/**
+ * LIVE's own rows and lines (alpha.24, lead 2's liverows; a25 list item 27): Repeat Slides going round, a timer alone,
+ * the audience's timer, the prepared translation's word, the picture-in-picture strip, and the lines that say what the
+ * screens do not show as LIVE does (a font, a video input or a file missing, "Starting on …", what a screen could not
+ * play, the languages, the lower third's lines) and the slide's time left. Under the show controls (operator/App.tsx,
+ * simple/SimpleApp.tsx, practice/PracticeShow.tsx): until alpha.24 the rows came above LIVE's picture and the rest
+ * between it and Next and Back, so each moved the picture, Back, Next and Oops (and the cued video's Go) as it came
+ * and went. Gone while it has none, so it keeps no room at rest.
+ */
+export function LiveLines() {
+  const state = useShowState();
+  const lowerThirdShort = useLowerThirdShort(state);
+  const live = state?.layers.slide?.slide;
+  // Fonts the live slide names that this computer does not have (Sessions 31–36, I18N-1).
+  const missingFonts = live
+    ? [
+        ...new Set(
+          live.elements.flatMap((e) => (e.kind === 'text' && e.text.trim() !== '' ? missingFontsOf(e) : [])),
+        ),
+      ]
+    : [];
+  // The live slide's background cue named a video input this computer had none of (Session 51): said while Media
+  // still has none of that name, never after one is added or named so (the slide's word stays until its cues run
+  // again), and not before the window has read the list.
+  const inputMissing = state?.layers.slide?.inputMissing ?? null;
+  const stillMissing = useInputNamed(inputMissing) === null && inputMissing !== null;
+  // Its background cue's file was missing as it went up (Session 52), named as the library names it: said while the
+  // slide is up, until its cues run again. Its sound cue's file the same (Session 53).
+  const fileMissing = state?.layers.slide?.fileMissing ?? null;
+  const soundMissing = state?.layers.slide?.soundMissing ?? null;
+  // The chosen wallpaper's pictures gone from the library (QA24-WALLBLACK-1): why LIVE is black with nothing up (or
+  // under the Wallpaper), said while it is (the show's, never practice's).
+  const chosenWallpaper = useWallpapers(
+    (s) => s.view?.wallpapers.find((w) => w.id === s.view?.chosenId) ?? null,
+  );
+  const practising = usePractice((s) => s.on);
+  // The videos up that one of this computer's screens could not play (alpha.23, a22-halldrop): LIVE shows them, the
+  // screens named do not, so it says so while each stays up (the show's, never practice's).
+  const notOnList = useNotOnScreens((s) => s.list);
+  const notOn = practising ? [] : notOnScreensNow(notOnList, state);
+  const wallpaperGone = !practising && state !== null ? wallpaperMissingLive(state, chosenWallpaper) : null;
+  const audience = useFirstGroupLook('audience');
+  const shownAs = audience?.look.languages
+    ? { name: audience.name, languages: audience.look.languages }
+    : null;
+  return (
+    <div className="space-y-2 px-3 pt-2 empty:hidden" data-testid="live-lines">
+      {state?.repeat && <Repeating run={state.repeat} />}
+      {state?.layers.slide?.timer && <TimerAlone shown={state.layers.slide.timer} />}
+      {state?.layers.timer && <AudienceTimerUp state={state} />}
+      <PreparedTranslationStatus state={state} />
+      <PipLiveStrip />
       {shownAs && state?.layers.slide?.slide.kirtan && (
         <p className="text-xs text-muted" data-testid="preview-languages">
           As “{shownAs.name}” shows it: {shownAs.languages.map((l) => LANG_NAMES[l]).join(', ')}
@@ -316,7 +336,7 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
         </p>
       )}
       {state?.autoAdvance && <TimeLeft count={state.autoAdvance} />}
-    </section>
+    </div>
   );
 }
 

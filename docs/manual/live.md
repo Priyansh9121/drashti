@@ -12,7 +12,7 @@ The right column starts with **LIVE**: what the hall sees this moment. Under it 
 
 1. Look at **LIVE** after you put something up: it shows what the hall sees.
 2. Read the line above it: what is live, and which slide ("slide 2 of 5").
-3. A notice under it (such as **File missing**) says what to tell whoever looks after Drashti afterwards.
+3. A notice under it, below **Back**, **Next** and the time bars (such as **File missing**), says what to tell whoever looks after Drashti afterwards.
 
 ![The operator window: LIVE at the top of the right column](../screenshots/operator-1280x720.png)
 
