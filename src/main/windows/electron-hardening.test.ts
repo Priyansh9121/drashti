@@ -196,7 +196,7 @@ describe('E-02: renderers cannot change the document attached to a privileged We
         getURL: () => `${ROOT}gallery.html`,
         setWindowOpenHandler: vi.fn(),
       });
-      secureWebContents(contents as unknown as WebContents);
+      secureWebContents(contents as unknown as WebContents, own);
       for (const url of [
         `${ROOT}audio.html`,
         `${ROOT}output.html`,
@@ -208,7 +208,24 @@ describe('E-02: renderers cannot change the document attached to a privileged We
         'javascript:void(0)',
       ]) {
         const preventDefault = vi.fn();
-        contents.emit(eventName, { url, preventDefault });
+        contents.emit(eventName, { url, isMainFrame: true, preventDefault });
+        expect(preventDefault, url).toHaveBeenCalledOnce();
+      }
+    },
+  );
+
+  it.each(['will-redirect', 'will-frame-navigate'])(
+    'refuses child-frame %s even when it names the current app page',
+    (eventName) => {
+      const current = `${ROOT}gallery.html`;
+      const contents = Object.assign(new EventEmitter(), {
+        getURL: () => current,
+        setWindowOpenHandler: vi.fn(),
+      });
+      secureWebContents(contents as unknown as WebContents, own);
+      for (const url of [current, `${ROOT}audio.html`, `${ROOT}output.html`, `${ROOT}index.html`]) {
+        const preventDefault = vi.fn();
+        contents.emit(eventName, { url, isMainFrame: false, preventDefault });
         expect(preventDefault, url).toHaveBeenCalledOnce();
       }
     },
