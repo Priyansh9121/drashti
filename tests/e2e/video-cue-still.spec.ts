@@ -383,9 +383,18 @@ async function tabFromOops(win: Page): Promise<{ stops: string[]; onlyBarsBefore
   return { stops, onlyBarsBeforeGo };
 }
 
+/** Whether every video of a background showing (`slot`: background-slots.ts slotKey) on the page has drawn its first frame. */
+const firstFrameDrawn = (page: Page, slot: string) =>
+  page.evaluate((slot) => {
+    const videos = [...document.querySelectorAll('video[data-bg-slot]')].filter(
+      (v) => v.getAttribute('data-bg-slot') === slot,
+    );
+    return videos.length > 0 && videos.every((v) => v.getAttribute('data-state') === 'ready');
+  }, slot);
+
 test('Pro Mode: the cued video’s Go and Cancel are the keyboard’s next stops after Oops, and Enter on each does what it says', async () => {
   test.setTimeout(180_000);
-  const { app, win, ids } = await setupVideoCue();
+  const { app, win, hall, stream, ids } = await setupVideoCue();
   try {
     const first = ids[1] ?? '';
     const second = ids[0] ?? '';
@@ -421,6 +430,21 @@ test('Pro Mode: the cued video’s Go and Cancel are the keyboard’s next stops
     });
     expect(looping.ok).toBe(true);
     await expect(win.locator('[data-testid="time-bar-row"][data-playing="background"]')).toBeVisible();
+    // a25 item 47: a loop put up at once after Go leaves the next cue never ready; this wait stays until that is fixed.
+    // The looping showing's first frame drawn on every picture page (its background slot ready there) before the cue.
+    const loop = (await snapshot(win)).layers.background;
+    if (loop?.kind !== 'media' || loop.mediaId !== first) throw new Error('no looping background');
+    const slot = `${first}@${String(loop.startedAt)}`;
+    for (const [name, page] of [
+      ['LIVE', win],
+      ['the hall', hall],
+      ['the stream', stream],
+    ] as const)
+      await expect
+        .poll(() => firstFrameDrawn(page, slot), {
+          message: `${name}: the looping video's first frame drawn`,
+        })
+        .toBe(true);
     expect((await dispatch(win, { type: 'cueVideo', mediaId: second })).ok).toBe(true);
     await cueReady(win);
     await expect(oops).toBeEnabled();
