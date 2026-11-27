@@ -9,7 +9,7 @@ import { openLibrary, selectPresentation, useLibrary } from '../library/library-
 import { playOrder } from '../../../shared/order';
 import type { OperatorAction } from '../../../shared/keymap';
 import { SIMPLE_IDLE } from '../../../shared/keymap';
-import { showKeysSheet } from './KeysSheet';
+import { showKeysSheet } from './keys-sheet-store';
 // logo-store uses dispatch from here; both only call each other when an action runs.
 import { toggleSwitch, turnOnIfOff } from './screen-switches-store';
 

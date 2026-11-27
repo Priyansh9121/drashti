@@ -1,5 +1,4 @@
 import { Fragment, useEffect, useId } from 'react';
-import { create } from 'zustand';
 import type { KeyBinding } from '../../../shared/keymap';
 import {
   fKeyHint,
@@ -16,6 +15,9 @@ import { Dialog } from '../ui/Dialog';
 import { Kbd } from '../ui/Kbd';
 import { Toggle } from '../ui/Toggle';
 import { useKeymapNow, useSingleKeys } from './single-keys-store';
+import { useKeysSheet } from './keys-sheet-store';
+
+export { showKeysSheet, useKeysSheet } from './keys-sheet-store';
 
 /*
  * The keys sheet (Session 25): Help > Keyboard Shortcuts…, or ? when no field has the focus. Built from KEYMAP and
@@ -29,12 +31,6 @@ import { useKeymapNow, useSingleKeys } from './single-keys-store';
 
 /** The hold's row, short enough for one line beside its key at 1280 × 720 (keys-sheet.spec's names on one line). */
 const HOLD_LABEL = 'See the buttons’ keys while you hold it';
-
-export const useKeysSheet = create<{ open: boolean }>(() => ({ open: false }));
-
-export function showKeysSheet(): void {
-  useKeysSheet.setState({ open: true });
-}
 
 const close = () => {
   useKeysSheet.setState({ open: false });
