@@ -296,6 +296,21 @@ describe('the operator focus keeper', () => {
     expect(page.activeElement).toBe(nestedOpener);
   });
 
+  it('keeps the opener’s region through several controls in a portal without its own landmark', () => {
+    const main = page.node('main');
+    const opener = page.node('button', {}, main);
+    keeper.installFocusKeeper();
+    opener.focus();
+    const card = page.node('div', { role: 'note' });
+    const manual = page.node('button', {}, card);
+    const gotIt = page.node('button', {}, card);
+    manual.focus();
+    gotIt.focus();
+    card.remove();
+    page.settle();
+    expect(page.activeElement).toBe(main);
+  });
+
   it('never recovers to the page behind an open modal', () => {
     const main = page.node('main');
     const opener = page.node('button', {}, main);
