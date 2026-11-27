@@ -141,7 +141,8 @@ function PresentationRows({ doc, platform }: { doc: PresentationDoc; platform: s
   });
   const order = useMemo(() => playOrder(doc, doc.selectedArrangementId), [doc]);
   const rows = useMemo(() => presentationRows(doc, doc.selectedArrangementId), [doc]);
-  const help = useWhatIsThis('slides');
+  // Its ?'s room held while Help is off (alpha.24, middlehelp): Help coming or going moves nothing in the heading.
+  const help = useWhatIsThis('slides', { keepRoom: true });
   // New Timer Slide… (Session 50): after which slide, while its dialog is open.
   const [timerSlide, setTimerSlide] = useState<{ slideId: string; position: number } | null>(null);
   const editable = !doc.passage && !doc.repeat;
@@ -198,7 +199,9 @@ function PresentationRows({ doc, platform }: { doc: PresentationDoc; platform: s
         data-strip=""
       >
         <Presentation size={16} aria-hidden="true" className="shrink-0 text-muted" />
-        <h2 className="min-w-40 flex-[1_1_10rem] text-base font-bold">
+        {/* Its name gives way down to 6rem, ending in "…" (alpha.24, middlehelp, as the open playlist's does): from
+            10rem, with the ? beside it, the presentation's menu (⋯) had gone to a second row in CI's 1024 × 645. */}
+        <h2 className="min-w-24 flex-[1_1_6rem] text-base font-bold">
           <Truncate text={doc.name} />
         </h2>
         {help.button}

@@ -773,8 +773,9 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
   useEffect(() => {
     wantSlides(wanted === '' ? [] : wanted.split(' '));
   }, [wanted]);
-  // What is this? (Sessions 31–36): its ? in the playlist's header row, its words under it.
-  const help = useWhatIsThis('playlist');
+  // What is this? (Sessions 31–36): its ? in the playlist's header row, its words under it; its room held while Help is
+  // off (alpha.24, middlehelp), so Help coming or going moves none of the header's buttons.
+  const help = useWhatIsThis('playlist', { keepRoom: true });
   const markedSet = new Set(marked);
   // The rows (Session 55): each presentation's slides under its name, read as the playlist shows them; a Repeat Slides
   // playlist's steps from its own slides.
@@ -1110,7 +1111,8 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
               size="sm"
               icon={FilePlus}
               data-testid="playlist-add-files"
-              title="Import files and add them at the end of this playlist"
+              // Each title begins with its name, as it may show its icon alone (middlehelp; the top bar's rule).
+              title="Add files…: import files and add them at the end of this playlist"
               aria-label="Add files…"
               onClick={() => void addFilesTo(openId)}
             >
@@ -1120,7 +1122,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
               size="sm"
               icon={Link2}
               data-testid="playlist-from-link"
-              title="Download from a link and add it at the end of this playlist"
+              title="From a Link…: download from a link and add it at the end of this playlist"
               aria-label="From a Link…"
               onClick={openLinkDialog}
             >

@@ -251,8 +251,9 @@ export function WallpapersPanel({ fill = false }: { fill?: boolean } = {}) {
   const editing = useWallpapers((s) => s.editing);
   const [over, setOver] = useState(false);
   const headingId = useId();
-  // What is this? (Pro Mode's: Simple Mode has no ? of its own).
-  const help = useWhatIsThis('wallpapers');
+  // What is this? (Pro Mode's: Simple Mode has no ? of its own), its room held while Help is off (alpha.24,
+  // middlehelp): Help coming or going never moves Import….
+  const help = useWhatIsThis('wallpapers', { keepRoom: true });
   useEffect(() => {
     watchWallpapers();
     addWhenEndsToMenu();
@@ -296,7 +297,8 @@ export function WallpapersPanel({ fill = false }: { fill?: boolean } = {}) {
           size="sm"
           icon={ImagePlus}
           data-testid="wallpapers-import"
-          title="Bring pictures in as wallpapers"
+          // Its title begins with its name, as it may show its icon alone (middlehelp; the top bar's rule).
+          title="Import…: bring pictures in as wallpapers"
           aria-label="Import…"
           onClick={() => void importWallpapers()}
         >
