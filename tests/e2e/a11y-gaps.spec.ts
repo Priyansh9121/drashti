@@ -11,7 +11,9 @@ import {
   outputReady,
   type PageGlobals,
   setUpScreen,
+  slidesOf,
 } from './helpers';
+import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 import { makeSlides } from './placeholder-slides';
 
 /*
@@ -51,7 +53,8 @@ test('with a tooltip open the window passes the accessibility checks, and the to
   await win.getByTestId('open-stream').hover();
   const tip = win.getByRole('tooltip');
   await expect(tip).toBeVisible();
-  await expect(tip).toContainText('The stream to YouTube, and recording');
+  // Its name first since alpha.24 (uitop), as it may show its icon alone.
+  await expect(tip).toContainText('Stream: to YouTube, and recording');
   await expectNoSeriousA11yIssues(win, 'the operator window with a tooltip open');
   await app.close();
 });
@@ -95,6 +98,39 @@ test('in forced colours (a Windows contrast theme) the chosen tab and the focus 
   await expectNoSeriousA11yIssues(win, 'the operator window in forced colours', undefined, [
     'color-contrast',
   ]);
+  await app.close();
+});
+
+/*
+ * In forced colours too the playlist's rows that are up say so (alpha.24, uitop; the release lead's review, MUST-1):
+ * their dot and their red edge are backgrounds, the system's own colour there, so each says Live in words, in the
+ * theme's own text colour, as LIVE's badge did before.
+ */
+test('in forced colours (a Windows contrast theme) the playlist’s rows on the screens say Live in words, and the checks pass', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await setUpPlaceholderShow(win);
+  await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
+  const slide = slidesOf(win, KIRTAN).nth(1);
+  await slide.click();
+  await expect(slide).toHaveAttribute('aria-current', 'true');
+  // The presentation's name row and its slide's row.
+  const dots = win.getByTestId('open-playlist').locator('[data-live-dot]');
+  await expect(dots).toHaveCount(2);
+  await win.emulateMedia({ forcedColors: 'active' });
+  await win.evaluate(
+    () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
+  );
+  const words = dots.getByText('Live', { exact: true });
+  await expect(words).toHaveCount(2);
+  for (const word of await words.all()) {
+    await expect(word).toBeInViewport();
+    expect((await word.boundingBox())?.width ?? 0, 'Live, in words').toBeGreaterThan(8);
+  }
+  await expectNoSeriousA11yIssues(win, 'a playlist row up, in forced colours', undefined, ['color-contrast']);
+  await win.emulateMedia({ forcedColors: 'none' });
   await app.close();
 });
 

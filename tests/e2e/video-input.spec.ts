@@ -219,6 +219,12 @@ test('Add a Video Inputâ€¦ names the fake camera; one click puts it on the hallâ
     .poll(() => background(win))
     .toMatchObject({ kind: 'input', name: INPUT, device: DEVICE, fit: 'fit' });
   await expect(row).toHaveAttribute('data-live', 'true');
+  // Up, its row says so as a playlist's rows do (alpha.24, uitop: the word LIVE is said once, in the top bar): its red
+  // edge and dot, Live to a screen reader, no badge.
+  await expect(row.locator('[data-live-dot]')).toHaveCount(1);
+  await expect(row.locator('[data-live-edge]')).toHaveCount(1);
+  await expect(row.locator('[data-badge]')).toHaveCount(0);
+  await expect(row.getByTestId('video-input-show')).toContainText('Live');
 
   // On the hall's screen: the fake camera's moving pattern, fitted inside.
   await playsOn(hall, HALL);

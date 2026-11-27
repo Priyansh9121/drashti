@@ -137,15 +137,18 @@ for (const id of ['dhaja', 'tiranga']) {
  * 13), so the first panel heading is the Stage screen panel's; and then Ready? came into the top bar beside Stream
  * (Part 8), so LIVE's line is 521 px and the Stream button 104 px further left; and the access line's strip (Parts 3
  * and 19: kept under the top bar, so nothing moves when the line comes or goes) puts the column 24 px lower, 579 px
- * tall. Their colours are as they were.
+ * tall. Their colours are as they were. alpha.24 (uitop, the owner's "too congested") moved three on purpose: the top
+ * bar's settings are one quiet group, a hairline round them and between their parts, so the Stream button sits 12 px
+ * further right and LIVE's line is 530 px; and Screens is a ghost there like the others, no edge and no fill, its
+ * words in the header buttons' colour (Stream's), where it was. Read from that build's run on CI's Windows.
  */
 const AT_9ED5D00: Record<string, unknown> = {
   black: {
     header: ['rgb(18, 18, 21)', 'rgb(245, 245, 247)', 'rgb(44, 44, 50)', [0, 0, 1280, 48]],
     name: ['rgb(245, 245, 247)', [16, 12, 95, 24]],
-    stream: ['rgb(200, 200, 207)', 'rgba(0, 0, 0, 0)', [664, 8, 96, 32]],
-    screens: ['rgb(245, 245, 247)', 'rgb(130, 130, 141)', 'rgb(27, 27, 31)', [1021, 8, 100, 32]],
-    live: ['rgb(245, 245, 247)', [127, 13, 521, 21]],
+    stream: ['rgb(200, 200, 207)', 'rgba(0, 0, 0, 0)', [676, 8, 96, 32]],
+    screens: ['rgb(200, 200, 207)', 'rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)', [1021, 8, 100, 32]],
+    live: ['rgb(245, 245, 247)', [127, 13, 530, 21]],
     underline: ['rgb(138, 180, 248)'],
     row: ['oklab(0.76608 -0.0191589 -0.106575 / 0.7)', 'rgb(38, 38, 43)'],
     heading: ['rgb(200, 200, 207)'],
@@ -157,9 +160,9 @@ const AT_9ED5D00: Record<string, unknown> = {
   white: {
     header: ['rgb(248, 248, 250)', 'rgb(17, 18, 22)', 'rgb(212, 214, 220)', [0, 0, 1280, 48]],
     name: ['rgb(17, 18, 22)', [16, 12, 95, 24]],
-    stream: ['rgb(67, 70, 78)', 'rgba(0, 0, 0, 0)', [664, 8, 96, 32]],
-    screens: ['rgb(17, 18, 22)', 'rgb(111, 115, 124)', 'rgb(255, 255, 255)', [1021, 8, 100, 32]],
-    live: ['rgb(17, 18, 22)', [127, 13, 521, 21]],
+    stream: ['rgb(67, 70, 78)', 'rgba(0, 0, 0, 0)', [676, 8, 96, 32]],
+    screens: ['rgb(67, 70, 78)', 'rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)', [1021, 8, 100, 32]],
+    live: ['rgb(17, 18, 22)', [127, 13, 530, 21]],
     underline: ['rgb(29, 78, 216)'],
     row: ['oklab(0.488178 -0.0212675 -0.21611 / 0.7)', 'rgb(223, 225, 230)'],
     heading: ['rgb(67, 70, 78)'],
@@ -281,7 +284,8 @@ test('White, softened to paper (Session 60, Q60-36 Q2 A), draws its new colours 
     header: [rgb(c.panel), rgb(c.fg), rgb(c.line), at('header')],
     name: [rgb(c.fg), at('name')],
     stream: [rgb(c.muted), 'rgba(0, 0, 0, 0)', at('stream')],
-    screens: [rgb(c.fg), rgb(c.field), rgb(c['panel-2']), at('screens')],
+    // A ghost in the top bar's group since alpha.24 (uitop): Stream's colours.
+    screens: [rgb(c.muted), 'rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)', at('screens')],
     live: [rgb(c.fg), at('live')],
     underline: [rgb(c.accent)],
     row: [await drawnAs(win, 'border border-second/70'), rgb(c['panel-3'])],

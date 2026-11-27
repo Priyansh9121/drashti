@@ -641,6 +641,8 @@ export function MarkerJumps() {
               key={m.id}
               size="sm"
               icon={Bookmark}
+              // A show control (alpha.24, QA24-UIMOTION-SKIP): the hall's video or sound jumps at once.
+              instant
               data-testid="marker-jump"
               onClick={() => jump(layer, m.id)}
             >

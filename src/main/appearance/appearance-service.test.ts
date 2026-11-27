@@ -326,6 +326,32 @@ describe('AppearanceService', () => {
     expect(sent.length).toBe(told);
   });
 
+  it('draws the window in Depth while it follows the computer (alpha.24, QA24-UI-4), flat in one chosen by name', () => {
+    const dir = fresh();
+    const service = new AppearanceService({ userData: dir, say: () => undefined });
+    const computer = new Computer(true);
+    service.start(computer);
+    const { win, sent } = aWindow();
+    service.track(win as never);
+    // Follow the computer, the default: Black's or White's colours, in Depth.
+    expect(service.now()).toMatchObject({ id: 'black', depth: true });
+    computer.turn(false);
+    expect(service.now()).toMatchObject({ id: 'white', depth: true });
+    expect((sent.at(-1) as { depth: boolean }).depth).toBe(true);
+    // Black, White or any other chosen by name draws exactly as before, and every window is told at once.
+    for (const id of ['black', 'white', 'saffron']) {
+      expect(service.choose(id)).toBe(true);
+      expect(service.now()).toMatchObject({ id, depth: false });
+      expect((sent.at(-1) as { depth: boolean }).depth).toBe(false);
+    }
+    expect(service.choose('follow')).toBe(true);
+    expect((sent.at(-1) as { depth: boolean }).depth).toBe(true);
+    // A test's own start in Black (CI's Black job, DRASHTI_TEST_APPEARANCE) is a choice by name: flat.
+    expect(
+      new AppearanceService({ userData: fresh(), say: () => undefined, startIn: 'black' }).now().depth,
+    ).toBe(false);
+  });
+
   it('starts in the appearance a test names (never kept unless chosen)', () => {
     const dir = fresh();
     const service = new AppearanceService({ userData: dir, say: () => undefined, startIn: 'black' });

@@ -60,6 +60,8 @@ function Offer({ playing, now }: { playing: Playing; now: number }) {
       <Button
         size="sm"
         icon={RotateCcw}
+        // A show control (alpha.24, the bug hunt's S3-1): it changes the screens at once and never moves.
+        instant
         title={day ? `Where it was taken off last time, on ${day}` : 'Where it was taken off last time'}
         onClick={() => {
           setPressed(true);

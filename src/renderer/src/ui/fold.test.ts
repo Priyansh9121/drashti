@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { clipInside, foldCopy, foldMove, glides, glidesIn, scrollsBack } from './fold';
-import { livelyWith } from './motion';
+import { hostless, livelyWith } from './motion';
 
 /*
  * A section's fold (alpha.24, uimotion; the owner's QA24-UI-3 "more interactive and more animated, more transitions"):
- * when a section under LIVE folds or unfolds with motion, and how. As a live look's touch (shared/appearance/moving.ts)
- * it moves only once the window has opened, with a graphics chip, with interface motion not Off and the computer not
+ * when a section under LIVE folds or unfolds with motion, and how. It moves only once the window has opened, with a
+ * graphics chip known to be there (as a live look's touch needs one), with interface motion not Off and the computer not
  * set to reduce motion; and, as Lively's glides, never while the show is changing (0.8 s after an engine change).
  */
 
@@ -114,5 +114,26 @@ describe('a fold at the column’s end', () => {
     // Room under what is in sight for what goes: no scrolling back.
     expect(scrollsBack({ scrollTop: 1000, clientHeight: 504, scrollHeight: 1965 }, 80)).toBe(false);
     expect(scrollsBack({ scrollTop: 0, clientHeight: 504, scrollHeight: 504 }, 80)).toBe(false);
+  });
+});
+
+/*
+ * Lead 2's hands-on pass of uilook (N/reports/a24-uilook-handson.md, problem 1, uimotion's): in a light look a fold's
+ * copy drew Black's dark controls, because the page's styles copied into its shadow root set Tailwind's theme on its
+ * host (`:root, :host { --color-* }`) over the appearance <html> carries. The copy's styles keep no :host part, so the
+ * host inherits the window's own appearance, as everything in the page does.
+ */
+describe('the copy draws in the window’s appearance', () => {
+  it('keeps no :host part of a selector', () => {
+    expect(hostless(':root, :host')).toBe(':root');
+    expect(hostless('html, :host')).toBe('html');
+    expect(hostless(':host')).toBe(':not(*)');
+    expect(hostless(':host(.x) .y, .z')).toBe('.z');
+  });
+
+  it('leaves every other selector as it is, commas inside brackets too', () => {
+    expect(hostless('.a, .b')).toBe('.a, .b');
+    expect(hostless(':is(.a, .b) > .c')).toBe(':is(.a, .b) > .c');
+    expect(hostless(':where(.hostile), .host')).toBe(':where(.hostile), .host');
   });
 });

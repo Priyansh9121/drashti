@@ -31,8 +31,9 @@ import { makeTestTone } from './test-media';
  * asks for one: Create playlist, Import sounds…, From a Link…, or sounds dropped there. Placeholder slides only.
  *
  * What is up, at a glance (alpha.24, the owner's calmer window): a layer's clear with nothing up is compact, its icon
- * alone, its words and key in its tooltip; lit, its words and key as before, at once, nothing moving with it. The
- * clears never move: each keeps its place.
+ * alone, its words and key in its tooltip; lit, its words and key as before, at once, nothing moving with it. No
+ * button along the bar moves, by so much as a pixel (clearroom): each clear keeps its place, Clear all and Put it back
+ * share one, and the Wallpaper and Black-out keep the room their words take while on.
  */
 
 /** Every button lit or on (Clear all, the clears, the Wallpaper and Black-out), each as its words and key. */
@@ -145,23 +146,67 @@ const barStarted = (win: Page) =>
       }),
   );
 
-/** Where each of the bar's buttons is along it: its middle, in whole pixels. */
-const barMiddles = (bar: Locator) =>
-  barButtons(bar).evaluateAll((b) =>
-    b.map((x) => {
+/** Where one of the bar's buttons is along it: its place's edges (a layer's clear's room) and its own middle. */
+interface Place {
+  name: string;
+  left: number;
+  right: number;
+  middle: number;
+}
+
+/**
+ * Where each of the bar's buttons is along it, every one (the ? too), left to right: the edges of its place (a layer's
+ * clear's room, which its lit look fills and its icon sits in the middle of; any other button's own box) and the
+ * middle of the button itself, as laid out (not rounded).
+ */
+const barPlaces = (bar: Locator) =>
+  bar.locator('button:visible').evaluateAll((b) =>
+    b.map((x): Place => {
+      const place = (x.closest('[data-clear-room]') ?? x).getBoundingClientRect();
       const r = x.getBoundingClientRect();
-      return Math.round(r.left + r.width / 2);
+      const name =
+        x.getAttribute('data-testid') ?? x.getAttribute('aria-label') ?? (x as HTMLElement).innerText;
+      return { name: name.trim(), left: place.left, right: place.right, middle: r.left + r.width / 2 };
     }),
   );
 
-/** No button moved along the bar since `before` (a pixel's rounding allowed). */
-async function stayPut(bar: Locator, before: number[], where: string): Promise<void> {
-  const now = await barMiddles(bar);
-  expect(now.length, where).toBe(before.length);
-  expect(
-    now.filter((x, i) => Math.abs(x - (before[i] ?? Number.NaN)) > 1),
-    `${where}: no button moved (${JSON.stringify(before)} then ${JSON.stringify(now)})`,
-  ).toEqual([]);
+/** Layout's own rounding (a 64th of a pixel, as a compact clear is centred in its room): under it is 0 px. */
+const HAIR = 0.05;
+
+/** The bar's places at each of SIZES (the window left at the last of them). */
+async function placesAtEachSize(win: Page, bar: Locator): Promise<Map<number, Place[]>> {
+  const places = new Map<number, Place[]>();
+  for (const [width, height] of SIZES) {
+    await win.setViewportSize({ width, height });
+    places.set(width, await barPlaces(bar));
+  }
+  return places;
+}
+
+/**
+ * No button along the bar moved since `before` (taken with nothing up), at any of SIZES: 0 px, the edges of every
+ * button's place and its middle (alpha.24, clearroom: Clear all's bolder words once it can be pressed and Put it back
+ * in its place had moved every button after it 2-8 px; Black-out or the Wallpaper on, its words longer, moved what is
+ * left of it). Each state's verdict is soft, so one run names every state and button that moves; the window is left
+ * at the last size.
+ */
+async function stayPut(win: Page, bar: Locator, before: Map<number, Place[]>, where: string): Promise<void> {
+  const off = (a: number, b: number | undefined) => Math.round((a - (b ?? Number.NaN)) * 100) / 100;
+  for (const [width, height] of SIZES) {
+    await win.setViewportSize({ width, height });
+    const now = await barPlaces(bar);
+    const was = before.get(width) ?? [];
+    const at = `${where}, at ${String(width)} × ${String(height)}`;
+    expect.soft(now.length, `${at}: as many buttons along the bar`).toBe(was.length);
+    const moved = now.flatMap((p, i) => {
+      const b = was[i];
+      const by = (['left', 'right', 'middle'] as const).map((k) => off(p[k], b?.[k]));
+      if (by.every((x) => Math.abs(x) <= HAIR)) return [];
+      const span = `${p.left.toFixed(2)} to ${p.right.toFixed(2)}`;
+      return [`${p.name} (was ${b?.name ?? 'none'}): left, right, middle by ${by.join(', ')}, now ${span}`];
+    });
+    expect.soft(moved, `${at}: no button along the bar moved`).toEqual([]);
+  }
 }
 
 /** Every one of the bar's buttons in one row, none cut, the bar not scrolling; its height. */
@@ -185,7 +230,7 @@ async function oneRow(win: Page, where: string): Promise<number> {
   return (await bar.boundingBox())?.height ?? 0;
 }
 
-test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its buttons with their keys; F4 and F8 do nothing; a button with nothing up dimmed, a clear compact, its words in its tooltip; every layer up, all eight words and keys whole in one row from 1008 px; the clears never move', async () => {
+test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its buttons with their keys; F4 and F8 do nothing; a button with nothing up dimmed, a clear compact, its words in its tooltip; every layer up, all eight words and keys whole in one row from 1008 px; no button along the bar moves, from nothing up, the first thing up and the last off, F1 and Put it back, the Wallpaper or Black-out on and off again', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
@@ -246,6 +291,9 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
   await openLibrary(win);
   await win.getByTestId('presentation-list').getByRole('button').first().click();
   await expect(win.locator('html')).toHaveAttribute('data-opened', '');
+  // Where each button is with nothing up, at each size: no button along the bar moves from here on, whatever goes up
+  // or comes off, Clear all and Put it back taking turns, the Wallpaper or Black-out on (alpha.24, clearroom).
+  const atRest = await placesAtEachSize(win, bar);
   await watchBar(win);
   await win.getByTestId('slide-thumb').first().click();
   await expect(button('Clear slide')).toHaveAttribute('data-lit', 'true');
@@ -254,13 +302,15 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
   await expect(button('Clear background')).toBeDisabled();
   // Lit, its words and key back on it.
   await expect.poll(() => barWords(bar)).toEqual(['Clear all F1', 'Slide F2', ...AT_REST.slice(2)]);
-  // Where each button is now, at each size (Clear all's words go bolder once it can be pressed, as before, which moves
-  // what follows it a pixel or two: so the places are held from here, with Clear all as it is).
-  const withSlide = new Map<number, number[]>();
-  for (const [width, height] of SIZES) {
-    await win.setViewportSize({ width, height });
-    withSlide.set(width, await barMiddles(bar));
-  }
+  // The first thing up: Clear all can be pressed now (its words bolder), and no button moved.
+  await stayPut(win, bar, atRest, 'the first thing up (a slide)');
+  // The last thing off (the slide, by its clear): Clear all dimmed again, and no button moved; then the slide up again.
+  await button('Clear slide').click();
+  await expect(button('Clear all')).toBeDisabled();
+  await expect.poll(() => barWords(bar)).toEqual(AT_REST);
+  await stayPut(win, bar, atRest, 'the last thing off (the slide)');
+  await win.getByTestId('slide-thumb').first().click();
+  await expect(button('Clear slide')).toHaveAttribute('data-lit', 'true');
 
   // F4 and F8 do nothing; F12 puts the wallpaper up over the slide (black: no wallpaper chosen yet), and off.
   const before = await state(win);
@@ -271,11 +321,14 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
   await expect(audience.locator('[data-layer="wallpaper"]')).toBeVisible();
   await expect(button('Wallpaper is on')).toHaveAttribute('data-lit', 'true');
   await expect(button('Wallpaper is on')).not.toHaveAttribute('data-dimmed');
+  // On, in its words ("Wallpaper is on"): no button moved, the ? beside it neither.
+  await stayPut(win, bar, atRest, 'the Wallpaper on');
   // The slide stays up underneath, as under the Logo.
   expect((await state(win)).layers.slide?.presentationId).toBe(before.layers.slide?.presentationId);
   await button('Wallpaper is on').click();
   await expect(audience.locator('[data-layer="wallpaper"]')).toHaveCount(0);
   await expect(button('Wallpaper')).toHaveAttribute('data-dimmed', 'true');
+  await stayPut(win, bar, atRest, 'the Wallpaper off again');
 
   // Every layer up too (the steps function-keys.spec takes): a background, a message, a sound going round and the
   // ticker. Every clear lit with its words and key, all eight whole in one row from 1008 px, and no button moves.
@@ -298,11 +351,19 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
     await win.setViewportSize({ width, height });
     await expect.poll(() => barWords(bar), { message: `${width} × ${height}, every layer up` }).toEqual(BAR);
     await oneRow(win, `${width} × ${height}, every layer up`);
-    await stayPut(bar, withSlide.get(width) ?? [], `${width} × ${height}, every layer up`);
   }
+  await stayPut(win, bar, atRest, 'every layer up');
   // Lit, each still names its keys for a screen reader.
   for (const [words, key] of KEYS)
     await expect(button(words), words).toHaveAttribute('aria-keyshortcuts', key);
+  // Black-out on over them all, in its words ("Black-out is on"): no button moved, the Wallpaper beside it neither;
+  // then off again.
+  await button('Black-out').click();
+  await expect(button('Black-out is on')).toHaveAttribute('data-lit', 'true');
+  await stayPut(win, bar, atRest, 'every layer up, Black-out on');
+  await button('Black-out is on').click();
+  await expect(button('Black-out')).toHaveAttribute('data-dimmed', 'true');
+  await stayPut(win, bar, atRest, 'every layer up, Black-out off again');
   // The slide taken off again: its clear back to its icon at once, nothing moving on it or beside it, and still no
   // button moves.
   await watchBar(win);
@@ -310,11 +371,21 @@ test('the bar of clears: one row at 1024 × 645 and 1280 × 720, smaller; its bu
   await expect(button('Clear slide')).toHaveAttribute('data-dimmed', 'true');
   expect(await barStarted(win), 'the slide off: nothing moves on or beside its clear').toEqual([]);
   await expect.poll(() => barWords(bar)).toEqual(['Clear all F1', '', ...BAR.slice(2)]);
-  await stayPut(bar, withSlide.get(1280) ?? [], 'the slide taken off, every other layer up');
+  await stayPut(win, bar, atRest, 'the slide taken off, every other layer up');
+  // F1: everything off, Put it back in Clear all's place, and no button moved; Put it back: all of it back, Clear all
+  // in its place again, and still no button moved.
+  await win.keyboard.press('F1');
+  await expect(win.getByTestId('put-back')).toBeVisible();
+  await expect.poll(() => barWords(bar)).toEqual(['Put it back', ...AT_REST.slice(1)]);
+  await stayPut(win, bar, atRest, 'Clear all (F1), Put it back offered');
+  await win.getByTestId('put-back').click();
+  await expect(win.getByTestId('put-back')).toHaveCount(0);
+  await expect(button('Clear all')).toBeEnabled();
+  await stayPut(win, bar, atRest, 'Put it back pressed, Clear all back');
   await app.close();
 });
 
-test('Simple Mode’s buttons too: its Clear all dimmed with nothing up; the Wallpaper in the Logo’s place, F12 or the button putting the wallpaper up and taking it off', async () => {
+test('Simple Mode’s buttons too: its Clear all dimmed with nothing up; the Wallpaper in the Logo’s place, F12 or the button putting the wallpaper up and taking it off; none of its buttons moves (the first up, the last off, the Wallpaper and Black-out on and off, F1, Put it back)', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -339,13 +410,24 @@ test('Simple Mode’s buttons too: its Clear all dimmed with nothing up; the Wal
   const clearAll = win.getByTestId('simple-clear-all');
   await expect(clearAll).toBeDisabled();
   await expect(clearAll).toHaveAttribute('data-dimmed', 'true');
+  // Where each of its buttons is with nothing up, at each size: none moves from here on, as along Pro Mode's bar
+  // (alpha.24, clearroom).
+  const bar = win.getByTestId('simple-buttons');
+  const atRest = await placesAtEachSize(win, bar);
   const [first] = await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listPresentations());
-  await win.evaluate(
-    (presentationId) =>
-      (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'goLive', presentationId, slideIndex: 0 }),
-    first?.id ?? '',
-  );
+  const goLive = { type: 'goLive', presentationId: first?.id ?? '', slideIndex: 0 } as const;
+  const slideUp = () => win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c), goLive);
+  await slideUp();
   await expect(clearAll).toBeEnabled();
+  await expect(clearAll).not.toHaveAttribute('data-dimmed');
+  await expect(win.getByTestId('simple-clear-slide')).toHaveAttribute('data-lit', 'true');
+  await stayPut(win, bar, atRest, 'Simple Mode, the first thing up (a slide)');
+  // The last thing off (the slide, by its clear), then the slide up again.
+  await win.getByTestId('simple-clear-slide').click();
+  await expect(clearAll).toHaveAttribute('data-dimmed', 'true');
+  await expect(win.getByTestId('simple-clear-slide')).toHaveAttribute('data-dimmed', 'true');
+  await stayPut(win, bar, atRest, 'Simple Mode, the last thing off (the slide)');
+  await slideUp();
   await expect(clearAll).not.toHaveAttribute('data-dimmed');
   const wallpaper = win.getByTestId('simple-wallpaper');
   await expect(wallpaper).toBeVisible();
@@ -353,9 +435,31 @@ test('Simple Mode’s buttons too: its Clear all dimmed with nothing up; the Wal
   await win.keyboard.press('F12');
   await expect(audience.locator('[data-layer="wallpaper"]')).toBeVisible();
   await expect(wallpaper).toHaveText(/Wallpaper is on/u);
+  await stayPut(win, bar, atRest, 'Simple Mode, the Wallpaper on');
   await wallpaper.click();
   await expect(audience.locator('[data-layer="wallpaper"]')).toHaveCount(0);
   await expect(wallpaper).not.toHaveText(/is on/u);
+  await stayPut(win, bar, atRest, 'Simple Mode, the Wallpaper off again');
+  // Black-out on, then off again; F1 with Put it back offered in Clear all's place; Put it back pressed: no button
+  // moved.
+  const blackout = win.getByTestId('simple-blackout');
+  await blackout.click();
+  await expect(blackout).toHaveText(/Black-out is on/u);
+  await stayPut(win, bar, atRest, 'Simple Mode, Black-out on');
+  await blackout.click();
+  await expect(blackout).not.toHaveText(/is on/u);
+  await stayPut(win, bar, atRest, 'Simple Mode, Black-out off again');
+  await win.keyboard.press('F1');
+  await expect(win.getByTestId('simple-put-back')).toBeVisible();
+  await expect(clearAll).toHaveCount(0);
+  // Its Put it back names Undo's key for a screen reader: Undo puts back what Clear all took down in Simple Mode.
+  const undo = process.platform === 'darwin' ? 'Meta+Z' : 'Control+Z';
+  await expect(win.getByTestId('simple-put-back')).toHaveAttribute('aria-keyshortcuts', undo);
+  await stayPut(win, bar, atRest, 'Simple Mode, Clear all (F1), Put it back offered');
+  await win.getByTestId('simple-put-back').click();
+  await expect(win.getByTestId('simple-put-back')).toHaveCount(0);
+  await expect(clearAll).toBeEnabled();
+  await stayPut(win, bar, atRest, 'Simple Mode, Put it back pressed, Clear all back');
   await app.close();
 });
 

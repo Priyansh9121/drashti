@@ -11,10 +11,11 @@ import {
   switchOffQuestion,
   TURN_OFF,
 } from '../../../shared/screen-switches';
-import { Button } from '../ui/Button';
+import { Button, type ButtonVariant } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { MonitorOff, TabletSmartphone } from '../ui/icons';
 import { Tooltip } from '../ui/Tooltip';
+import { cx } from '../ui/cx';
 import { useNetwork } from '../network/network-store';
 import { useNotice } from './actions';
 import {
@@ -28,9 +29,9 @@ import {
 
 /*
  * Audience and Stage (Session 50) in the operator window: the top bar's two switches beside Screens (Pro Mode),
- * each saying On or Off in words; the question before one goes off while its screens show something; and, while
- * one is off, the status bar's "Audience off" with Turn on, in both modes (Simple Mode's only way to change
- * them, and only on). When an output covers these controls, it asks the same, large (Session 51, S2-2).
+ * each saying On or Off in words (since alpha.24 after a small dot, and quiet while on); the question before one goes
+ * off while its screens show something; and, while one is off, the status bar's "Audience off" with Turn on, in both
+ * modes (Simple Mode's only way to change them, and only on). When an output covers these controls, it asks the same, large (Session 51, S2-2).
  */
 
 const KEY: Record<ScreenSwitch, OperatorAction> = { audience: 'toggleAudience', stage: 'toggleStage' };
@@ -58,10 +59,30 @@ export function switchButton(
   return { on: switches[which], disabled: !known };
 }
 
+/**
+ * How a switch looks in the top bar's group (alpha.24, uitop): on, a quiet ghost button, a small dot in the success
+ * colour before its name and On; off, the warning's box and its dot, with Off. The words say it, never the colour alone.
+ */
+export function switchLook(on: boolean): { variant: ButtonVariant; dot: string; word: 'On' | 'Off' } {
+  return on
+    ? { variant: 'ghost', dot: 'bg-success', word: 'On' }
+    : { variant: 'warning', dot: 'bg-warning', word: 'Off' };
+}
+
+/**
+ * Audience and Stage change the hall's screens, so no interface motion ever moves them (uimotion's review): no lift
+ * as the pointer rests on one, no press, no press dim (ui/motion.css's, the release lead's review MUST-2), no colour
+ * fade; each state is there at once, as a show control's is. They are not marked show controls (data-show-control) all
+ * the same: the header's decoration gradient never lies under one (appearance-drawing.spec.ts, in every appearance that
+ * has one). Important, so these hold over the motion rules.
+ */
+export const SWITCH_STILL = 'translate-none! transform-none! transition-none! active:opacity-100!';
+
 function SwitchButton({ which, platform }: { which: ScreenSwitch; platform: string }) {
   const switches = useScreenSwitches((s) => s.switches);
   const known = useScreenSwitches((s) => s.known);
   const { on, disabled } = switchButton(which, switches, known);
+  const look = switchLook(on);
   const name = SWITCH_NAMES[which];
   return (
     <Tooltip
@@ -76,34 +97,42 @@ function SwitchButton({ which, platform }: { which: ScreenSwitch; platform: stri
       side="bottom"
     >
       {/* Its name is read out with its state (a switch, on or off); On and Off are there for the eye, in words.
-          Not a show control (no `instant`): the header is decoration, and no show control sits on it. */}
+          Not a show control (no `instant`): the header is decoration, and no show control sits on it; still all the
+          same (SWITCH_STILL). */}
       <Button
         size="sm"
-        variant={on ? 'secondary' : 'warning'}
+        variant={look.variant}
         role="switch"
         aria-checked={on}
         disabled={disabled}
         data-testid={`switch-${which}`}
         data-on={on ? 'true' : 'false'}
+        className={SWITCH_STILL}
         onClick={() => void toggleSwitch(which).then(say)}
       >
+        <span aria-hidden="true" className={cx('h-1.5 w-1.5 shrink-0 rounded-full', look.dot)} />
         {name}
-        <span aria-hidden="true" className="font-bold">
-          {on ? 'On' : 'Off'}
+        {/* On and Off in the same room, the wider word's: Off, held unseen in the same cell (not in its words), so
+            turning one moves nothing beside it (lead 2's hands-on pass). */}
+        <span
+          aria-hidden="true"
+          className="inline-grid font-bold after:invisible after:col-start-1 after:row-start-1 after:content-['Off']"
+        >
+          <span className="col-start-1 row-start-1">{look.word}</span>
         </span>
       </Button>
     </Tooltip>
   );
 }
 
-/** The top bar's switches, beside Screens (Pro Mode). */
+/** The top bar's switches, beside Screens in its group (Pro Mode). */
 export function ScreenSwitchButtons({ platform }: { platform: string }) {
   return (
     <span
       role="group"
       aria-label="This computer’s screens"
       data-testid="screen-switches"
-      className="flex items-center gap-1"
+      className="flex items-center gap-0.5"
     >
       {SCREEN_SWITCHES.map((which) => (
         <SwitchButton key={which} which={which} platform={platform} />
@@ -200,7 +229,7 @@ export function SwitchedOffStatus() {
             key={which}
             role="status"
             data-testid={`switch-off-${which}`}
-            className="flex shrink-0 items-center gap-1.5 rounded-sm bg-warning-bg px-1.5 py-0.5 text-warning-fg"
+            className="flex shrink-0 items-center gap-1.5 rounded-sm bg-warning-bg px-1.5 text-warning-fg"
           >
             {said !== null ? (
               <TabletSmartphone
@@ -219,10 +248,12 @@ export function SwitchedOffStatus() {
                 <span data-testid="switch-off-stage-hint">{said}</span>
               </span>
             )}
+            {/* 24 px, a target's least, inside the 28 px status bar (alpha.24, uitop): its h-5 had lost to the small
+                button's own h-7, and 28 px with the item's padding ran 3 px past the bar, so the page scrolled. */}
             <Button
               variant="secondary"
               size="sm"
-              className="h-5"
+              className="h-6!"
               aria-label={`Turn on ${SWITCH_NAMES[which]}`}
               onClick={() => void turnOnIfOff(which).then(say)}
             >

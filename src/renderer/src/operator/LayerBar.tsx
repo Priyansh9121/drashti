@@ -7,7 +7,7 @@ import { practiceKey, useShowState } from '../practice/practice-store';
 import { useKeymapNow } from './single-keys-store';
 import { dispatch } from './actions';
 import type { ClearedLayer, ClearLook } from './layer-clears';
-import { ariaKeys, clearLook, LAYER_CLEARS } from './layer-clears';
+import { ariaKeys, clearLook, LAYER_CLEARS, putBackKeys } from './layer-clears';
 import { cx } from '../ui/cx';
 import type { Icon } from '../ui/icons';
 import {
@@ -46,9 +46,14 @@ import { Tooltip } from '../ui/Tooltip';
  * What is up, at a glance (alpha.24, the owner's calmer window): a layer's clear with nothing up is compact, its icon
  * alone in a 32 px square, its words and key in its tooltip (the mouse resting on it, or Simple Mode's keyboard on
  * it), the same name read out and the same test id; lit, it is as before. Each keeps the room its lit look takes (an
- * unseen copy of its words and key holds it), so the clears never move: each keeps its place, and the bar is one row
- * from 1008 px in every state as before. A clear turns lit or compact at once, in the same frame as the screens, and
- * nothing moves with it (a show control's state).
+ * unseen copy of its words and key holds it). A clear turns lit or compact at once, in the same frame as the screens,
+ * and nothing moves with it (a show control's state).
+ *
+ * No button along the bar moves (alpha.24, clearroom), by so much as a pixel, whatever goes up or comes off: each
+ * clear keeps its room; Clear all and Put it back share one, held by unseen copies of Clear all as it can be pressed
+ * (its words bolder) and of Put it back, the one shown filling it; the Wallpaper and Black-out each keep the room
+ * their words take while on ("Wallpaper is on", "Black-out is on"), their words in the middle of it while off. So the
+ * bar is one row from 1008 px in every state as before, and its width never changes with what is up.
  */
 
 /** Simple Mode's clears beside its Clear all (Session 56), in the order of their keys (F2, F3, F5). */
@@ -83,6 +88,22 @@ const LIT = 'border-live-edge bg-layer text-fg hover:bg-panel-3';
 const COMPACT = 'relative inline-flex size-8 shrink-0 items-center justify-center rounded-md border';
 /** A cover on (the Wallpaper, Black-out): LIVE's red. */
 const ON = 'border-live bg-live text-white hover:brightness-110';
+
+/**
+ * An unseen copy of a look a bar button can take (aria-hidden, invisible), in its room's one grid cell with the button:
+ * the room is as wide as the widest of them, the button shown fills it (ROOM_FILL), so its box never changes.
+ */
+function Unseen({ className, children }: { className?: string; children: ReactNode }) {
+  return (
+    <span aria-hidden="true" className={cx(BAR_BUTTON, 'invisible col-start-1 row-start-1', className)}>
+      {children}
+    </span>
+  );
+}
+
+/** A room held for a bar button's looks (Unseen), and the button in it, filling it. */
+const ROOM = 'inline-grid shrink-0';
+const ROOM_FILL = 'col-start-1 row-start-1 justify-self-stretch';
 
 function BarIcon({ shape }: { shape: Icon }) {
   const IconShape = shape;
@@ -161,7 +182,31 @@ function LayerClear({
   );
 }
 
-/** The Wallpaper or Black-out: on in LIVE's red, saying so in words; off, dimmed and pressable. */
+/** Clear all's insides: its icon (from 1280 px), its words and key. */
+function ClearAllLook({ keyText }: { keyText: string }) {
+  return (
+    <>
+      <BarIcon shape={Eraser} />
+      <WordsAndKey words="Clear all" keyText={keyText} />
+    </>
+  );
+}
+
+/** Put it back's insides: its icon and its words, no key. */
+function PutBackLook() {
+  return (
+    <>
+      <RotateCcw size={15} aria-hidden="true" className="shrink-0" />
+      <span>Put it back</span>
+    </>
+  );
+}
+
+/**
+ * The Wallpaper or Black-out: on in LIVE's red, saying so in words; off, dimmed and pressable. Its room is its on
+ * look's (an unseen copy of its on words and key), off as on, so turning it on or off moves nothing beside it
+ * (clearroom).
+ */
 function CoverButton({
   on,
   words,
@@ -183,19 +228,25 @@ function CoverButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      data-show-control
-      data-testid={testId}
-      aria-keyshortcuts={keys}
-      data-lit={on ? 'true' : undefined}
-      data-dimmed={on ? undefined : 'true'}
-      onClick={onClick}
-      className={cx(BAR_BUTTON, on ? ON : cx(DIMMED, 'hover:bg-panel-2 hover:text-fg'))}
-    >
-      <BarIcon shape={icon} />
-      <WordsAndKey words={on ? onWords : words} keyText={keyText} />
-    </button>
+    <span className={ROOM} data-bar-room={testId}>
+      <Unseen>
+        <BarIcon shape={icon} />
+        <WordsAndKey words={onWords} keyText={keyText} />
+      </Unseen>
+      <button
+        type="button"
+        data-show-control
+        data-testid={testId}
+        aria-keyshortcuts={keys}
+        data-lit={on ? 'true' : undefined}
+        data-dimmed={on ? undefined : 'true'}
+        onClick={onClick}
+        className={cx(BAR_BUTTON, ROOM_FILL, on ? ON : cx(DIMMED, 'hover:bg-panel-2 hover:text-fg'))}
+      >
+        <BarIcon shape={icon} />
+        <WordsAndKey words={on ? onWords : words} keyText={keyText} />
+      </button>
+    </span>
   );
 }
 
@@ -237,13 +288,18 @@ export function LayerBar({
       data-show-control
       data-testid={simple ? 'simple-put-back' : 'put-back'}
       data-variant="warning"
+      // Simple Mode's Undo puts back what Clear all took down: its key, for a screen reader.
+      aria-keyshortcuts={putBackKeys(simple, platform, keymap)}
       onClick={() => {
         if (!practiceKey('putBack')) void dispatch({ type: 'putBack' });
       }}
-      className={cx(BAR_BUTTON, 'border-warning bg-warning-bg text-warning-fg hover:border-warning-fg')}
+      className={cx(
+        BAR_BUTTON,
+        ROOM_FILL,
+        'border-warning bg-warning-bg text-warning-fg hover:border-warning-fg',
+      )}
     >
-      <RotateCcw size={15} aria-hidden="true" className="shrink-0" />
-      <span>Put it back</span>
+      <PutBackLook />
     </button>
   ) : (
     // A strong secondary (Session 26g): in a show the one primary is Next, under LIVE. Dimmed with nothing up.
@@ -262,13 +318,13 @@ export function LayerBar({
       }}
       className={cx(
         BAR_BUTTON,
+        ROOM_FILL,
         anything
           ? 'border-primary-edge bg-panel-2 font-semibold text-fg hover:bg-panel-3'
           : cx(DIMMED, 'cursor-not-allowed'),
       )}
     >
-      <BarIcon shape={Eraser} />
-      <WordsAndKey words="Clear all" keyText={key('clearAll')} />
+      <ClearAllLook keyText={key('clearAll')} />
     </button>
   );
   return (
@@ -281,7 +337,17 @@ export function LayerBar({
         data-testid={simple ? 'simple-buttons' : 'layer-bar'}
         data-zone="bar"
       >
-        {clearAll}
+        {/* Clear all and Put it back share one room: the wider of Clear all as it can be pressed (bolder) and
+            Put it back, so neither moves what follows it (clearroom). */}
+        <span className={ROOM} data-bar-room="clear-all">
+          <Unseen className="font-semibold">
+            <ClearAllLook keyText={key('clearAll')} />
+          </Unseen>
+          <Unseen>
+            <PutBackLook />
+          </Unseen>
+          {clearAll}
+        </span>
         <div
           role="group"
           aria-label="Clear one layer"

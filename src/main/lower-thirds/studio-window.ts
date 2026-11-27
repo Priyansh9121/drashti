@@ -162,6 +162,11 @@ export class LowerThirdsStudio {
     this.goingAway = true;
   }
 
+  /** The quit did not go ahead (bughunt S3-2): closing with changes not saved waits for its page's question again. */
+  cancelQuitting(): void {
+    this.goingAway = false;
+  }
+
   /** Closed at once, without asking (Simple Mode, and quitting). */
   close(): void {
     const win = this.win;

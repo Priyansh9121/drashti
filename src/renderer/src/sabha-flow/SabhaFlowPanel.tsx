@@ -1,5 +1,6 @@
-import { useEffect, useId, useLayoutEffect, useState } from 'react';
+import { type DragEvent, useEffect, useId, useLayoutEffect, useState } from 'react';
 import { droppedPaths, hasFiles } from '../playlists/drag';
+import { panelTakes } from '../../../shared/sabha-flow-drop';
 import { NO_FLOW } from '../../../shared/sabha-flow-lines';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { useOperateOnly } from '../simple/simple-features-store';
@@ -37,7 +38,15 @@ import {
  * Next, and two views: the read list (each numbered item as a row; a click marks it Now) and the PDF page (zoomable).
  * A PDF Drashti could not read says so, and shows its page only. Never on an audience or stage screen. In Simple Mode
  * (when chosen in Simple Mode Features…) it leaves out Choose PDF…, Replace… and Remove: the PDF is chosen in Pro Mode.
+ * A PDF dropped on it in Pro Mode is the running order (alpha.24, QA24-FLOWDROP-1); any other drop, and every drop in
+ * Simple Mode, goes by to the window's import of files dropped anywhere (shared/sabha-flow-drop.ts panelTakes).
  */
+
+/** The files' kinds in a drag (all a drag under way tells). */
+const kindsOf = (e: DragEvent): string[] =>
+  Array.from(e.dataTransfer.items)
+    .filter((item) => item.kind === 'file')
+    .map((item) => item.type);
 
 const TABS: { id: FlowView; label: string }[] = [
   { id: 'list', label: 'Read list' },
@@ -76,15 +85,17 @@ export function SabhaFlowPanel() {
       aria-labelledby={titleId}
       className="relative flex min-h-0 flex-1 flex-col"
       data-testid="sabha-flow"
+      // Only a drag holding a PDF, in Pro Mode, is the panel's: anything else goes by, untouched, to the window's
+      // import of files dropped anywhere on it (bughunt S2-1).
       onDragOver={(e) => {
-        if (!hasFiles(e)) return;
+        if (!hasFiles(e) || !panelTakes({ types: kindsOf(e) }, { setup })) return;
         e.preventDefault();
         e.stopPropagation();
         e.dataTransfer.dropEffect = 'copy';
         setDragging(true);
       }}
       onDragEnter={(e) => {
-        if (!hasFiles(e)) return;
+        if (!hasFiles(e) || !panelTakes({ types: kindsOf(e) }, { setup })) return;
         e.preventDefault();
         e.stopPropagation();
         setDragging(true);
@@ -93,12 +104,14 @@ export function SabhaFlowPanel() {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
       }}
       onDrop={(e) => {
+        setDragging(false);
         if (!hasFiles(e)) return;
+        const paths = droppedPaths(e);
+        if (!panelTakes({ types: kindsOf(e), paths }, { setup })) return;
         e.preventDefault();
         e.stopPropagation();
-        setDragging(false);
         setFlowPanelOpen(true);
-        dropFlowFiles(droppedPaths(e), setup);
+        dropFlowFiles(paths, setup);
       }}
     >
       {dragging && (
@@ -106,7 +119,7 @@ export function SabhaFlowPanel() {
           data-testid="flow-drop-overlay"
           className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center border-2 border-heading bg-panel p-3 text-center text-sm text-fg"
         >
-          {setup ? 'Drop the PDF to use it as the running order' : 'The running order is chosen in Pro Mode'}
+          Drop the PDF to use it as the running order
         </div>
       )}
       {dropped && (

@@ -155,7 +155,7 @@ describe('the computer’s say before a phone covers its controls', () => {
 
   it('is the computer’s own box in Screens’ words, Cancel first and kept to, saying how to get the controls back', () => {
     for (const [platform, key] of [
-      ['darwin', '⌘⇧U'],
+      ['darwin', '⇧⌘U'],
       ['win32', 'Ctrl+Shift+U'],
     ] as const) {
       const box = coverBox(QUESTION, platform);

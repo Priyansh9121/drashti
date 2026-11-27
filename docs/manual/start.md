@@ -55,7 +55,7 @@ Drashti puts slides, pictures, videos and sound on the hall's screens. This manu
 
 **How:**
 
-1. Press **Ready?** in the top bar.
+1. Press **Ready?** in the top bar (in a narrow window, its checklist icon alone: point at it to see its name).
 2. Put right each amber line, as it says.
 3. Press **Check again** until every line is green.
 4. Read **What Ready? can’t check** and look at those yourself.
