@@ -613,6 +613,36 @@ describe('Help › Show Help (alpha.24, helpmenu: the status bar’s Help switch
   });
 });
 
+describe('Help › Keyboard Shortcuts… (Session 25; Simple Mode’s too, a25 item 3)', () => {
+  it.each(PLATFORMS)(
+    'opens the keys sheet in Pro Mode and in Simple Mode, after the manual and the guides, with no key of its own (%s)',
+    (platform) => {
+      for (const mode of ['pro', 'simple'] as const) {
+        let opened = 0;
+        on(platform, () => {
+          installMenu({
+            ...actions(mode).a,
+            keyboardShortcuts: () => {
+              opened++;
+            },
+          });
+        });
+        const help = (built.at(-1) ?? []).find((m) => m.role === 'help')?.submenu;
+        const ids = (Array.isArray(help) ? help : []).map((m) => m.id ?? m.type);
+        expect(ids.indexOf('keyboard-shortcuts'), mode).toBe(ids.indexOf('separator') + 1);
+        // No accelerator: ? is the page's key, so the guards for fields and dialogs hold.
+        expect(item('keyboard-shortcuts'), mode).toEqual({
+          id: 'keyboard-shortcuts',
+          label: 'Keyboard Shortcuts…',
+          click: expect.any(Function) as unknown,
+        });
+        (item('keyboard-shortcuts')?.click as (() => void) | undefined)?.();
+        expect(opened, mode).toBe(1);
+      }
+    },
+  );
+});
+
 describe('Help › Save Diagnostics (alpha.21, logs for 100+ installs (c): the log of a chosen period)', () => {
   it.each(PLATFORMS)(
     'is a submenu in Pro Mode, Simple Mode and on a node: Today… (save-diagnostics, its old id), Yesterday…, The Last 7 Days…, then One Day with each earlier day kept, newest first, each saving its period (%s)',
