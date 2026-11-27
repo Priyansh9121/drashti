@@ -14,11 +14,11 @@ describe('blockAsItStands', () => {
     expect(blockAsItStands({ block: 380, scrollbar: 0, picture: { width: 348, height: 196 } })).toBe(380);
   });
 
-  it('adds back what a scrollbar beside it took from its picture, at the picture’s own shape', () => {
-    // An 11 px scrollbar: the 16:9 picture 337 wide is 6.2 px shorter than at 348, rounded up.
-    expect(blockAsItStands({ block: 360, scrollbar: 11, picture: { width: 337, height: 190 } })).toBe(367);
-    // A 4:3 picture: three quarters of the scrollbar's width.
-    expect(blockAsItStands({ block: 300, scrollbar: 16, picture: { width: 240, height: 180 } })).toBe(312);
+  it('adds back what a scrollbar beside it took from its picture, at the picture’s own shape, and a pixel to spare', () => {
+    // An 11 px scrollbar: the 16:9 picture 337 wide is 6.2 px shorter than at 348, rounded up, and a pixel.
+    expect(blockAsItStands({ block: 360, scrollbar: 11, picture: { width: 337, height: 190 } })).toBe(368);
+    // A 4:3 picture: three quarters of the scrollbar's width, and a pixel.
+    expect(blockAsItStands({ block: 300, scrollbar: 16, picture: { width: 240, height: 180 } })).toBe(313);
   });
 
   it('so the choice never flips: 504 px of column, 140 px wanted under the block', () => {
@@ -88,4 +88,3 @@ describe('blockAsItStands, swept a pixel at a time', () => {
     expect(flips.slice(0, 5)).toEqual([]);
   });
 });
-
