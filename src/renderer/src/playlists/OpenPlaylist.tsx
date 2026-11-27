@@ -622,8 +622,11 @@ function OrderPicker({
   const ownSlides = item.order.mode === 'slides';
   if (doc.arrangements.length === 0 && !ownSlides) return null;
   const own = doc.arrangements.find((a) => a.id === doc.selectedArrangementId)?.name ?? 'all slides in order';
+  // On one line with Up and Down (alpha.24, hdrwrap: in CI's 1024 × 645 Down had gone under it): its basis is 8rem, so
+  // the line breaks only where it could not hold the label and a short list beside them; it takes the room left, and
+  // its list (at most 13rem) gives way first.
   return (
-    <Field label="Order" layout="inline" className="mr-auto">
+    <Field label="Order" layout="inline" className="min-w-0 flex-[1_1_8rem]">
       <Select
         data-testid="arrangement"
         className="max-w-52"
@@ -670,6 +673,20 @@ function GroupNote({ row }: { row: Extract<MiddleRow, { kind: 'group' }> }) {
     );
   return null;
 }
+
+/**
+ * Add files…'s and From a Link…'s words in the open playlist's header, wherever its one row has room for them beside a
+ * name (alpha.24, hdrwrap): From a Link…'s go first, then Add files…'s; each says its name to a screen reader and its
+ * title on hover either way. The row's inside is at least 368 px (the narrowest middle, a 1008- or 1024-wide window).
+ * Pro Mode: the icon 16, the name at its least 96 (6rem), Add files… about 92 (32 alone), From a Link… 112 (32), Find
+ * 28, the ? 24, ⋯ 28, × 28 and seven 6 px gaps: with both words about 466 px (from 32rem), with Add files…'s alone 386
+ * (from 27rem), with neither 326; each threshold leaves about a tenth to spare. Simple Mode has no Find, ?, ⋯ or ×:
+ * Add files… always says its words (about 254 px), and From a Link… from 27rem, where its day playlist's name (about
+ * 166 px at its longest, "Sabha, 30 Sept 2026") still has 194 beside both.
+ */
+const addFilesWords = (simple: boolean) => (simple ? undefined : 'hidden @[27rem]/playlist-head:inline');
+const fromLinkWords = (simple: boolean) =>
+  simple ? 'hidden @[27rem]/playlist-head:inline' : 'hidden @[32rem]/playlist-head:inline';
 
 function PlaylistItems({ platform, openId, simple }: { platform: string; openId: string; simple: boolean }) {
   const [crossfadeOpen, setCrossfadeOpen] = useState(false);
@@ -1049,8 +1066,11 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
           onClose={() => setCrossfadeOpen(false)}
         />
       )}
+      {/* One row (alpha.24, hdrwrap): in CI's 1024 × 645 it had wrapped, Add files… alone on a first row. Its name gives
+          way down to 6rem; From a Link…, then Add files…, show their icons alone where the row has no room for their
+          words beside a name of that width (fromLinkWords, addFilesWords), named and titled either way. */}
       <div
-        className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-3 py-2"
+        className="@container/playlist-head flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-3 py-2"
         data-strip=""
       >
         {node?.kind === 'smart' ? (
@@ -1061,7 +1081,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
           <ListMusic size={16} aria-hidden="true" className="shrink-0 text-muted" />
         )}
         {renaming === openId && renameIn === 'centre' ? (
-          <span className="min-w-40 flex-1">
+          <span className="min-w-24 flex-1">
             <RenameField
               value={node?.name ?? ''}
               label="Playlist name"
@@ -1073,7 +1093,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
           </span>
         ) : (
           <h2
-            className="min-w-40 flex-1 truncate text-base font-bold"
+            className="min-w-24 flex-1 truncate text-base font-bold"
             data-testid="playlist-title"
             // Simple Mode renames playlists too since Session 56 (its left column has them).
             title={`${node?.name ?? ''} (double-click to rename)`}
@@ -1091,18 +1111,20 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
               icon={FilePlus}
               data-testid="playlist-add-files"
               title="Import files and add them at the end of this playlist"
+              aria-label="Add files…"
               onClick={() => void addFilesTo(openId)}
             >
-              Add files…
+              <span className={addFilesWords(simple)}>Add files…</span>
             </Button>
             <Button
               size="sm"
               icon={Link2}
               data-testid="playlist-from-link"
               title="Download from a link and add it at the end of this playlist"
+              aria-label="From a Link…"
               onClick={openLinkDialog}
             >
-              From a Link…
+              <span className={fromLinkWords(simple)}>From a Link…</span>
             </Button>
           </>
         )}
