@@ -310,6 +310,10 @@ describe('more colourful appearances (Session 42): more places for colour', () =
       'Tamra',
       'Gold Leaf',
       'Kesar',
+      'Broadcast',
+      'Stage desk',
+      'Daylight',
+      'Signal',
     ]);
     const alike: string[] = [];
     for (const [i, a] of BUILT_IN.entries())
