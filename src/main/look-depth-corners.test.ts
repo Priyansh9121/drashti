@@ -48,10 +48,7 @@ for (const side of ['Top', 'Right', 'Bottom', 'Left']) {
 }
 const rounded = (radius: string): Styles =>
   Object.fromEntries(
-    ['TopLeft', 'TopRight', 'BottomLeft', 'BottomRight'].map((corner) => [
-      `border${corner}Radius`,
-      radius,
-    ]),
+    ['TopLeft', 'TopRight', 'BottomLeft', 'BottomRight'].map((corner) => [`border${corner}Radius`, radius]),
   );
 Object.assign(defaults, rounded('0px'));
 
@@ -108,8 +105,7 @@ function overlaps(col: ElementBox): string[] {
   const read = runInNewContext(`${code}\noverCorners`, {
     HTMLElement: ElementBox,
     document: {
-      querySelector: (selector: string) =>
-        selector === '[data-testid="column-right"]' ? col : null,
+      querySelector: (selector: string) => (selector === '[data-testid="column-right"]' ? col : null),
       // There is deliberately no pointer hit: this probe must inspect the boxes that actually paint.
       elementsFromPoint: () => [],
     },
@@ -145,10 +141,17 @@ describe('Depth: the e2e corner probe sees what paints', () => {
 
   it('sees a rounded LIVE row in the last three pixels of the column when the ring is underneath', () => {
     const col = column(-1);
-    col.append(
+    const sliver = col.append(
+      new ElementBox(
+        'three-pixel-viewport',
+        { left: 4, top: 97, width: 92, height: 3 },
+        { overflowX: 'hidden', overflowY: 'hidden' },
+      ),
+    );
+    sliver.append(
       new ElementBox(
         'thin-live-row',
-        { left: 8, top: 97, width: 84, height: 20 },
+        { left: 8, top: 77, width: 84, height: 40 },
         { ...rounded('8px'), backgroundColor: 'rgb(40, 40, 40)' },
       ),
     );
@@ -207,9 +210,7 @@ describe('Depth: the e2e corner probe sees what paints', () => {
 
   it('lets a high child escape a positioned auto parent, but not its own stacking context', () => {
     const col = column();
-    const parent = col.append(
-      new ElementBox('positioned-parent', col.box, { position: 'relative' }),
-    );
+    const parent = col.append(new ElementBox('positioned-parent', col.box, { position: 'relative' }));
     parent.append(
       new ElementBox(
         'high-child',
