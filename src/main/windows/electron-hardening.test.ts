@@ -51,7 +51,7 @@ function sessionStand() {
         ...details,
       });
       expect(callback).toHaveBeenCalledOnce();
-      return callback.mock.calls[0]?.[0];
+      return callback.mock.calls[0]?.[0] as boolean;
     },
     checks(
       contents: WebContents | null,
@@ -178,7 +178,8 @@ describe('E-02: renderers cannot change the document attached to a privileged We
   it('preserves the exact-page main-frame reload used by window recovery', () => {
     const url = `${ROOT}index.html#security-placeholder`;
     const contents = Object.assign(new EventEmitter(), {
-      getURL: () => url, setWindowOpenHandler: vi.fn(),
+      getURL: () => url,
+      setWindowOpenHandler: vi.fn(),
     });
     secureWebContents(contents as unknown as WebContents, own);
     for (const eventName of ['will-navigate', 'will-frame-navigate']) {
@@ -191,7 +192,10 @@ describe('E-02: renderers cannot change the document attached to a privileged We
   it.each(['will-navigate', 'will-redirect', 'will-frame-navigate'])(
     'refuses %s even for another packaged app page',
     (eventName) => {
-      const contents = Object.assign(new EventEmitter(), { setWindowOpenHandler: vi.fn() });
+      const contents = Object.assign(new EventEmitter(), {
+        getURL: () => `${ROOT}gallery.html`,
+        setWindowOpenHandler: vi.fn(),
+      });
       secureWebContents(contents as unknown as WebContents);
       for (const url of [
         `${ROOT}audio.html`,

@@ -268,6 +268,7 @@ describe('navigating (Sessions 31–36, SEC-15)', () => {
   function stand() {
     const emitter = new EventEmitter();
     const contents = Object.assign(emitter, {
+      getURL: () => 'file:///app/out/renderer/gallery.html',
       setWindowOpenHandler: () => undefined,
     }) as unknown as WebContents;
     const fire = (name: string, url: string): boolean => {
@@ -278,7 +279,7 @@ describe('navigating (Sessions 31–36, SEC-15)', () => {
     return { contents, fire };
   }
 
-  it('stops every renderer document link, redirect and frame, including app-local pages', () => {
+  it('stops renderer document changes, redirects and frames, including other app pages', () => {
     const { contents, fire } = stand();
     secureWebContents(contents);
     for (const name of ['will-navigate', 'will-redirect', 'will-frame-navigate']) {

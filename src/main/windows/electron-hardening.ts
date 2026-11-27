@@ -6,6 +6,8 @@ export function installElectronHardening(app: Pick<App, 'on'>): void {
   app.on('session-created', (session) => {
     applySessionSecurity(session);
     session.setDevicePermissionHandler(() => false);
-    session.setDisplayMediaRequestHandler((_request, callback) => { callback({}); });
+    session.setDisplayMediaRequestHandler((_request, callback) => {
+      callback({});
+    });
   });
 }

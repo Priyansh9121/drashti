@@ -157,7 +157,11 @@ export function permissionFrameAllowed(
   try {
     const asking = new URL(url);
     const loaded = new URL(current);
-    return asking.protocol === loaded.protocol && asking.host === loaded.host && asking.pathname === loaded.pathname;
+    return (
+      asking.protocol === loaded.protocol &&
+      asking.host === loaded.host &&
+      asking.pathname === loaded.pathname
+    );
   } catch {
     return false;
   }
@@ -179,20 +183,21 @@ export function applySessionSecurity(session: Session, rules: PermissionRules = 
     // MIDI for the operator window's own page, never SysEx; a screen's picture to a page that may capture it
     // now (Session 48); a camera alone to a screen's page (Session 50); nothing else is ever asked for and given.
     const media = 'mediaTypes' in details ? (details.mediaTypes ?? []) : null;
-    const allowed = permissionFrameAllowed(contents, url, details.isMainFrame, own) && (
-      (permission === 'midi' && (rules.isOperator?.(contents) ?? false) && isOperatorPage(url)) ||
-      screenPictureAllowed(permission, media, rules.mayCapture?.(contents) ?? false) ||
-      (cameraAllowed(
-        {
-          permission,
-          mediaTypes: media,
-          page: rules.cameraPage?.(contents) ?? null,
-          url,
-          mainFrame: details.isMainFrame,
-        },
-        own,
-      ) &&
-        (rules.cameraGranted?.() ?? true)));
+    const allowed =
+      permissionFrameAllowed(contents, url, details.isMainFrame, own) &&
+      ((permission === 'midi' && (rules.isOperator?.(contents) ?? false) && isOperatorPage(url)) ||
+        screenPictureAllowed(permission, media, rules.mayCapture?.(contents) ?? false) ||
+        (cameraAllowed(
+          {
+            permission,
+            mediaTypes: media,
+            page: rules.cameraPage?.(contents) ?? null,
+            url,
+            mainFrame: details.isMainFrame,
+          },
+          own,
+        ) &&
+          (rules.cameraGranted?.() ?? true)));
 
     rules.log?.(`Permission ${allowed ? 'given' : 'refused'}: ${permission} for ${url}`);
     callback(allowed);
@@ -201,18 +206,19 @@ export function applySessionSecurity(session: Session, rules: PermissionRules = 
     const url = details.requestingUrl ?? contents?.getURL() ?? '';
     const audioPlayer = rules.isAudioPlayer?.(contents) ?? false;
     const operator = rules.isOperator?.(contents) ?? false;
-    const allowed = permissionFrameAllowed(contents, url, details.isMainFrame, own) && (
-      permissionCheckAllowed(permission, audioPlayer, url, operator) ||
-      cameraAllowed(
-        {
-          permission,
-          mediaTypes: details.mediaType === undefined ? null : [details.mediaType],
-          page: rules.cameraPage?.(contents) ?? null,
-          url,
-          mainFrame: details.isMainFrame,
-        },
-        own,
-      ));
+    const allowed =
+      permissionFrameAllowed(contents, url, details.isMainFrame, own) &&
+      (permissionCheckAllowed(permission, audioPlayer, url, operator) ||
+        cameraAllowed(
+          {
+            permission,
+            mediaTypes: details.mediaType === undefined ? null : [details.mediaType],
+            page: rules.cameraPage?.(contents) ?? null,
+            url,
+            mainFrame: details.isMainFrame,
+          },
+          own,
+        ));
     rules.log?.(`Permission check ${allowed ? 'passed' : 'failed'}: ${permission} for ${url}`);
     return allowed;
   });
@@ -248,12 +254,26 @@ export function allowHangStacks(
 }
 
 /**
- * Only Main loads app documents. Renderer links, redirects and frames cannot change a window's role;
- * same-document anchors do not emit these events. Popups and webviews are never needed.
+ * Only Main changes app documents. A renderer may reload its exact current main page for window recovery;
+ * links to another document, redirects, subframe navigation, popups and webviews have no app use.
+ * Same-document anchors do not emit these events.
  */
-export function secureWebContents(contents: WebContents): void {
+export function secureWebContents(
+  contents: WebContents,
+  isOwnPage: (url: string) => boolean = ownPage,
+): void {
+  const recoveryReload = (url: string): boolean => isOwnPage(url) && url === contents.getURL();
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  for (const name of ['will-attach-webview', 'will-navigate', 'will-redirect', 'will-frame-navigate'] as const) {
-    contents.on(name, (event) => { event.preventDefault(); });
-  }
+  contents.on('will-attach-webview', (event) => {
+    event.preventDefault();
+  });
+  contents.on('will-navigate', (event) => {
+    if (!recoveryReload(event.url)) event.preventDefault();
+  });
+  contents.on('will-redirect', (event) => {
+    event.preventDefault();
+  });
+  contents.on('will-frame-navigate', (event) => {
+    if (!event.isMainFrame || !recoveryReload(event.url)) event.preventDefault();
+  });
 }
