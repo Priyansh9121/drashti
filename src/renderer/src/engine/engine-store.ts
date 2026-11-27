@@ -2,12 +2,16 @@ import { create } from 'zustand';
 import { EngineMirror } from '../../../shared/engine/mirror';
 import type { EngineMessage } from '../../../shared/engine/protocol';
 import type { EngineState } from '../../../shared/engine/state';
+import { whenCueStarted } from '../render/cue-started';
 import { noteShowChange } from './show-changed';
 
 interface EngineView {
   state: EngineState | null;
+  /** LIVE alone receives the Go state immediately; the window's other render subscribers wait behind its picture. */
+  liveState: EngineState | null;
+  liveRev: number;
   rev: number;
-  /** Revision of the state published for rendering (operator cleanup may wait briefly). */
+  /** Revision published for window-wide drawing (operator Go and cleanup may wait behind LIVE). */
   drawnRev: number;
   /**
    * The run of the engine `rev` counts in (Session 53): each run starts again from 0, so a phone's Next says both.
@@ -27,6 +31,8 @@ interface EngineView {
 /** This window's copy of the show engine state. */
 export const useEngine = create<EngineView>(() => ({
   state: null,
+  liveState: null,
+  liveRev: -1,
   rev: -1,
   drawnRev: -1,
   sentAt: 0,
@@ -51,54 +57,95 @@ export interface EngineSource {
 let started = false;
 
 export interface EngineConnectionOptions {
-  /** Operator only: a videoStart-only cleanup is bookkeeping, not a show change at Go. */
+  /** Operator only: LIVE receives Go immediately; other drawing and Go cleanup wait behind its first frame. */
   deferCueCleanup?: boolean;
 }
 
 /**
- * Apply every message to the mirror immediately; a gap asks for a fresh snapshot. The operator may defer
- * publishing only Go cleanup to its render subscribers. Protocol revisions always advance immediately.
+ * Apply every message to the mirror immediately; a gap asks for a fresh snapshot. LIVE receives its armed Go at
+ * once. Other operator drawing waits for LIVE's first moving frame (Go + 250 ms at most); a subsequent real change
+ * cancels that wait and publishes immediately. Protocol revisions always advance immediately.
  */
 export function connectEngineSource(source: EngineSource, options: EngineConnectionOptions = {}): void {
   if (started) return;
   started = true;
   const mirror = new EngineMirror();
-  let cleanup: ReturnType<typeof setTimeout> | null = null;
+  let pending: { id: string; cancel: () => void } | null = null;
+  const cancelPending = () => {
+    const held = pending;
+    pending = null;
+    held?.cancel();
+  };
   const publish = () => {
-    cleanup = null;
+    cancelPending();
     noteShowChange();
-    useEngine.setState({ state: mirror.state, drawnRev: mirror.rev });
+    useEngine.setState({
+      state: mirror.state,
+      drawnRev: mirror.rev,
+      liveState: mirror.state,
+      liveRev: mirror.rev,
+    });
   };
   source.onMessage((message) => {
-    const start = mirror.state?.videoStart;
+    const before = mirror.state;
+    const start = before?.videoStart;
     const result = mirror.apply(message);
     if (result === 'applied') {
-      if (cleanup !== null) clearTimeout(cleanup);
-      cleanup = null;
-      const wait = start ? start.at + 250 - Date.now() : 0;
+      const now = Date.now();
+      const next = mirror.state;
+      const armed = next?.videoStart;
+      const bg = next?.layers.background;
+      const deferGo = Boolean(
+        options.deferCueCleanup &&
+        message.kind === 'patch' &&
+        armed &&
+        armed.at > now &&
+        before?.videoCue?.id === armed.id &&
+        bg?.kind === 'media' &&
+        bg.media === 'video' &&
+        bg.cueId === armed.id &&
+        !next.stopped &&
+        !next.blackout &&
+        !next.wallpaper,
+      );
       const op = message.kind === 'patch' && message.ops.length === 1 ? message.ops[0] : undefined;
-      const defer =
+      const deferCleanup = Boolean(
         options.deferCueCleanup &&
         start &&
-        Date.now() >= start.at &&
-        wait > 0 &&
+        now >= start.at &&
+        now < start.at + 250 &&
         op?.path.length === 1 &&
         op.path[0] === 'videoStart' &&
-        op.value === null;
-      if (defer) {
-        // Bounded operator-only bookkeeping publication; playback still uses the shared clock.
-        cleanup = setTimeout(publish, wait);
-      } else {
-        noteShowChange();
-      }
+        op.value === null,
+      );
+      // Main's bookkeeping at Go must neither redraw LIVE nor replace its first-frame wait with another timer.
+      const keepPending = deferCleanup && pending?.id === start?.id;
+      if (!keepPending) cancelPending();
+      const defer = deferGo || deferCleanup;
+      if (!defer || deferGo) noteShowChange();
       useEngine.setState({
-        ...(defer ? {} : { state: mirror.state, drawnRev: mirror.rev }),
+        ...(defer ? {} : { state: next, drawnRev: mirror.rev }),
+        ...(deferCleanup ? {} : { liveState: next, liveRev: mirror.rev }),
         rev: mirror.rev,
         session: mirror.session,
         sentAt: message.sentAt,
         connected: true,
         unread: false,
       });
+      const held = deferGo ? armed : deferCleanup ? start : null;
+      if (held && !keepPending) {
+        const timer = setTimeout(publish, Math.max(0, held.at + 250 - now));
+        let stopShown: () => void = () => undefined;
+        pending = {
+          id: held.id,
+          cancel: () => {
+            clearTimeout(timer);
+            stopShown();
+          },
+        };
+        // The sign is cached, so even a frame told during the LIVE publication above releases this at once.
+        if (deferGo) stopShown = whenCueStarted(held.id, publish, 'shown');
+      }
     } else if (result === 'resync') source.resync();
   });
 }

@@ -137,7 +137,6 @@ it.each(['audience', 'cancel', 'combined', 'snapshot', 'late'] as const)(
   },
 );
 
-
 /** An already prepared cue, as Main sends it on Go: the same decoder, armed 120 ms ahead. */
 async function preparedGo(operator = true, lead = 120) {
   vi.useFakeTimers();
@@ -165,22 +164,28 @@ async function preparedGo(operator = true, lead = 120) {
     required: ['live'],
     ready: ['live'],
   };
-  connectEngineSource(
-    { onMessage: (listener) => (send = listener), resync },
-    { deferCueCleanup: operator },
-  );
-  send({ kind: 'snapshot', version: ENGINE_STATE_VERSION, rev: 1, state, sentAt: Date.now(), session: 'run-1' });
+  const background = state.videoCue.background;
+  connectEngineSource({ onMessage: (listener) => (send = listener), resync }, { deferCueCleanup: operator });
+  send({
+    kind: 'snapshot',
+    version: ENGINE_STATE_VERSION,
+    rev: 1,
+    state,
+    sentAt: Date.now(),
+    session: 'run-1',
+  });
   const before = useEngine.getState().state;
   let rev = 1;
   const patch = (ops: PatchOp[]) => {
     send({ kind: 'patch', version: ENGINE_STATE_VERSION, baseRev: rev, rev: ++rev, ops, sentAt: Date.now() });
   };
   const at = Date.now() + lead;
-  const go = () => patch([
-    { path: ['videoStart'], value: { id: 'placeholder-cue', at, mediaIds: [], soundIds: [] } },
-    { path: ['videoCue'], value: null },
-    { path: ['layers', 'background'], value: { ...state.videoCue!.background, seek: { at, toMs: 1000 } } },
-  ]);
+  const go = () =>
+    patch([
+      { path: ['videoStart'], value: { id: 'placeholder-cue', at, mediaIds: [], soundIds: [] } },
+      { path: ['videoCue'], value: null },
+      { path: ['layers', 'background'], value: { ...background, seek: { at, toMs: 1000 } } },
+    ]);
   return { useEngine, cue, send, resync, state, before, patch, go, at };
 }
 
@@ -247,7 +252,10 @@ it.each(['Clear all', 'cancel', 'new cue'] as const)(
     patch([
       { path: ['videoStart'], value: null },
       { path: ['layers', 'background'], value: kind === 'Clear all' ? null : state.layers.background },
-      { path: ['videoCue'], value: kind === 'new cue' ? { ...state.videoCue, id: 'placeholder-next' } : null },
+      {
+        path: ['videoCue'],
+        value: kind === 'new cue' ? { ...state.videoCue, id: 'placeholder-next' } : null,
+      },
     ]);
     const current = useEngine.getState().state;
     expect(current?.videoStart).toBeNull();
@@ -269,7 +277,10 @@ it('never holds a real show change combined with the cleanup after Go', async ()
   const { useEngine, cue, patch, go } = await preparedGo();
   go();
   vi.advanceTimersByTime(150);
-  patch([{ path: ['videoStart'], value: null }, { path: ['blackout'], value: true }]);
+  patch([
+    { path: ['videoStart'], value: null },
+    { path: ['blackout'], value: true },
+  ]);
   const current = useEngine.getState().state;
   expect(current?.blackout).toBe(true);
   expect(useEngine.getState().liveState).toBe(current);
@@ -282,7 +293,14 @@ it('publishes a restart snapshot immediately and cancels a previous run’s defe
   const { useEngine, cue, send, go } = await preparedGo();
   go();
   const state = { ...initialEngineState(), blackout: true };
-  send({ kind: 'snapshot', version: ENGINE_STATE_VERSION, rev: 0, state, sentAt: Date.now(), session: 'run-2' });
+  send({
+    kind: 'snapshot',
+    version: ENGINE_STATE_VERSION,
+    rev: 0,
+    state,
+    sentAt: Date.now(),
+    session: 'run-2',
+  });
   expect(useEngine.getState().state).toBe(state);
   expect(useEngine.getState().liveState).toBe(state);
   expect(useEngine.getState()).toMatchObject({ rev: 0, drawnRev: 0, liveRev: 0, session: 'run-2' });
@@ -294,16 +312,16 @@ it('publishes a restart snapshot immediately and cancels a previous run’s defe
   unsubscribe();
 });
 
-it.each([['audience', false, 120], ['late Go', true, -1]] as const)(
-  'publishes %s to both views immediately',
-  async (_kind, operator, lead) => {
-    const { useEngine, go } = await preparedGo(operator, lead);
-    go();
-    expect(useEngine.getState().state?.videoStart?.id).toBe('placeholder-cue');
-    expect(useEngine.getState().state).toBe(useEngine.getState().liveState);
-    expect(useEngine.getState()).toMatchObject({ rev: 2, drawnRev: 2, liveRev: 2 });
-  },
-);
+it.each([
+  ['audience', false, 120],
+  ['late Go', true, -1],
+] as const)('publishes %s to both views immediately', async (_kind, operator, lead) => {
+  const { useEngine, go } = await preparedGo(operator, lead);
+  go();
+  expect(useEngine.getState().state?.videoStart?.id).toBe('placeholder-cue');
+  expect(useEngine.getState().state).toBe(useEngine.getState().liveState);
+  expect(useEngine.getState()).toMatchObject({ rev: 2, drawnRev: 2, liveRev: 2 });
+});
 
 it('keeps a pending Go through stale messages and resync requests without losing protocol revisions', async () => {
   const { useEngine, cue, send, resync, before, patch, go } = await preparedGo();
