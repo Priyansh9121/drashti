@@ -1,6 +1,6 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { chooseMenuItem, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 /* Review regressions for the focus keeper: retained lists still need a regional fallback when their own handlers
@@ -83,3 +83,91 @@ test('a row move keeps its local focus; removing its non-live item then keeps fo
     await app.close();
   }
 });
+
+/** The keyboard's location remains visibly marked, including after the action becomes usable again. */
+async function expectKeptRing(dialog: Locator): Promise<void> {
+  await expect(dialog).toBeFocused();
+  await expect(dialog).toHaveAttribute('data-focus-kept', '');
+  await expect(dialog).toBeInViewport({ ratio: 1 });
+  await expect(dialog).toHaveCSS('outline-style', 'solid');
+  await expect(dialog).toHaveCSS('outline-width', '2px');
+  await expect(dialog).toHaveCSS('outline-offset', '-2px');
+  const drawn = await dialog.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      keyboard: el.matches(':focus-visible'),
+      ring: style.outlineColor,
+      surface: style.backgroundColor,
+      opacity: style.opacity,
+      forcedAdjust: style.forcedColorAdjust,
+    };
+  });
+  expect(drawn.keyboard).toBe(true);
+  expect(drawn.ring).not.toBe(drawn.surface);
+  expect(drawn.ring).not.toMatch(/transparent|rgba\([^)]*, 0\)$/u);
+  expect(drawn.opacity).toBe('1');
+  expect(drawn.forcedAdjust).toBe('auto');
+}
+
+for (const media of [
+  { name: 'ordinary motion', reducedMotion: 'no-preference', forcedColors: 'none' },
+  { name: 'reduced motion', reducedMotion: 'reduce', forcedColors: 'none' },
+  { name: 'forced colours with reduced motion', reducedMotion: 'reduce', forcedColors: 'active' },
+] as const)
+  test(`the kept Manual dialog has a full visible ring during printing and live-show restrictions: ${media.name}`, async () => {
+    const { app } = await launchApp();
+    try {
+      const win = await operatorPage(app);
+      await operatorReady(win);
+      await sizeOperatorWindow(app, win, CI_WINDOW);
+      await win.emulateMedia({ reducedMotion: media.reducedMotion, forcedColors: media.forcedColors });
+      // Hold only the native print callback: no real printer, timed delay, or application behavior changed.
+      await app.evaluate(({ app: electronApp }) => {
+        const g = globalThis as { drashtiFinishFocusPrint?: () => void };
+        electronApp.on('browser-window-created', (_event, window) => {
+          window.webContents.print = (_options: unknown, callback?: (success: boolean, why: string) => void) => {
+            g.drashtiFinishFocusPrint = () => {
+              delete g.drashtiFinishFocusPrint;
+              callback?.(true, '');
+            };
+          };
+        });
+      });
+      await chooseMenuItem(app, 'manual');
+      const manual = win.getByTestId('manual');
+      const print = manual.getByRole('button', { name: 'Print…', exact: true });
+      const save = manual.getByRole('button', { name: 'Save as PDF…', exact: true });
+      await expect(print).toBeEnabled();
+      await expect(manual.getByRole('searchbox', { name: 'Search the manual' })).toBeFocused();
+      await win.keyboard.press('Tab');
+      await expect(print).toBeFocused();
+      await win.keyboard.press('Enter');
+      await expect(print).toBeDisabled();
+      await expect(save).toBeDisabled();
+      await expectKeptRing(manual);
+      await expect.poll(() => app.evaluate(() => typeof (globalThis as { drashtiFinishFocusPrint?: () => void }).drashtiFinishFocusPrint)).toBe('function');
+      await app.evaluate(() => (globalThis as { drashtiFinishFocusPrint?: () => void }).drashtiFinishFocusPrint?.());
+      await expect(print).toBeEnabled();
+      await expectKeptRing(manual);
+
+      // The other action can become disabled through the live-show restriction while it holds keyboard focus.
+      await save.focus();
+      await expect(manual).not.toHaveAttribute('data-focus-kept', '');
+      await win.evaluate(async () => {
+        const d = (globalThis as PageGlobals).drashti;
+        const first = (await d.library.listPresentations())[0];
+        if (!first) throw new Error('No placeholder presentation');
+        await d.engine.dispatch({ type: 'goLive', presentationId: first.id, slideIndex: 0 });
+      });
+      await expect(save).toBeDisabled();
+      await expect(manual.getByTestId('manual-waits')).toBeVisible();
+      await expectKeptRing(manual);
+      await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearAll' }));
+      await expect(save).toBeEnabled();
+      await expectKeptRing(manual);
+      await win.keyboard.press('Escape');
+      await expect(manual).toHaveCount(0);
+    } finally {
+      await app.close();
+    }
+  });
