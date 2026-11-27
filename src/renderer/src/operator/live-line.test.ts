@@ -44,7 +44,12 @@ const line = (l: Layers, live: LiveCursor = nowhere, item?: PlaylistItemInfo) =>
 
 const picture = (mediaId: string) =>
   layers({ background: { kind: 'media', mediaId, media: 'image', fit: 'fill', loop: false, startedAt: 1 } });
-const slideAt = (index: number): LiveCursor => ({ ...nowhere, presentationId: 'k', slideIndex: index, slideCount: 5 });
+const slideAt = (index: number): LiveCursor => ({
+  ...nowhere,
+  presentationId: 'k',
+  slideIndex: index,
+  slideCount: 5,
+});
 const slide = {
   presentationId: 'k',
   slideIndex: 1,
@@ -52,7 +57,12 @@ const slide = {
   shownAt: 1,
   notes: '',
 } as unknown as Layers['slide'];
-const input = { kind: 'input', inputId: 'in-1', name: 'Placeholder input', device: 'Placeholder camera' } as const;
+const input = {
+  kind: 'input',
+  inputId: 'in-1',
+  name: 'Placeholder input',
+  device: 'Placeholder camera',
+} as const;
 
 describe('LIVE’s line in the top bar, LIVE said once (alpha.24, livesay)', () => {
   it('says Off and Nothing live with nothing up (the chosen wallpaper or black shows)', () => {
@@ -64,7 +74,14 @@ describe('LIVE’s line in the top bar, LIVE said once (alpha.24, livesay)', () 
     expect(
       line(
         layers({
-          background: { kind: 'media', mediaId: 'clip', media: 'video', fit: 'fill', loop: true, startedAt: 1 },
+          background: {
+            kind: 'media',
+            mediaId: 'clip',
+            media: 'video',
+            fit: 'fill',
+            loop: true,
+            startedAt: 1,
+          },
         }),
       ),
     ).toEqual({ onAir: true, text: 'Live: Video · Placeholder clip' });
@@ -89,9 +106,15 @@ describe('LIVE’s line in the top bar, LIVE said once (alpha.24, livesay)', () 
       ),
     ).toEqual({ onAir: true, text: 'Live: Video input · Placeholder input' });
     expect(
-      line(layers({ background: { kind: 'window', sourceId: 'window:1:0', name: 'Placeholder window', startedAt: 1 } })),
+      line(
+        layers({
+          background: { kind: 'window', sourceId: 'window:1:0', name: 'Placeholder window', startedAt: 1 },
+        }),
+      ),
     ).toEqual({ onAir: true, text: 'Live: Window · Placeholder window' });
-    expect(line(layers({ background: { kind: 'link', linkId: 'l', name: 'YouTube live', startedAt: 1 } }))).toEqual({
+    expect(
+      line(layers({ background: { kind: 'link', linkId: 'l', name: 'YouTube live', startedAt: 1 } })),
+    ).toEqual({
       onAir: true,
       text: 'Live: Stream link · YouTube live',
     });
@@ -99,7 +122,9 @@ describe('LIVE’s line in the top bar, LIVE said once (alpha.24, livesay)', () 
 
   it('says LIVE and names the picture-in-picture box up alone, with what it holds', () => {
     const box = (source: NonNullable<Layers['pip']>['source']) =>
-      layers({ pip: { source, place: {} as NonNullable<Layers['pip']>['place'], swapped: false, shownAt: 1 } });
+      layers({
+        pip: { source, place: {} as NonNullable<Layers['pip']>['place'], swapped: false, shownAt: 1 },
+      });
     expect(line(box({ kind: 'media', mediaId: 'pic', media: 'image' }))).toEqual({
       onAir: true,
       text: 'Live: Picture in picture · Placeholder backdrop',
@@ -109,9 +134,10 @@ describe('LIVE’s line in the top bar, LIVE said once (alpha.24, livesay)', () 
       text: 'Live: Picture in picture · Placeholder input',
     });
     // With a background up too: both, the background first.
-    expect(
-      line({ ...picture('pic'), pip: box(input).pip }),
-    ).toEqual({ onAir: true, text: 'Live: Picture · Placeholder backdrop, Picture in picture · Placeholder input' });
+    expect(line({ ...picture('pic'), pip: box(input).pip })).toEqual({
+      onAir: true,
+      text: 'Live: Picture · Placeholder backdrop, Picture in picture · Placeholder input',
+    });
   });
 
   it('says LIVE for a slide up without a place in a presentation', () => {
@@ -119,7 +145,10 @@ describe('LIVE’s line in the top bar, LIVE said once (alpha.24, livesay)', () 
   });
 
   it('keeps the slide’s line as it was while the slide is up, a background under it or not', () => {
-    expect(line(layers({ slide }), slideAt(1))).toEqual({ onAir: true, text: 'Live: Placeholder Kirtan · slide 2 of 5' });
+    expect(line(layers({ slide }), slideAt(1))).toEqual({
+      onAir: true,
+      text: 'Live: Placeholder Kirtan · slide 2 of 5',
+    });
     expect(line({ ...picture('pic'), slide }, slideAt(1))).toEqual({
       onAir: true,
       text: 'Live: Placeholder Kirtan · slide 2 of 5',
@@ -149,7 +178,10 @@ describe('LIVE’s line in the top bar, LIVE said once (alpha.24, livesay)', () 
       timers: [],
     };
     const atRow: LiveCursor = { ...nowhere, playlist: { playlistId: 'p', itemId: 'i-clip' } };
-    expect(line(emptyLayers(), atRow, video)).toEqual({ onAir: false, text: 'Live: Placeholder clip (cleared)' });
+    expect(line(emptyLayers(), atRow, video)).toEqual({
+      onAir: false,
+      text: 'Live: Placeholder clip (cleared)',
+    });
     expect(line(picture('pic'), atRow, video)).toEqual({
       onAir: true,
       text: 'Live: Placeholder clip (cleared) · Picture · Placeholder backdrop',
@@ -162,6 +194,9 @@ describe('LIVE’s line in the top bar, LIVE said once (alpha.24, livesay)', () 
       text: 'Nothing live',
     });
     expect(line(layers({ ticker: {} as Layers['ticker'] }))).toEqual({ onAir: false, text: 'Nothing live' });
-    expect(line(layers({ lowerThird: {} as Layers['lowerThird'] }))).toEqual({ onAir: false, text: 'Nothing live' });
+    expect(line(layers({ lowerThird: {} as Layers['lowerThird'] }))).toEqual({
+      onAir: false,
+      text: 'Nothing live',
+    });
   });
 });

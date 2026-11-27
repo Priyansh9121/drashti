@@ -91,7 +91,13 @@ test('with only a background or the picture-in-picture box up, the top bar still
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
   const { pictureMediaId } = await setUpPlaceholderShow(win);
-  const picture = { kind: 'media', mediaId: pictureMediaId, media: 'image', fit: 'fill', loop: false } as const;
+  const picture = {
+    kind: 'media',
+    mediaId: pictureMediaId,
+    media: 'image',
+    fit: 'fill',
+    loop: false,
+  } as const;
   const frame = win.getByTestId('live-preview');
 
   for (const mode of ['pro', 'simple'] as const) {

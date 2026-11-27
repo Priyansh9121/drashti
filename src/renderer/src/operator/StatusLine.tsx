@@ -57,6 +57,12 @@ export interface LiveLineFacts {
   media: readonly MediaSummary[];
 }
 
+/** LIVE's line: its LIVE badge (or Off) and its words. */
+export interface LiveLine {
+  onAir: boolean;
+  text: string;
+}
+
 /** A background up, in words: its kind and its name (a file's as Media names it, when this window knows it). */
 function backgroundName(background: BackgroundLayer, media: readonly MediaSummary[]): string {
   switch (background.kind) {
@@ -95,7 +101,7 @@ function upWords(layers: Layers, media: readonly MediaSummary[]): string | null 
  * nor Black-out alone (its own badge says that), nor a message, a ticker, a lower third or a timer for the audience
  * alone (the LIVE column never counted those either).
  */
-export function liveLine({ live, layers, presentation, item, media }: LiveLineFacts): { onAir: boolean; text: string } {
+export function liveLine({ live, layers, presentation, item, media }: LiveLineFacts): LiveLine {
   const slideShown = layers?.slide !== null;
   // A timer up alone in the slide's place (Session 50): named instead of the slide the show is at.
   const timerAlone = layers?.slide?.timer?.name ?? null;
@@ -115,7 +121,9 @@ export function liveLine({ live, layers, presentation, item, media }: LiveLineFa
     named = itemUp;
   }
   // On the screens as the LIVE column's red frame has it (operator/LivePreview.tsx's somethingUp).
-  const onScreens = layers ? layers.slide !== null || layers.background !== null || layers.pip !== null : false;
+  const onScreens = layers
+    ? layers.slide !== null || layers.background !== null || layers.pip !== null
+    : false;
   if (onScreens && !named && layers) {
     const up = upWords(layers, media) ?? 'Slide';
     text = text === 'Nothing live' ? `Live: ${up}` : `${text} · ${up}`;
