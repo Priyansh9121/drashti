@@ -131,6 +131,7 @@ import { LookService } from './looks/look-service';
 import { StageLayoutRepo } from './db/stage-layouts';
 import { StageLayoutService } from './stage/stage-layout-service';
 import { anyTestSwitch, packaged, sw, swMs, swOn } from './switches';
+import { readTestWav, streamTestSoundFile } from './stream-test-sound';
 import { scheduleClock } from './schedule-clock';
 import {
   CHROMIUM_FAKE_DEVICES,
@@ -485,6 +486,8 @@ import { AccessStore as ErrorReportAccessStore } from './access/store';
 import { runDiagnosticsText, runReportIntake, runReportJob } from './report/report-worker-run';
 import { GUIDES, guideIdSchema, type GuideRead } from '../shared/guides';
 import { watchLoadFailures } from './outputs/load-failures';
+import { screenOfPage } from './outputs/output-of-page';
+import { screenLabels } from '../shared/screen-labels';
 import {
   followOutputs,
   WarmUpChoices,
@@ -1055,7 +1058,7 @@ const priorityItem = (after: (text: string) => void) =>
 const fakeDevices = sw('DRASHTI_TEST_FAKE_DEVICES') === '1';
 if (fakeDevices) app.commandLine.appendSwitch(CHROMIUM_FAKE_DEVICES);
 // Tests only (alpha.23, cap-realc): the fake microphone plays a generated WAV file once instead of its beep, so caption
-// AI's own recogniser (Route C) hears generated sound through the stream's own sound graph (src/main/fake-sound.ts).
+// AI's real recogniser hears generated speech through the stream's own sound graph (src/main/fake-sound.ts).
 const fakeSound = fakeSoundSwitch({
   fakeDevices,
   file: sw('DRASHTI_TEST_FAKE_SOUND_FILE'),
@@ -1069,6 +1072,13 @@ const fakeSoundSandbox = fakeSoundFeatures({
   disabled: app.commandLine.getSwitchValue('disable-features'),
 });
 if (fakeSoundSandbox) app.commandLine.appendSwitch('disable-features', fakeSoundSandbox);
+// Tests only (alpha.23, cap-realc): the stream-clock seam. The stream's page plays this generated WAV file on its own
+// audio clock in place of its sound input (src/main/stream-test-sound.ts), never through Chromium's fake microphone.
+const streamTestSound = streamTestSoundFile({
+  fakeDevices,
+  file: sw('DRASHTI_TEST_STREAM_SOUND_FILE'),
+  platform: process.platform,
+});
 // Tests only: behave as if the system's secure storage for keys were missing.
 const noSafeStorage = sw('DRASHTI_TEST_NO_SAFE_STORAGE') === '1';
 // Tests only: the local network listens on this computer alone (no firewall questions), and can be
@@ -1175,8 +1185,11 @@ const testMemoryEveryMs = packaged() ? 0 : Math.max(0, Number(sw('DRASHTI_TEST_M
 // Schemes must be registered before the app is ready.
 protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { ...MEDIA_SCHEME_PRIVILEGES } }]);
 
-/** What the show does with an output's watchdog events (set once the outputs exist: Session 23). */
-let outputWatchdogEvent: ((e: WatchdogEvent) => void) | null = null;
+/**
+ * What the show does with an output's watchdog events (set once the outputs exist: Session 23), each with its window's
+ * page: its own screen's, whatever its name (S1-1).
+ */
+let outputWatchdogEvent: ((e: WatchdogEvent, page: WatchTarget) => void) | null = null;
 /** The watchdog's name for the sound player, the hidden window that plays every sound (audio-window.ts). */
 const SOUND_PLAYER = 'audio player';
 /** The watchdog's recent events, for diagnostics. */
@@ -1184,7 +1197,7 @@ const watchdogHistory: { at: string; window: string; kind: string; reason: strin
 /** The watchdog's problems into the crash journal: a hung window's restart adds Drashti's wait to its hang (Session 38). */
 const journalWatchdog = watchdogJournal(crashJournal);
 const watchdog = new RendererWatchdog(
-  (e) => {
+  (e, page) => {
     watchdogHistory.push({
       at: new Date().toISOString(),
       window: e.window,
@@ -1203,7 +1216,7 @@ const watchdog = new RendererWatchdog(
       journalWatchdog(e);
       if (e.kind === 'crashed') automaticErrorRuntime?.crash();
     }
-    outputWatchdogEvent?.(e);
+    outputWatchdogEvent?.(e, page);
   },
   undefined,
   crashFilesKept,
@@ -1793,6 +1806,7 @@ function start(): void {
         ? fakeMediaSelfTest(
             (name) => app.commandLine.hasSwitch(name),
             app.commandLine.getSwitchValue('disable-features'),
+            streamTestSound !== null,
           )
         : null;
       // Book OCR (alpha.21): its reader and model are in this copy of Drashti, and it reads with them.
@@ -2901,7 +2915,10 @@ function start(): void {
 
   // ---- outputs ----------------------------------------------------------
   const outputWindows = new Map<string, BrowserWindow>();
-  /** Each output's name, as the watchdog and the log call it. */
+  /**
+   * Each open output's name, as the watchdog and the log call it: words only, two of one name told apart, "… (2)"
+   * (S1-1). Its window is found by its page (screenOfPage), never by this name.
+   */
   const outputNames = new Map<string, string>();
   // ---- each display's own identity (Session 55, outputs/display-ids.ts) --------------------------------------
   // Read off the main thread (system_profiler on a Mac, PowerShell on Windows), at the start and after every change
@@ -3153,7 +3170,9 @@ function start(): void {
   engine.onChange(() => {
     heartbeat.changed(engine.rev);
   });
-  const screenOfOutput = (name: string) => [...outputNames].find(([, n]) => n === name)?.[0];
+  /** The screen whose open output shows this page (S1-1): never found by a name, which two screens may share. */
+  const screenOfOutput = (page: WatchTarget | null) =>
+    page === null ? undefined : screenOfPage(outputWindows, page);
   /** Stopped outputs whose page has loaded again since: their next report ends Stopped. */
   const loadedSinceStopped = new Set<string>();
   const stopOutput = (screenId: string) => {
@@ -3164,17 +3183,18 @@ function start(): void {
   gpuStoppedTwice = (text) => {
     sendToOperator(IPC.app.notice, { text });
   };
-  outputWatchdogEvent = (e) => {
+  outputWatchdogEvent = (e, page) => {
     // A window that went down, on Main's next turn once the watchdog has done its part: the video it keeps going down
     // on comes off, and it loads again at once without it (x53, below).
     if (e.kind === 'crashed')
       setImmediate(() => {
-        wentDown(e.window);
+        wentDown(e.window, page);
       });
     // The sound player given up on, or tried again (x53, the owner's Q60-50 (2) A): the red notice says so, or goes.
     if (e.window === SOUND_PLAYER && (e.kind === 'gave-up' || e.kind === 'retried'))
       audioOutput.setPlayerStopped(e.kind === 'gave-up');
-    const screenId = screenOfOutput(e.window);
+    // That window's own screen (S1-1): a window replaced or closed meanwhile is no screen's.
+    const screenId = screenOfOutput(page);
     if (screenId === undefined) return;
     // A page loaded again gets its grace before it is judged; tried again (Try again, or by itself after giving up), its
     // heartbeat restarts are forgotten too (a23-heartbeat).
@@ -3198,23 +3218,39 @@ function start(): void {
   const keepsFailing = new KeepsFailing();
   /** The engine's revision when each screen's picture last failed as it drew (x53): drawn past it, it draws again. */
   const pictureFailedAt = new Map<string, number>();
-  /** Where a window the watchdog names is, in the notice's words, and its page: a hall screen, LIVE, the sound player. */
-  const failingPage = (window: string): { where: string; page: WatchTarget } | null => {
+  /** The screens' names in words, two of one name told apart (S1-1), as Screens says them. */
+  const screenWords = () => screenLabels(screenRepo.groups().flatMap((g) => g.screens));
+  /** An output's own key for keepsFailing (S1-1): its page, never its name; a window made again starts afresh. */
+  const outputKey = (webContentsId: number) => `output page ${String(webContentsId)}`;
+  /**
+   * Where a window the watchdog names is, in the notice's words, its page, and its key for keepsFailing: a hall
+   * screen (by its own page, S1-1), LIVE, the sound player.
+   */
+  const failingPage = (
+    window: string,
+    page: WatchTarget | null,
+  ): { where: string; page: WatchTarget; key: string } | null => {
     if (window === 'operator')
-      return pageAlive(operatorWindow) ? { where: 'LIVE', page: operatorWindow.webContents } : null;
+      return pageAlive(operatorWindow)
+        ? { where: 'LIVE', page: operatorWindow.webContents, key: window }
+        : null;
     if (window === SOUND_PLAYER)
       return pageAlive(audioWindow)
-        ? { where: 'Drashti’s sound player', page: audioWindow.webContents }
+        ? { where: 'Drashti’s sound player', page: audioWindow.webContents, key: window }
         : null;
-    const screenId = screenOfOutput(window);
+    const screenId = screenOfOutput(page);
     const win = screenId === undefined ? undefined : outputWindows.get(screenId);
     if (screenId === undefined || !win || win.isDestroyed()) return null;
-    const name = screenRepo.screens().find((s) => s.id === screenId)?.name ?? screenId;
-    return { where: whereWords([{ screen: name }]), page: win.webContents };
+    const name = screenWords().get(screenId) ?? screenId;
+    return {
+      where: whereWords([{ screen: name }]),
+      page: win.webContents,
+      key: outputKey(win.webContents.id),
+    };
   };
   /** A page failed (`how`): the file it keeps failing on taken off, said and logged. Whether one was. */
-  const takeOffWhatFails = (window: string, where: string, how: string): boolean => {
-    const mediaId = keepsFailing.failed(window, Date.now(), filesUp(engine.current, window === SOUND_PLAYER));
+  const takeOffWhatFails = (window: string, key: string, where: string, how: string): boolean => {
+    const mediaId = keepsFailing.failed(key, Date.now(), filesUp(engine.current, window === SOUND_PLAYER));
     if (mediaId === null) return false;
     const name = media.kindAndName(mediaId)?.name ?? 'A file';
     const took = engine.cannotPlay(mediaId);
@@ -3243,10 +3279,10 @@ function start(): void {
     return true;
   };
   /** A window went down (any of them): if it keeps going down on a video, that comes off and it loads again at once. */
-  const wentDown = (window: string) => {
-    const failing = failingPage(window);
-    if (failing && takeOffWhatFails(window, failing.where, 'it went down'))
-      watchdog.tookOff(failing.page, window, 'without the video it kept going down on');
+  const wentDown = (window: string, page: WatchTarget) => {
+    const failing = failingPage(window, page);
+    if (failing && takeOffWhatFails(window, failing.key, failing.where, 'it went down'))
+      watchdog.tookOff(failing.page, 'without the video it kept going down on');
   };
   // Tests only (never a packaged Drashti): mark an output as given up on, as a crash loop would,
   // to see Stopped and Try again (Session 23; Playwright cannot follow a renderer that crashes). On Main's next turn,
@@ -3271,10 +3307,12 @@ function start(): void {
       );
       const { window, handle: h } = createOutputWindow(config, display, { windowed: windowedOutputs });
       outputWindows.set(config.id, window);
-      outputNames.set(config.id, `output "${config.name}"`);
-      watchdog.watch(window.webContents, `output "${config.name}"`);
+      // Its name in words, two of one name told apart (S1-1); the watchdog knows the window by its page.
+      const outputName = `output "${screenWords().get(config.id) ?? config.name}"`;
+      outputNames.set(config.id, outputName);
+      watchdog.watch(window.webContents, outputName);
       watchLoadFailures(window, {
-        name: `output "${config.name}"`,
+        name: outputName,
         screen: config.id,
         watchdog,
         log: (message) => {
@@ -3295,8 +3333,11 @@ function start(): void {
       window.on('closed', () => {
         liveLines.windowClosed(config.id);
         warmUps.forget(h.webContentsId);
+        keepsFailing.forget(outputKey(h.webContentsId));
         if (outputWindows.get(config.id) === window) {
           outputWindows.delete(config.id);
+          // Its name goes with it (S1-1): a screen removed and made again, or another of its name, never inherits it.
+          outputNames.delete(config.id);
           heartbeat.closed(config.id);
         }
       });
@@ -8588,7 +8629,7 @@ function start(): void {
       const win = outputWindows.get(screenId);
       if (failedAt !== undefined && r.paintedRev > failedAt && win && !win.isDestroyed()) {
         pictureFailedAt.delete(screenId);
-        watchdog.drawsAgain(win.webContents, outputNames.get(screenId) ?? 'an output');
+        watchdog.drawsAgain(win.webContents);
         manager.setStopped(screenId, false);
       }
     }
@@ -8601,18 +8642,23 @@ function start(): void {
       log.warn(line);
     },
     watchdog,
-    failed: (name) => {
-      const screenId = screenOfOutput(name);
-      const failing = failingPage(name);
+    // The failing output's own page (S1-1): two of one name are each their own.
+    failed: ({ name, output }) => {
+      const screenId = screenOfOutput(output);
+      const failing = failingPage(name, output);
       if (screenId === undefined || !failing) return false;
       // A failure from a draw of what was just taken off is not a new one (keeps-failing.ts): nothing more is done.
       if (
-        keepsFailing.stillDrawingWhatWentOff(name, Date.now(), localReports.get(screenId)?.paintedRev ?? null)
+        keepsFailing.stillDrawingWhatWentOff(
+          failing.key,
+          Date.now(),
+          localReports.get(screenId)?.paintedRev ?? null,
+        )
       )
         return true;
       pictureFailedAt.set(screenId, engine.rev);
-      const tookOff = takeOffWhatFails(name, failing.where, 'its picture failed as it drew');
-      if (tookOff) keepsFailing.tookOff(name, engine.rev, Date.now());
+      const tookOff = takeOffWhatFails(name, failing.key, failing.where, 'its picture failed as it drew');
+      if (tookOff) keepsFailing.tookOff(failing.key, engine.rev, Date.now());
       return tookOff;
     },
     windowOf: (sender) => {
@@ -9930,6 +9976,15 @@ function start(): void {
   // Open in Simple Mode and to every role, as a stopped hall screen's Try again is (Session 31).
   handle(IPC.stream.tryAgain, (e) => (fromOperator(e) ? streaming.tryAgainPage() : notOperator));
   handle(IPC.stream.pageContext, (e) => (streaming.isProgram(e.sender) ? streaming.context() : null));
+  // Tests only (the stream-clock seam): never a clip in a packaged Drashti (streamTestSound is null there).
+  handle(IPC.stream.pageTestSound, async (e) => {
+    if (!streamTestSound || !streaming.isProgram(e.sender)) return null;
+    try {
+      return readTestWav(await fsPromises.readFile(streamTestSound));
+    } catch {
+      return null;
+    }
+  });
   handle(IPC.stream.pageInputs, (e, inputs) => {
     streaming.reportInputs(e.sender, inputs);
     return null;
@@ -10480,6 +10535,12 @@ function start(): void {
       quitStarted = false;
       quitting = false;
       quitConfirmed = false;
+    },
+    // Told as the quit went ahead (before-quit, below), before the source stop's gate refused it (bughunt S3-2).
+    partsBack: () => {
+      streaming.cancelQuitting();
+      studio.cancelQuitting();
+      slideEditor?.cancelQuitting();
     },
     screens: () => {
       manager.cancelQuitting();

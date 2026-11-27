@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
@@ -16,6 +16,7 @@ import {
 } from './access';
 import { expectFits } from './fit';
 import { chooseMenuItem, launchApp, lockPage, operatorPage, operatorReady, windowShowing } from './helpers';
+import { logText } from './log-lines';
 
 /*
  * The lock (Session 54, access by Gmail, E2): Drashti opens to a lock screen until this computer is let in. Request
@@ -239,15 +240,6 @@ test('the lock screen fits a small window and says what is wrong on the field it
   }
 });
 
-/** Everything a Drashti has written to its log, every file of it (drashti.log, and since alpha.21 each earlier day's drashti-YYYY-MM-DD.log and its parts). */
-function logOf(userData: string): string {
-  const dir = join(userData, 'logs');
-  return readdirSync(dir)
-    .filter((f) => /^drashti(?:-\d{4}-\d{2}-\d{2})?(?:\.\d+)?\.log$/u.test(f))
-    .map((f) => readFileSync(join(dir, f), 'utf8'))
-    .join('\n');
-}
-
 /** The secret a data folder's access signs each check with, as Drashti keeps it there. */
 const secretOf = (userData: string): string =>
   (JSON.parse(readFileSync(join(userData, 'access.json'), 'utf8')) as { secret: string }).secret;
@@ -312,7 +304,8 @@ test('no token, secret or Gmail ever reaches drashti.log: a token used on the lo
   }
   expect(folders.length).toBe(2);
   for (const { whose, folder } of folders) {
-    const log = logOf(folder).toLowerCase();
+    // Everything it has written to its log, every file of it (log-lines.ts).
+    const log = logText(folder).toLowerCase();
     // The right log, with its access lines (never printed whole).
     expect(log.includes('access: let in'), `${whose} drashti.log has its access lines`).toBe(true);
     for (const { what, value } of never) {

@@ -220,4 +220,32 @@ describe('Record sound in the stream service (Session 58, X2)', () => {
     expect(stream.status().recording.warning ?? '').not.toContain('FAT32');
     expect(notice).not.toHaveBeenCalledWith(expect.stringContaining('FAT32'));
   });
+
+  it('after a refused quit (bughunt S3-2), Record sound works again, and the next quit waits for its WAV again', async () => {
+    const { stream, webContents, createProgram, pass, onDisk } = service();
+    expect(stream.startSoundRecording()).toMatchObject({ ok: true });
+    await vi.waitFor(() => expect(createProgram).toHaveBeenCalledOnce());
+    webContents.emit('did-finish-load');
+    await pass(1000, TONE);
+    await vi.waitFor(() =>
+      expect(stream.status().recording).toMatchObject({ kind: 'sound', state: 'recording' }),
+    );
+    await onDisk(0.9);
+    // The quit begins: the WAV is finished first, and nothing new records meanwhile.
+    await expect(stream.quitting()).resolves.toBe('finished');
+    expect(stream.startSoundRecording()).toEqual({ ok: false, message: 'Drashti is quitting.' });
+    // It did not go ahead (a source that would not stop in time): Drashti is as it was before the quit.
+    // The stream's page, which nothing needed once the WAV was finished, closed then; Record sound opens it again.
+    stream.cancelQuitting();
+    expect(stream.startSoundRecording()).toMatchObject({ ok: true });
+    await vi.waitFor(() => expect(createProgram).toHaveBeenCalledTimes(2));
+    webContents.emit('did-finish-load');
+    await pass(1000, TONE);
+    await vi.waitFor(() =>
+      expect(stream.status().recording).toMatchObject({ kind: 'sound', state: 'recording' }),
+    );
+    const saved = stream.quitting();
+    expect(saved).not.toBeNull();
+    await expect(saved).resolves.toBe('finished');
+  });
 });

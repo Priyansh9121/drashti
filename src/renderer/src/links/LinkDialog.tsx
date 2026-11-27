@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react';
-import type { LinkView } from '../../../shared/links';
-import { checkLink, heightLabel, linkKind } from '../../../shared/links';
+import { formatBytes } from '../../../shared/format';
+import type { LinkQuality, LinkView } from '../../../shared/links';
+import {
+  checkLink,
+  DEFAULT_LINK_MAX_HEIGHT,
+  heightLabel,
+  linkKind,
+  linkQualities,
+  qualityWords,
+} from '../../../shared/links';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
-import { Field, TextInput } from '../ui/Field';
+import { Field, Select, TextInput } from '../ui/Field';
 import { Checkbox } from '../ui/Toggle';
 import { Download, FolderOpen } from '../ui/icons';
 import { closeLinkDialog, connectLinks, importLink, lookLink, stopDownload, useLinks } from './link-store';
@@ -15,6 +23,7 @@ function LinkWindow({ audio }: { audio: boolean }) {
   const [edited, setEdited] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [captionChoice, setCaptionChoice] = useState<boolean | null>(null);
+  const [qualityPick, setQualityPick] = useState<number | null>(null);
   const view = useLinks((state) => state.view);
   const problem = useLinks((state) => state.problem);
   const kind = linkKind(text);
@@ -40,6 +49,11 @@ function LinkWindow({ audio }: { audio: boolean }) {
     current && view.look?.video
       ? new Set((view.look.video.captions ?? []).map((track) => track.language)).size
       : null;
+  // Quality (alpha.24): once a YouTube link is checked, what it offers; none for Dropbox (one quality) or no heights.
+  const qualities = current && view.look?.video ? linkQualities(view.look.video, audio) : null;
+  const quality = qualities?.options.some((option) => option.value === qualityPick)
+    ? qualityPick
+    : (qualities?.initial ?? null);
   useEffect(() => {
     if (!text.trim() || submitting) return;
     const timer = setTimeout(() => {
@@ -53,13 +67,19 @@ function LinkWindow({ audio }: { audio: boolean }) {
     setText(value);
     setName('');
     setEdited(false);
+    setQualityPick(null);
     useLinks.setState({ problem: null });
   }
 
   async function submit() {
     if (submitting) return;
     setSubmitting(true);
-    if (await importLink(text, { name: displayedName, captions: downloadCaptions })) closeLinkDialog();
+    const options = {
+      name: displayedName,
+      captions: downloadCaptions,
+      ...(quality === null || !qualities?.options.length ? {} : { quality }),
+    };
+    if (await importLink(text, options)) closeLinkDialog();
     else setSubmitting(false);
   }
   return (
@@ -138,6 +158,30 @@ function LinkWindow({ audio }: { audio: boolean }) {
             </Button>
           </div>
         </Field>
+        {qualities && qualities.options.length > 0 && quality !== null && (
+          <Field
+            label="Quality"
+            hint={
+              audio
+                ? 'Best keeps all of the video’s sound; a lower one makes a smaller file.'
+                : quality > DEFAULT_LINK_MAX_HEIGHT
+                  ? 'Above 1080p: a bigger file, harder to play smoothly, for little the hall can see.'
+                  : 'To begin with, the best up to 1080p.'
+            }
+          >
+            <Select
+              data-testid="link-quality"
+              value={String(quality)}
+              onChange={(event) => setQualityPick(Number(event.target.value))}
+            >
+              {qualities.options.map((option) => (
+                <option key={option.value} value={String(option.value)}>
+                  {qualityLabel(option)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         {kind === 'youtube' && (
           <div className="space-y-2">
             <Checkbox
@@ -195,6 +239,10 @@ function LinkWindow({ audio }: { audio: boolean }) {
   );
 }
 
+/** A Quality choice in words, with about how big its file is when that is known: "720p, about 25.3 MB". */
+const qualityLabel = (option: LinkQuality): string =>
+  option.bytes === null ? option.label : `${option.label}, about ${formatBytes(option.bytes)}`;
+
 export function LinkDialog() {
   const open = useLinks((state) => state.open);
   const audio = useLinks((state) => state.audio !== null);
@@ -214,7 +262,9 @@ function linkProgress(view: LinkView): string | null {
       const percent = progress?.total
         ? ` ${String(Math.round((100 * progress.done) / progress.total))}%`
         : '';
-      return `Downloading from ${view.kind === 'youtube' ? 'YouTube' : 'Dropbox'}${percent}`;
+      // A YouTube download says its quality too (alpha.24): "Downloading from YouTube 42%, 720p".
+      const quality = view.kind === 'youtube' && view.choice ? `, ${qualityWords(view.choice)}` : '';
+      return `Downloading from ${view.kind === 'youtube' ? 'YouTube' : 'Dropbox'}${percent}${quality}`;
     }
     case 'unpacking':
       return 'Unpacking download…';

@@ -1,4 +1,4 @@
-import type { LinkCaptionTrack, VideoDetails, YouTubeType } from '../../shared/links';
+import type { LinkCaptionTrack, VideoDetails, YouTubeChoice } from '../../shared/links';
 import type { LinkErrorCode } from './http';
 import type { YoutubeProblemCode } from './youtube';
 import type { YtDlpLaunch } from './youtube-run';
@@ -37,7 +37,7 @@ export type ToWorker =
       launch: YtDlpLaunch;
       cwd: string;
       workDir: string;
-      choice: { type: YouTubeType; height: number | null };
+      choice: YouTubeChoice;
       keepFree: number;
       captions?: LinkCaptionTrack[];
     }

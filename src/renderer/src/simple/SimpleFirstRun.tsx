@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { shortcutText, SIMPLE_KEYMAP } from '../../../shared/keymap';
+import { fKeyFirstStep, shortcutText, SIMPLE_KEYMAP } from '../../../shared/keymap';
 import { useKeymapNow } from '../operator/single-keys-store';
 import { useEngine } from '../engine/engine-store';
 import { Button } from '../ui/Button';
@@ -17,7 +17,10 @@ import { Kbd } from '../ui/Kbd';
 
 interface Step {
   title: string;
-  text: (key: (action: 'next' | 'previous' | 'toggleBlackout' | 'clearAll') => string) => ReactNode;
+  text: (
+    key: (action: 'next' | 'previous' | 'toggleBlackout' | 'clearAll') => string,
+    platform: string,
+  ) => ReactNode;
 }
 
 const STEPS: readonly Step[] = [
@@ -46,7 +49,8 @@ const STEPS: readonly Step[] = [
   },
   {
     title: 'When something is wrong',
-    text: (key) => (
+    // On a Mac, what its F-keys need, once (alpha.24, keyplat R4: Simple Mode has no keys sheet to say it).
+    text: (key, platform) => (
       <>
         <b className="text-fg">Black-out</b>
         {key('toggleBlackout') && (
@@ -59,6 +63,7 @@ const STEPS: readonly Step[] = [
         takes everything off, and <b className="text-fg">Put it back</b> brings it back; with nothing up, the
         screens show the wallpaper chosen on the left. <b className="text-fg">Help</b>, then{' '}
         <b className="text-fg">Guides…</b> has the rest.
+        {fKeyFirstStep(platform) !== null && <> {fKeyFirstStep(platform)}</>}
       </>
     ),
   },
@@ -121,7 +126,7 @@ export function SimpleFirstRun({ platform }: { platform: string }) {
           </span>{' '}
           {at.title}
         </h2>
-        <p className="mt-1 text-base text-muted">{at.text(key)}</p>
+        <p className="mt-1 text-base text-muted">{at.text(key, platform)}</p>
       </div>
       <div className="flex shrink-0 gap-2">
         <Button size="lg" variant="ghost" data-testid="simple-first-run-skip" onClick={end}>

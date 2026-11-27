@@ -183,7 +183,18 @@ type ShadowChoice = 'none' | 'soft' | 'own';
 const shadowChoice = (s: TextShadow | undefined): ShadowChoice =>
   s === false || s === undefined ? 'none' : s === true ? 'soft' : 'own';
 
-export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: string }) {
+export function WordsGroup({
+  onFind,
+  findKbd,
+  outdentKbd,
+  indentKbd,
+}: {
+  onFind: () => void;
+  /** Find's key, Back out's and Further in's, as this computer writes them (SlideEditor's, from EDITOR_KEYS). */
+  findKbd: string;
+  outdentKbd: string;
+  indentKbd: string;
+}) {
   const doc = useEditor((s) => s.doc);
   const slideId = useEditor((s) => s.slideId);
   const selection = useEditor((s) => s.selection);
@@ -561,7 +572,7 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
           icon={IndentDecrease}
           size="sm"
           label="Back out"
-          kbd="⇧Tab"
+          kbd={outdentKbd}
           disabled={none || list.mark === null || list.level === 0}
           data-testid="words-outdent"
           onClick={() => {
@@ -572,7 +583,7 @@ export function WordsGroup({ onFind, findKbd }: { onFind: () => void; findKbd: s
           icon={IndentIncrease}
           size="sm"
           label="Further in"
-          kbd="Tab"
+          kbd={indentKbd}
           disabled={none || list.mark === null}
           data-testid="words-indent"
           onClick={() => {
