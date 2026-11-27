@@ -3769,13 +3769,11 @@ export class ShowEngine {
       if (target?.mediaId !== zoomed.mediaId || target.showing !== zoomed.showing)
         next = reduce(next, { type: 'zoom/set', liveZoom: null });
     }
-    if (
-      cause === 'clearAll' ||
-      cause === 'clearLayer' ||
-      (next.blackout && !prev.blackout) ||
-      (next.wallpaper && !prev.wallpaper) ||
-      next.stopped
-    ) {
+    // A cover put back by Oops or Put it back is no cover going on: what was cued under it stays held for Go
+    // (QA24-OOPS-COVERS, the oopsfix review's SHOULD-1). A video starting or crossfading goes by the checks below.
+    const coverWentOn =
+      ((next.blackout && !prev.blackout) || (next.wallpaper && !prev.wallpaper)) && !restores;
+    if (cause === 'clearAll' || cause === 'clearLayer' || coverWentOn || next.stopped) {
       if (next.videoCue) next = reduce(next, { type: 'videoCue/set', cue: null });
       if (next.videoCrossfade) next = reduce(next, { type: 'videoCrossfade/set', fade: null });
       if (next.videoStart) next = reduce(next, { type: 'videoStart/set', start: null });
