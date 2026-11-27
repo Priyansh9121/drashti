@@ -97,11 +97,7 @@ function SwitchButton({ which, platform }: { which: ScreenSwitch; platform: stri
   const look = switchLook(on);
   const name = SWITCH_NAMES[which];
   return (
-    <Tooltip
-      content={switchTip(which, on)}
-      kbd={shortcutText(KEY[which], platform)}
-      side="bottom"
-    >
+    <Tooltip content={switchTip(which, on)} kbd={shortcutText(KEY[which], platform)} side="bottom">
       {/* Its name is read out with its state (a switch, on or off); On and Off are there for the eye, in words.
           Not a show control (no `instant`): the header is decoration, and no show control sits on it; still all the
           same (SWITCH_STILL). */}
