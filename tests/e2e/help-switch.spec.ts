@@ -74,6 +74,40 @@ const keyedButtons = (win: Page) =>
       });
   });
 
+/**
+ * The window laid out at `size` after a resize, then what keyedButtons reads, once every box has held still for half a
+ * second (the columns take their widths from the window's after its resize event, a frame or more later: the Mac's
+ * CI read them mid-way once). It waits for that, then measures; it changes nothing that is compared.
+ */
+async function settledButtons(win: Page, size: { width: number; height: number }): Promise<string[]> {
+  await expect
+    .poll(() => win.evaluate(() => [window.innerWidth, window.innerHeight]), {
+      message: `the page at ${String(size.width)} × ${String(size.height)}`,
+    })
+    .toEqual([size.width, size.height]);
+  let last = '';
+  let since = 0;
+  let read: string[] = [];
+  await expect
+    .poll(
+      async () => {
+        read = await keyedButtons(win);
+        const now = JSON.stringify(read);
+        if (now !== last) {
+          last = now;
+          since = Date.now();
+        }
+        return Date.now() - since >= 500;
+      },
+      {
+        message: `every box still for half a second at ${String(size.width)} × ${String(size.height)}`,
+        intervals: [100],
+      },
+    )
+    .toBe(true);
+  return read;
+}
+
 /** Every ? in the window. */
 const asks = (win: Page) => win.locator('[data-what-is-this]');
 
@@ -259,7 +293,8 @@ test('nothing moves as the keys come and go: Help off, Alt held and Help on draw
       await expect(help).toHaveAttribute('aria-pressed', 'false');
       await expect.poll(() => seen(nextKey), { message: `${where}: Next's key hidden` }).toBe(false);
       if (mode === 'pro') await expect(undoLine.getByRole('button', { name: /^Undo/u })).toBeVisible();
-      const atRest = await keyedButtons(win);
+      // Measured once the resize has settled (the Mac's CI once read the boxes 17 ms after it, mid-layout).
+      const atRest = await settledButtons(win, size);
       expect(atRest.length, `${where}: what is measured`).toBeGreaterThanOrEqual(mode === 'pro' ? 14 : 8);
       // Alt held for a look: the keys come, and nothing moves all the while it is held.
       await win.keyboard.down('Alt');
