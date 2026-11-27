@@ -78,7 +78,7 @@ Simple Mode has **Translation status…** to read the saved checks. It cannot wr
 1. Shift-click the things to arrange, or drag a box round them.
 2. Open **Arrange** and choose how to line them up or space them.
 3. Press **Group** to keep them together.
-4. Hold Alt while dragging to place freely, without snapping.
+4. Hold Alt (Option ⌥ on a Mac) while dragging to place freely, without snapping.
 
 ![The arrange group in the slide editor](../screenshots/editor-arrange-1280x720.png)
 

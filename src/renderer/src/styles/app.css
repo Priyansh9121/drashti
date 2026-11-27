@@ -308,7 +308,7 @@
  * chosen, the show controls, the thumbnails and the live picture never move (data-show-control), only opacity
  * and transform move, and nothing starts while the show is changing (ui/motion.ts, showIsQuiet). Since alpha.24 every
  * Lively rule also names data-chip='yes' (the release lead's review of uimotion, MUST-1): without a graphics chip known
- * to be there, Lively looks and moves as Calm does, as a live look's touch is held.
+ * to be there, Lively looks and moves as Calm does.
  */
 :root[data-interface-motion='lively'][data-chip='yes'] {
   --rise: 12px;

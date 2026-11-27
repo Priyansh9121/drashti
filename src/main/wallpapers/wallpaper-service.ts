@@ -235,7 +235,13 @@ export class WallpaperService {
     return typeof id === 'string' && wallpapers.some((w) => w.id === id) ? id : null;
   }
 
-  /** The engine has the chosen one as the library has it now, and (`tell`) the operator window hears. */
+  /**
+   * The engine has the chosen one as the library has it now, and (`tell`) the operator window hears. Only pictures the
+   * screens can draw go round: one missing, or one that needs conversion (a HEIC photo not converted yet), is left out
+   * until it is there or converted (bughunt S1-1: drawn, its turn was black on every screen and the stream). With
+   * none left, none go round: the screens show black with nothing up, as with all its pictures missing, and the
+   * window says why (shared/wallpaper-missing.ts).
+   */
   private push(tell = true): void {
     const view = this.view();
     const chosen = view.wallpapers.find((w) => w.id === view.chosenId) ?? null;
@@ -243,7 +249,7 @@ export class WallpaperService {
       chosen && {
         id: chosen.id,
         name: chosen.name,
-        pictures: chosen.pictures.filter((p) => !p.missing).map((p) => p.mediaId),
+        pictures: chosen.pictures.filter((p) => !p.missing && !p.unplayable).map((p) => p.mediaId),
         secondsEach: chosen.secondsEach,
         fadeMs: chosen.fadeMs,
       },

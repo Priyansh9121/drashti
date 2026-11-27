@@ -46,7 +46,22 @@ static double now_ms(void) {
 }
 
 /* ---- front end ---- */
+/* Single-request helper: immutable twiddles after the first FFT. Keep the original angle expression and
+ * butterfly arithmetic exactly; this removes repeated trig work without changing features or task priority. */
 static void fft512(double *re, double *im) { /* in-place radix-2 */
+  static double wr_cache[NFFT - 1], wi_cache[NFFT - 1];
+  static int ready = 0;
+  if (!ready) {
+    for (int len = 2; len <= NFFT; len <<= 1) {
+      double a = -2 * M_PI / len;
+      int offset = len / 2 - 1;
+      for (int k = 0; k < len / 2; k++) {
+        wr_cache[offset + k] = cos(a * k);
+        wi_cache[offset + k] = sin(a * k);
+      }
+    }
+    ready = 1;
+  }
   for (int i = 1, j = 0; i < NFFT; i++) {
     int bit = NFFT >> 1;
     for (; j & bit; bit >>= 1) j ^= bit;
@@ -54,10 +69,10 @@ static void fft512(double *re, double *im) { /* in-place radix-2 */
     if (i < j) { double t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
   }
   for (int len = 2; len <= NFFT; len <<= 1) {
-    double a = -2 * M_PI / len;
+    int offset = len / 2 - 1;
     for (int i = 0; i < NFFT; i += len)
       for (int k = 0; k < len / 2; k++) {
-        double wr = cos(a * k), wi = sin(a * k);
+        double wr = wr_cache[offset + k], wi = wi_cache[offset + k];
         double ur = re[i + k], ui = im[i + k];
         double vr = re[i + k + len / 2] * wr - im[i + k + len / 2] * wi;
         double vi = re[i + k + len / 2] * wi + im[i + k + len / 2] * wr;

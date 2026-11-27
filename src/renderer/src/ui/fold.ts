@@ -13,9 +13,10 @@ import { duration, easing, leave, motionOff, QUIET_MS, tokenNumber } from './mot
  *    section glides from where it was to its new place (transform), in step, so the section seems to grow; folding,
  *    the copy rolls up as the rest glides up. Never when what would glide holds a show control (an open Lower Thirds
  *    or Picture in Picture): then it is where it goes at once, as a show control never moves.
- * It moves only when a live look's touch may (shared/appearance/moving.ts, the release lead's rule for anything new):
- * the window opened settled, interface motion not Off and the computer not set to reduce motion, a graphics chip
- * known to be there; and, as Lively's glides, not while the show is changing.
+ * It moves only once the window has opened settled, with interface motion not Off and the computer not set to reduce
+ * motion, with a graphics chip known to be there (the release lead's rule for anything new), and, as Lively's glides,
+ * not while the show is changing. Nothing else holds it (a live look's touch is also held while streaming on a slow
+ * computer, by Moving: Off and in a hidden window): a fold is a one-off move on the operator's own press.
  */
 
 export type FoldMove = 'calm' | 'lively';
