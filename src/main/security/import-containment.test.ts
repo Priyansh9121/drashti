@@ -1,9 +1,15 @@
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { scanPaths } from '../import/scan';
 import { isInside } from '../media/contained';
+import { openDatabase } from '../db/database';
+import { ImportRepo } from '../db/imports';
+import { MediaStore } from '../import/media-store';
+import { runImport } from '../import/pipeline';
 
 const fixtures: string[] = [];
 afterEach(async () => {
@@ -48,5 +54,62 @@ describe('alpha.24 folder import containment', () => {
     const target = join(outside, 'chosen-placeholder.txt');
     await writeFile(target, 'Placeholder text.');
     expect((await scanPaths([target])).files.map((file) => file.path)).toEqual([target]);
+  });
+});
+
+async function importFixture(replaceAfterScan = false) {
+  const { selected, outside } = await fixture();
+  const target = join(outside, 'private-placeholder.txt');
+  const link = join(selected, 'words.txt');
+  await writeFile(target, '[Verse]\nPrivate placeholder text.');
+  if (replaceAfterScan) await writeFile(link, '[Verse]\nChosen placeholder text.');
+  else await symlink(target, link, 'file');
+  const db = openDatabase(':memory:');
+  const media = new MediaStore(db, { dir: outside, freeBytes: () => 1024 ** 4 });
+  try {
+    let replaced = false;
+    const summary = await runImport({
+      db,
+      media,
+      runId: randomUUID(),
+      paths: [selected],
+      options: {},
+      progressEveryMs: 0,
+      onProgress: (progress) => {
+        if (replaceAfterScan && !replaced && progress.phase === 'importing') {
+          replaced = true;
+          rmSync(link);
+          symlinkSync(target, link, 'file');
+        }
+      },
+    });
+    const report = new ImportRepo(db).report(summary.id);
+    const presentations = db.prepare('SELECT id FROM presentations').all();
+    return { link, report, presentations };
+  } finally {
+    db.close();
+  }
+}
+
+describe('alpha.24 folder import report and read boundary', () => {
+  it('names the skipped outside link in the import report without importing its contents', async () => {
+    const { link, report, presentations } = await importFixture();
+    expect(presentations).toEqual([]);
+    expect(report?.items).toEqual([
+      expect.objectContaining({
+        sourcePath: link,
+        name: 'words.txt',
+        outcome: 'skipped',
+        issues: [expect.objectContaining({ code: 'outside-import-folder', fix: null })],
+      }),
+    ]);
+    expect(report?.items[0]?.message).toMatch(/outside.*chosen folder/u);
+    expect(report?.totals.skipped).toBe(1);
+  });
+
+  it('checks again before reading a scanned file that was replaced with an outside link', async () => {
+    const { link, report, presentations } = await importFixture(true);
+    expect(presentations).toEqual([]);
+    expect(report?.items).toEqual([expect.objectContaining({ sourcePath: link, outcome: 'skipped' })]);
   });
 });

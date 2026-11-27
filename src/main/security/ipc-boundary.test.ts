@@ -147,6 +147,26 @@ describe('alpha.24 IPC authority', () => {
     expect(answer).toHaveBeenCalledOnce();
   });
 
+  it('does not let main accidentally reassign an existing output to operator', async () => {
+    const output = windowFixture();
+    await loadPage(output.window, 'output');
+    expect(() => loadPage(output.window, 'index')).toThrow(/Refused/u);
+  });
+
+  it('fails closed for an unlisted synchronous channel even from an assigned operator', async () => {
+    const operator = windowFixture();
+    await loadPage(operator.window, 'index');
+    const answer = vi.fn(() => 'placeholder');
+    const channel = 'placeholder:unlisted';
+    handleSync(channel, answer);
+    const callback = callbacks.sync.get(channel);
+    if (!callback) throw new Error('The test did not register its sync handler.');
+    const event = { ...operator.event(), returnValue: undefined } as unknown as IpcMainEvent;
+    callback(event);
+    expect(event.returnValue).toBeNull();
+    expect(answer).not.toHaveBeenCalled();
+  });
+
   it('never includes an untrusted URL credential in a refusal error', () => {
     const stranger = windowFixture();
     const marker = 'placeholder-credential-only';
