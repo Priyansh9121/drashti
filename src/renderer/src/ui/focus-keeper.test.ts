@@ -262,6 +262,40 @@ describe('the operator focus keeper', () => {
     expect(page.activeElement).toBe(status);
   });
 
+  it('remembers the outside opener when autofocus ran before the dialog trap effect', () => {
+    const header = page.node('header');
+    const opener = page.node('button', {}, header);
+    keeper.installFocusKeeper();
+    opener.focus();
+    const dialog = page.node('div', { role: 'dialog', 'aria-modal': 'true' });
+    const field = page.node('input', {}, dialog);
+    field.focus();
+    const before = keeper.focusOrigin(html(dialog));
+    expect(before).toBe(opener);
+    dialog.remove();
+    if (before) keeper.giveFocusBack(before);
+    expect(page.activeElement).toBe(opener);
+  });
+
+  it('a nested autofocus dialog returns to its opener in the outer dialog', () => {
+    const header = page.node('header');
+    const opener = page.node('button', {}, header);
+    keeper.installFocusKeeper();
+    opener.focus();
+    const outer = page.node('div', { role: 'dialog', 'aria-modal': 'true' });
+    const nestedOpener = page.node('button', {}, outer);
+    nestedOpener.focus();
+    const inner = page.node('div', { role: 'dialog', 'aria-modal': 'true' });
+    // Before the new dialog takes focus, the current control is the nested opener.
+    expect(keeper.focusOrigin(html(inner))).toBe(nestedOpener);
+    page.node('input', {}, inner).focus();
+    const before = keeper.focusOrigin(html(inner));
+    expect(before).toBe(nestedOpener);
+    inner.remove();
+    if (before) keeper.giveFocusBack(before);
+    expect(page.activeElement).toBe(nestedOpener);
+  });
+
   it('never recovers to the page behind an open modal', () => {
     const main = page.node('main');
     const opener = page.node('button', {}, main);
