@@ -16,6 +16,7 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * IPC fixtures deliver real production payloads to the operator only; no output or show-engine code is replaced.
  */
 const WIDE = { width: 1410, height: 900 } as const;
+const SIZES = [CI_WINDOW, { width: 1280, height: 720 }, WIDE];
 const QUICK = {
   DRASHTI_TEST_ACCESS_CHECK_MS: '2000',
   DRASHTI_TEST_ACCESS_TIMEOUT_MS: '1000',
@@ -83,6 +84,7 @@ async function fits(win: Page, where: string) {
       await bar(win).evaluate((root) => {
         const faults: string[] = [];
         const edge = root.getBoundingClientRect();
+        if (edge.height !== 28) faults.push(`footer must remain one 28 px row, got ${edge.height}`);
         if (root.scrollWidth > root.clientWidth + 1)
           faults.push(`footer needs ${root.scrollWidth} px of ${root.clientWidth}`);
         for (const el of root.querySelectorAll('[data-testid], button')) {
@@ -104,6 +106,27 @@ async function fits(win: Page, where: string) {
           const cut = range.getBoundingClientRect().width - el.getBoundingClientRect().width;
           if (cut > 0.01) faults.push(`Sound words cut ${cut.toFixed(2)} px`);
         }
+        // Also check the rendered compact words; hidden full wording must remain available to assistive tech.
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          if (!node.textContent.trim()) continue;
+          const parent = node.parentElement;
+          if (!parent || !parent.getClientRects().length) continue;
+          let hidden = false;
+          for (let at: Element | null = parent; at && at !== root; at = at.parentElement) {
+            const style = getComputedStyle(at);
+            const r = at.getBoundingClientRect();
+            if (style.display === 'none' || style.visibility === 'hidden' || (r.width <= 1 && r.height <= 1)) hidden = true;
+          }
+          if (hidden) continue;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          const r = range.getBoundingClientRect();
+          const button = parent.closest('button');
+          const room = button?.getBoundingClientRect() ?? edge;
+          if (r.left < room.left - 0.01 || r.right > room.right + 0.01 || r.top < edge.top - 0.01 || r.bottom > edge.bottom + 0.01)
+            faults.push(`visible words cut: ${node.textContent.trim()}`);
+        }
         return faults;
       }),
       where,
@@ -112,7 +135,8 @@ async function fits(win: Page, where: string) {
 }
 
 for (const mode of ['pro', 'simple'] as const)
-  test(`MUST-1 ${mode}: mirroring, access countdown, both screens off, Audio muted and disconnected Sound all fit; steady controls never move`, async () => {
+  for (const size of SIZES)
+  test(`MUST-1 ${mode} ${size.width}: mirroring, access countdown, both screens off, Audio muted and disconnected Sound all fit; steady controls never move`, async () => {
     const { app, access } = await launchApp({
       ...QUICK,
       DRASHTI_TEST_AUTO_SCREENS: 'pretend',
@@ -122,7 +146,7 @@ for (const mode of ['pro', 'simple'] as const)
     try {
       const win = await operatorPage(app);
       await operatorReady(win);
-      await sizeOperatorWindow(app, win, CI_WINDOW);
+      await sizeOperatorWindow(app, win, size);
       await expect(win.getByTestId('screens-said')).toHaveAttribute('data-kind', 'mirroring');
       await win.evaluate(async () => {
         const d = (globalThis as PageGlobals).drashti;
@@ -136,6 +160,10 @@ for (const mode of ['pro', 'simple'] as const)
       stopAnswering(access);
       await expect(win.getByTestId('access-offline-notice')).toBeVisible({ timeout: 30_000 });
       await expect(win.getByTestId('sound-status')).toBeVisible();
+      const snapshot = await win.evaluate(() => (globalThis as PageGlobals).drashti.screens.get());
+      const showing: ScreenStatus = { screenId: 'placeholder-1', state: 'showing', displayId: 1 };
+      const healthy: ScreenStatus = { screenId: 'placeholder-2', state: 'showing', displayId: 2 };
+      await tell(app, IPC.screens.changed, { ...snapshot, status: [showing, healthy] });
       const before = await settledSteady(win);
       for (const missing of [false, true, false]) {
         // Selecting a missing mixer is a real operator action; returning to System default must restore the same slot.
@@ -152,15 +180,38 @@ for (const mode of ['pro', 'simple'] as const)
           await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
         const sound = win.getByTestId(missing ? 'sound-warning' : 'sound-status');
         await expect(sound).toBeVisible();
-        for (const muted of [true, false]) {
-          await win.evaluate(
-            (muted) => (globalThis as PageGlobals).drashti.sound.setMuted('audio', muted),
-            muted,
-          );
-          await expect(win.getByTestId('sound-muted-status')).toHaveText(muted ? 'Audio muted' : '');
-          const where = `${mode}, missing ${missing}, muted ${muted}`;
-          expect.soft(await steady(win), where).toEqual(before);
-          await fits(win, where);
+        const soundWords = missing ? 'Sound output "Placeholder Mixer" not connected' : 'Sound: System default';
+        await expect(sound).toHaveAccessibleName(soundWords);
+        await expect(sound).toHaveAttribute('title', new RegExp(missing ? 'Placeholder Mixer.*not connected' : 'Sound: System default'));
+        for (const [audience, stage] of [[false, false], [true, false], [false, true], [true, true]] as const) {
+          await tell(app, IPC.screenSwitches.changed, { audience, stage });
+          await expect(win.getByTestId('switch-off-audience')).toHaveCount(audience ? 0 : 1);
+          await expect(win.getByTestId('switch-off-stage')).toHaveCount(stage ? 0 : 1);
+          for (const muted of [true, false]) {
+            await win.evaluate(
+              (muted) => (globalThis as PageGlobals).drashti.sound.setMuted('audio', muted),
+              muted,
+            );
+            await expect(win.getByTestId('sound-muted-status')).toHaveText(muted ? 'Audio muted' : '');
+            const faults: ScreenStatus[] = [healthy,
+              { ...healthy, state: 'missing-display' },
+              { ...healthy, state: 'stopped' },
+              { ...healthy, restarts: 4 },
+            ];
+            for (const fault of faults) {
+              await tell(app, IPC.screens.changed, { ...snapshot, status: [showing, fault] });
+              const words = fault.restarts ? '1 keeps restarting' : fault.state === 'stopped' ? '1 stopped' : fault.state === 'missing-display' ? '1 display not connected' : '2 screens showing';
+              await expect(win.getByTestId('screens-summary')).toContainText(words);
+              if (fault.state === 'stopped') {
+                const notice = win.getByTestId('screen-stopped-notice');
+                if (await notice.count()) await notice.getByRole('button', { name: 'Dismiss' }).click();
+                await expect(notice).toHaveCount(0);
+              }
+              const where = `${mode} ${size.width}, missing ${missing}, muted ${muted}, Audience ${audience}, Stage ${stage}, ${words}`;
+              expect.soft(await steady(win), where).toEqual(before);
+              await fits(win, where);
+            }
+          }
         }
       }
     } finally {
@@ -205,10 +256,10 @@ for (const mode of ['pro', 'simple'] as const)
         state: 'showing',
         displayId: n,
       }));
-      for (const size of [CI_WINDOW, WIDE]) {
+      for (const size of SIZES) {
         await sizeOperatorWindow(app, win, size);
         await tell(app, IPC.screens.changed, { ...snapshot, status: showing });
-        await expect(win.getByTestId('screens-summary')).toHaveText('2 screens showing');
+        await expect(win.getByTestId('screens-summary')).toHaveAccessibleName('2 screens showing');
         const before = await settledSteady(win);
         const faults: ScreenStatus[] = [
           { screenId: 'placeholder-2', state: 'missing-display', displayId: 2 },
@@ -226,6 +277,8 @@ for (const mode of ['pro', 'simple'] as const)
               ? 'stopped'
               : 'display not connected';
           await expect(win.getByTestId('screens-summary')).toContainText(words);
+          await expect(win.getByTestId('screens-summary')).toHaveAccessibleName(new RegExp(words));
+          await expect(win.getByTestId('screens-summary')).toHaveAttribute('title', new RegExp(words));
           // The separate, existing top-of-window stopped-screen notice is outside this footer regression.
           // Close it as an operator may, leaving the stopped state and every position/fit assertion intact.
           if (fault.state === 'stopped') {
@@ -237,7 +290,7 @@ for (const mode of ['pro', 'simple'] as const)
           await fits(win, where);
         }
         await tell(app, IPC.screens.changed, { ...snapshot, status: showing });
-        await expect(win.getByTestId('screens-summary')).toHaveText('2 screens showing');
+        await expect(win.getByTestId('screens-summary')).toHaveAccessibleName('2 screens showing');
         expect.soft(await steady(win)).toEqual(before);
       }
     } finally {
@@ -294,7 +347,7 @@ for (const mode of ['pro', 'simple'] as const)
         await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
         await expect(win.getByTestId('simple-mode')).toBeVisible();
       }
-      for (const size of [CI_WINDOW, WIDE]) {
+      for (const size of SIZES) {
         await sizeOperatorWindow(app, win, size);
         await ring(win, result.getByRole('button', { name: 'Dismiss' }), `import result ${size.width}`);
         await tell(app, IPC.library.importProgress, {
