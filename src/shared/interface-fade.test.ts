@@ -32,7 +32,9 @@ async function page(deferred = false) {
   const output = element(true);
   let update: (() => void) | undefined;
   let finish!: () => void;
-  const finished = new Promise<void>((resolve) => { finish = resolve; });
+  const finished = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
   const skipTransition = vi.fn();
   const startViewTransition = vi.fn((change: () => void) => {
     update = change;
@@ -48,13 +50,29 @@ async function page(deferred = false) {
   const reduced = Object.assign(new EventTarget(), { matches: false });
   const forced = Object.assign(new EventTarget(), { matches: false });
   vi.stubGlobal('document', doc);
-  vi.stubGlobal('matchMedia', (query: string) => query.includes('reduced') ? reduced : forced);
+  vi.stubGlobal('matchMedia', (query: string) => (query.includes('reduced') ? reduced : forced));
   const api = await import('./interface-fade');
-  return { ...api, root, safe, show, wrapper, output, doc, reduced, forced,
-    startViewTransition, skipTransition, finish, finished, update: () => update?.() };
+  return {
+    ...api,
+    root,
+    safe,
+    show,
+    wrapper,
+    output,
+    doc,
+    reduced,
+    forced,
+    startViewTransition,
+    skipTransition,
+    finish,
+    finished,
+    update: () => update?.(),
+  };
 }
 
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('soft interface fades keep the show live', () => {
   it('captures only safe pictures, never the root, a show control, a wrapper holding one or an output', async () => {
@@ -126,16 +144,33 @@ describe('soft interface fades keep the show live', () => {
       const p = await page();
       let observed: (() => void) | undefined;
       const disconnect = vi.fn();
-      vi.stubGlobal('MutationObserver', class {
-        constructor(changed: () => void) { observed = changed; }
-        observe() {}
-        disconnect = disconnect;
-      });
+      vi.stubGlobal(
+        'MutationObserver',
+        class {
+          constructor(changed: () => void) {
+            observed = changed;
+          }
+          observe() {}
+          disconnect = disconnect;
+        },
+      );
       p.fadeInterface(() => {}, 'help');
-      if (held === 'reduced') { p.reduced.matches = true; p.reduced.dispatchEvent(new Event('change')); }
-      if (held === 'forced') { p.forced.matches = true; p.forced.dispatchEvent(new Event('change')); }
-      if (held === 'hidden') { p.doc.visibilityState = 'hidden'; p.doc.dispatchEvent(new Event('visibilitychange')); }
-      if (held === 'off') { p.root.dataset['interfaceMotion'] = 'off'; observed?.(); }
+      if (held === 'reduced') {
+        p.reduced.matches = true;
+        p.reduced.dispatchEvent(new Event('change'));
+      }
+      if (held === 'forced') {
+        p.forced.matches = true;
+        p.forced.dispatchEvent(new Event('change'));
+      }
+      if (held === 'hidden') {
+        p.doc.visibilityState = 'hidden';
+        p.doc.dispatchEvent(new Event('visibilitychange'));
+      }
+      if (held === 'off') {
+        p.root.dataset['interfaceMotion'] = 'off';
+        observed?.();
+      }
       expect(p.skipTransition, held).toHaveBeenCalledTimes(1);
       expect(p.root.dataset['interfaceFade'], held).toBeUndefined();
       p.finish();
@@ -145,10 +180,50 @@ describe('soft interface fades keep the show live', () => {
 
   it('falls back to the change exactly once if snapshots cannot start', async () => {
     const p = await page();
-    p.startViewTransition.mockImplementation(() => { throw new Error('No snapshot'); });
+    p.startViewTransition.mockImplementation(() => {
+      throw new Error('No snapshot');
+    });
     const change = vi.fn();
     p.fadeInterface(change, 'mode');
     expect(change).toHaveBeenCalledTimes(1);
     expect(p.root.dataset['interfaceFade']).toBeUndefined();
+  });
+});
+
+
+describe('the controls using a deferred browser snapshot', () => {
+  it('keeps one mode fade when the IPC event and reply repeat the same choice', async () => {
+    const p = await page(true);
+    let changed: (mode: 'pro' | 'simple') => void = () => {};
+    vi.stubGlobal('window', { drashti: { app: {
+      onModeChanged: (listener: typeof changed) => { changed = listener; },
+      getMode: () => new Promise(() => {}),
+      setMode: async () => { changed('simple'); return { ok: true, mode: 'simple' }; },
+    } } });
+    const store = await import('../renderer/src/operator/mode-store');
+    store.useMode.setState({ mode: 'pro' });
+    store.connectMode();
+    await store.enterSimpleMode();
+    expect(p.startViewTransition).toHaveBeenCalledTimes(1);
+    expect(p.skipTransition).not.toHaveBeenCalled();
+    p.update();
+    expect(store.useMode.getState().mode).toBe('simple');
+    p.finish();
+    await p.finished;
+  });
+
+  it('two rapid Help toggles end off, with no stale callback restoring a question or its key hints', async () => {
+    const p = await page(true);
+    const storage = { getItem: () => null, setItem: () => {} };
+    vi.stubGlobal('window', { localStorage: storage, sessionStorage: storage });
+    const help = await import('../renderer/src/help/help-store');
+    help.toggleHelp();
+    help.toggleHelp();
+    p.stopInterfaceFade();
+    p.update();
+    expect(help.useHelp.getState()).toMatchObject({ on: false, round: 1 });
+    expect(p.root.dataset['interfaceFade']).toBeUndefined();
+    p.finish();
+    await p.finished;
   });
 });
