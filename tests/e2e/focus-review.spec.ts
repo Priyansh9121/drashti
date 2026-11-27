@@ -49,7 +49,7 @@ for (const finish of ['Enter', 'Escape'])
           .getByTestId('playlist-node')
           .filter({ hasText: finish === 'Enter' ? 'Placeholder renamed playlist' : NAME }),
       ).toHaveCount(1);
-      expect(await list?.evaluate((el) => el.isConnected)).toBe(true);
+      expect(await list.evaluate((el) => el.isConnected)).toBe(true);
       await expect(region).toBeFocused();
       await expect(region).toHaveAttribute('data-focus-kept', '');
       await win.keyboard.press('Tab');
@@ -81,7 +81,7 @@ test('a row move keeps its local focus; removing its non-live item then keeps fo
     await win.keyboard.press('Enter');
     await expect(first).toHaveCount(0);
     await expect(region.getByTestId('playlist-item')).toHaveCount(1);
-    expect(await list?.evaluate((el) => el.isConnected)).toBe(true);
+    expect(await list.evaluate((el) => el.isConnected)).toBe(true);
     await expect(region).toBeFocused();
     await expect(region).toHaveAttribute('data-focus-kept', '');
     await win.keyboard.press('Enter');
