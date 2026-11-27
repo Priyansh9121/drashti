@@ -72,27 +72,21 @@
 }
 
 /* Scoped pictures only: no root capture, group movement, frozen show controls or input-blocking overlay. */
-:root[data-interface-fade]::view-transition {
+:root[data-opened]::view-transition {
   pointer-events: none;
 }
-:root[data-interface-fade]::view-transition-group(*) {
+:root[data-opened]::view-transition-group(*) {
   animation: none;
 }
-:root[data-interface-fade]::view-transition-old(*),
-:root[data-interface-fade]::view-transition-new(*) {
+:root[data-opened]::view-transition-old(*),
+:root[data-opened]::view-transition-new(*) {
   mix-blend-mode: normal;
 }
-:root[data-interface-fade]::view-transition-old(*) {
-  animation: motionlooks-out var(--dur-crossfade) var(--ease-in) both;
+:root[data-opened]::view-transition-old(*) {
+  animation: motionlooks-out var(--motionlooks-out, var(--dur-crossfade)) var(--ease-in) both;
 }
-:root[data-interface-fade]::view-transition-new(*) {
-  animation: motionlooks-in var(--dur-crossfade) var(--ease-out) both;
-}
-:root[data-interface-fade='help']::view-transition-old(*) {
-  animation-duration: var(--dur-press);
-}
-:root[data-interface-fade='help']::view-transition-new(*) {
-  animation-duration: var(--dur-menu);
+:root[data-opened]::view-transition-new(*) {
+  animation: motionlooks-in var(--motionlooks-in, var(--dur-crossfade)) var(--ease-out) both;
 }
 @keyframes motionlooks-in {
   from {
@@ -170,13 +164,13 @@
   }
 }
 
-:root[data-interface-motion='off'][data-interface-fade]::view-transition-old(*),
-:root[data-interface-motion='off'][data-interface-fade]::view-transition-new(*) {
+:root[data-interface-motion='off'][data-opened]::view-transition-old(*),
+:root[data-interface-motion='off'][data-opened]::view-transition-new(*) {
   animation: none !important;
 }
 @media (prefers-reduced-motion: reduce), (forced-colors: active) {
-  :root[data-interface-fade]::view-transition-old(*),
-  :root[data-interface-fade]::view-transition-new(*) {
+  :root[data-opened]::view-transition-old(*),
+  :root[data-opened]::view-transition-new(*) {
     animation: none !important;
   }
 }

@@ -103,14 +103,19 @@ export function fadeInterface(change: () => void, kind: InterfaceFade, allowed =
   let applied = false;
   const phase = { stopped: false };
   let transition: ReturnType<NonNullable<FadeDocument['startViewTransition']>> | undefined;
-  const restore = new Map<FadeStyle, { value: string; priority: string }>();
-  const setName = (style: FadeStyle, name: string) => {
-    if (!restore.has(style))
-      restore.set(style, {
-        value: style.getPropertyValue('view-transition-name'),
-        priority: style.getPropertyPriority('view-transition-name'),
+  const restore = new Map<FadeStyle, Map<string, { value: string; priority: string }>>();
+  const set = (style: FadeStyle, property: string, value: string) => {
+    let properties = restore.get(style);
+    if (!properties) {
+      properties = new Map();
+      restore.set(style, properties);
+    }
+    if (!properties.has(property))
+      properties.set(property, {
+        value: style.getPropertyValue(property),
+        priority: style.getPropertyPriority(property),
       });
-    style.setProperty('view-transition-name', name);
+    style.setProperty(property, value);
   };
   const markPictures = () => {
     const marked: FadeElement[] = [];
@@ -124,7 +129,7 @@ export function fadeInterface(change: () => void, kind: InterfaceFade, allowed =
         name = `motionlooks-${String(++serial)}`;
         names.set(el, name);
       }
-      setName(el.style, name);
+      set(el.style, 'view-transition-name', name);
       marked.push(el);
     }
   };
@@ -138,10 +143,11 @@ export function fadeInterface(change: () => void, kind: InterfaceFade, allowed =
   };
   const observer = win.MutationObserver ? new win.MutationObserver(held) : undefined;
   const clean = () => {
-    for (const [style, before] of restore) {
-      if (before.value) style.setProperty('view-transition-name', before.value, before.priority);
-      else style.removeProperty('view-transition-name');
-    }
+    for (const [style, properties] of restore)
+      for (const [property, before] of properties) {
+        if (before.value) style.setProperty(property, before.value, before.priority);
+        else style.removeProperty(property);
+      }
     restore.clear();
     if (running === handle) {
       running = null;
@@ -167,7 +173,11 @@ export function fadeInterface(change: () => void, kind: InterfaceFade, allowed =
   };
   running = handle;
   root.dataset['interfaceFade'] = kind;
-  setName(root.style, 'none');
+  set(root.style, 'view-transition-name', 'none');
+  // Styles key on the existing data-opened gate, never on this fade's bookkeeping attribute: copies carry neither
+  // data-opened nor interface motion, so their inherited token values can never start a fade in a shadow copy.
+  set(root.style, '--motionlooks-in', kind === 'help' ? 'var(--dur-menu)' : 'var(--dur-crossfade)');
+  set(root.style, '--motionlooks-out', kind === 'help' ? 'var(--dur-press)' : 'var(--dur-crossfade)');
   reduced?.addEventListener('change', held);
   forced?.addEventListener('change', held);
   doc.addEventListener('visibilitychange', held);
