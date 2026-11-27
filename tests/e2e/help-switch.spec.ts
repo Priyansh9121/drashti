@@ -355,6 +355,11 @@ test('in forced colours (a contrast theme), Help pressed and not pressed look di
   await help.dispatchEvent('click');
   await expect(help).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(ground, { message: 'Help on draws a ground of its own' }).not.toBe(off);
+  // And one that is not the status bar's own (the system paints both its Canvas without help.css's highlight: the
+  // release lead's re-review, SHOULD-R1, as a see-through Canvas and an opaque one already differ).
+  const bar = () =>
+    win.locator('footer[aria-label="Status"]').evaluate((f) => getComputedStyle(f).backgroundColor);
+  expect(await ground(), 'Help on, against the status bar’s ground').not.toBe(await bar());
   await win.emulateMedia({ forcedColors: 'none' });
   await app.close();
 });
