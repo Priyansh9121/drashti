@@ -13,8 +13,8 @@ import { FRAME_DROPS, inCopy, LOOK_KEYS, sharedCorners } from './motion';
  */
 
 describe('a leaving copy’s host carries what the window’s looks key on', () => {
-  it('B · Depth’s, and the base', () => {
-    expect([...LOOK_KEYS].sort()).toEqual(['data-base', 'data-window-look']);
+  it('B · Depth’s, its base, and the buttons’ keys hidden while Help is off', () => {
+    expect([...LOOK_KEYS].sort()).toEqual(['data-base', 'data-keys-hidden', 'data-window-look']);
   });
 });
 

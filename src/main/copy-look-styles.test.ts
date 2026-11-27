@@ -84,7 +84,7 @@ describe('a leaving copy’s host carries what the window’s looks key on', () 
     const depth = rules(SHEETS['styles/look-depth.css'] ?? '').flatMap((r) => r.selectors.flatMap(rootKeys));
     expect(depth.length).toBeGreaterThan(30);
     expect([...new Set(depth)].filter((k) => !LOOK_KEYS.includes(k))).toEqual([]);
-    expect([...LOOK_KEYS].sort()).toEqual(['data-base', 'data-window-look']);
+    expect([...LOOK_KEYS].sort()).toEqual(['data-base', 'data-keys-hidden', 'data-window-look']);
   });
 
   it('and never the interface motion’s: every attribute of <html> a style keys on is one or the other', () => {

@@ -326,10 +326,12 @@ export function hostless(selector: string): string {
  */
 
 /**
- * What the window's looks key on in <html>'s own attributes, which a copy's host carries: never the interface motion's
- * (data-interface-motion, data-chip, data-opened, data-band-sweep), so no rule that moves anything comes alive in a copy.
+ * What the window's looks key on in <html>'s own attributes, which a copy's host carries: B · Depth's look and its base,
+ * and the buttons' keys hidden while Help is off (help/help.css: opacity alone; the release lead's review of copylook
+ * ee108ee50, SHOULD-1: a leaving dialog showed its Save key). Never the interface motion's (data-interface-motion,
+ * data-chip, data-opened, data-band-sweep), so no rule that moves anything comes alive in a copy.
  */
-export const LOOK_KEYS: readonly string[] = ['data-window-look', 'data-base'];
+export const LOOK_KEYS: readonly string[] = ['data-window-look', 'data-base', 'data-keys-hidden'];
 
 /**
  * What a copy's frame never carries of the ancestors it stands for: their ids, classes and styles (it draws nothing),
