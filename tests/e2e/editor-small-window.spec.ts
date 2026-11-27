@@ -9,6 +9,7 @@ import {
   launchApp,
   operatorPage,
   operatorReady,
+  placedEditorSlide,
   sizeSlideEditor,
   slideEditorWindow,
   type PageGlobals,
@@ -67,7 +68,15 @@ async function openEditor(
   }
 }
 
-/** The editor's text made `factor` times as large (as the system's text size does), landed. */
+/**
+ * The editor's text made `factor` times as large (as the system's text size does), landed: the page laid out at its
+ * new size and the editor caught up with it, its slide placed for its area as the area is now (as sizeSlideEditor
+ * does for a new window size). The editor hears of the new size by its ResizeObserver, and of what folds by its media
+ * queries, both only with the page's next frame, and CI's Mac can draw none for a while after the text size changes:
+ * Mac run 45934112148 read the slide 30, 345 and 361 ms after 200% text landed at its 100% place and size (372 × 209
+ * at 208, 164, in an area now 274 wide, the room round it still 32 px: the fold not heard of either), so two reads
+ * 250 ms apart agreed. No frame was drawn in that time; at 200% the editor places it 258 × 145 at 184, 97.
+ */
 async function zoomEditor(app: ElectronApplication, ed: Page, factor: number): Promise<void> {
   const before = await ed.evaluate(() => innerWidth);
   await app.evaluate(({ webContents }, f) => {
@@ -76,28 +85,15 @@ async function zoomEditor(app: ElectronApplication, ed: Page, factor: number): P
     page.setZoomFactor(f);
   }, factor);
   await expect.poll(() => ed.evaluate(() => innerWidth)).toBeLessThan(before * 0.75);
+  await placedEditorSlide(ed);
   await settled(ed);
 }
 
-/** The slide's box (the editor's canvas) once the editor has laid it out for the window as it is now. */
-async function steadyCanvas(ed: Page): Promise<{ x: number; y: number; width: number; height: number }> {
-  const canvas = ed.getByTestId('editor-canvas');
-  let last = '';
-  await expect
-    .poll(
-      async () => {
-        const box = await canvas.boundingBox();
-        const now = JSON.stringify(box);
-        const steady = box !== null && now === last;
-        last = now;
-        return steady;
-      },
-      { intervals: [250, 250, 500, 500, 1000] },
-    )
-    .toBe(true);
-  const box = await canvas.boundingBox();
-  if (!box) throw new Error('No canvas');
-  return box;
+/** The slide's box (the editor's canvas) where the editor has placed it for its area as it is now, read in one step. */
+async function placedCanvas(ed: Page): Promise<{ x: number; y: number; width: number; height: number }> {
+  const slide = await placedEditorSlide(ed);
+  if (!slide) throw new Error('No slide in the editor');
+  return { x: slide.x, y: slide.y, width: slide.width, height: slide.height };
 }
 
 const pageSize = (ed: Page) =>
@@ -115,8 +111,8 @@ for (const mode of ['pro', 'simple'] as const)
       try {
         await sizeSlideEditor(app, ed, await smallestContent(app, 'slide-editor.html'));
         await zoomEditor(app, ed, 2);
+        const box = await placedCanvas(ed);
         const page = await pageSize(ed);
-        const box = await steadyCanvas(ed);
         const what = `${format}, ${mode}: the slide ${JSON.stringify(box)} in the page ${JSON.stringify(page)}`;
         expect(box.width, what).toBeGreaterThanOrEqual(100);
         expect(box.height, what).toBeGreaterThanOrEqual(100);
@@ -280,7 +276,6 @@ test('at its least window with 200% text, Tab and Shift+Tab never stop on a cont
   try {
     await sizeSlideEditor(app, ed, await smallestContent(app, 'slide-editor.html'));
     await zoomEditor(app, ed, 2);
-    await steadyCanvas(ed);
     // Tab past the dropped ribbon's last control: the slides under it.
     await editor.getByRole('tab', { selected: true }).click();
     const ribbon = editor.getByRole('tabpanel');
@@ -317,7 +312,6 @@ test('at its least window with 200% text, Tab from the chosen tab reaches the dr
   try {
     await sizeSlideEditor(app, ed, await smallestContent(app, 'slide-editor.html'));
     await zoomEditor(app, ed, 2);
-    await steadyCanvas(ed);
     const ribbon = editor.getByRole('tabpanel');
     await editor.getByRole('tab', { selected: true }).focus();
     await ed.keyboard.press('Enter');
