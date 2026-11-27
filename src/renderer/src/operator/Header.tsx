@@ -47,21 +47,9 @@ function Divider() {
   return <span aria-hidden="true" className="h-5 w-px shrink-0 bg-header-field/40" />;
 }
 
-/**
- * A ? beside a button, in a room of its own, 20 px square, kept while Help is off (alpha.24, qtargets): Help turned on
- * draws the ? in it (a 24 px target, WhatIsThis.tsx) and moves nothing in the top bar, as the show controls' keys keep
- * theirs (help.css); the bar's widths count it either way (top-bar.ts). Gone below 1280 px while the top bar is
- * crowded, as each panel has its own (top-bar.ts).
- */
+/** A ? beside a button: gone below 1280 px while the top bar is crowded, as each panel has its own (top-bar.ts). */
 function Help({ crowded, children }: { crowded: boolean; children: ReactNode }) {
-  return (
-    <span
-      data-help-room=""
-      className={cx('flex h-5 w-5 shrink-0 items-center justify-center', crowded && HIDDEN_IF_NARROWER)}
-    >
-      {children}
-    </span>
-  );
+  return <span className={cx('flex', crowded && HIDDEN_IF_NARROWER)}>{children}</span>;
 }
 
 /**
