@@ -1,4 +1,4 @@
-import { BrowserWindow, type App, type Session, type WebContents, type WebFrameMain } from 'electron';
+import type { App, BrowserWindow, Session, WebContents, WebFrameMain } from 'electron';
 import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { applySessionSecurity, secureWebContents } from './security';
@@ -6,9 +6,13 @@ import { installElectronHardening } from './electron-hardening';
 import { applyStreamSessionSecurity, type StreamSessionRules } from '../stream/program-window';
 import { isAppUrl } from './navigation';
 
+const { getAllWindows } = vi.hoisted(() => ({
+  getAllWindows: vi.fn<() => BrowserWindow[]>(() => []),
+}));
+
 vi.mock('electron', () => ({
   app: { isPackaged: false },
-  BrowserWindow: { getAllWindows: vi.fn(() => []) },
+  BrowserWindow: { getAllWindows },
 }));
 
 const ROOT = 'file:///app/out/renderer/';
@@ -182,14 +186,14 @@ describe('E-01: Program display capture binds the window and its owned main fram
   const approvedWindow = { id: 'window:placeholder:0', name: 'Placeholder window' };
 
   beforeEach(() => {
-    vi.mocked(BrowserWindow.getAllWindows).mockReset();
-    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([]);
+    getAllWindows.mockReset();
+    getAllWindows.mockReturnValue([]);
   });
 
   function programCapture(url = streamUrl, currentUrl = url) {
     const frame = { url, parent: null } as unknown as WebFrameMain;
     const contents = { id: 1, getURL: () => currentUrl, mainFrame: frame } as unknown as WebContents;
-    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([{ webContents: contents } as BrowserWindow]);
+    getAllWindows.mockReturnValue([{ webContents: contents } as BrowserWindow]);
     const liveWindow = vi.fn<NonNullable<StreamSessionRules['liveWindow']>>(() => approvedWindow);
     const stand = sessionStand();
     applyStreamSessionSecurity(stand.session, {
@@ -201,7 +205,7 @@ describe('E-01: Program display capture binds the window and its owned main fram
       frame,
       liveWindow,
       capture(askingFrame: WebFrameMain | null = frame) {
-        const callback = vi.fn();
+        const callback = vi.fn<Parameters<CaptureHandler>[1]>();
         stand.handlers().capture?.({ frame: askingFrame } as Parameters<CaptureHandler>[0], callback);
         expect(callback).toHaveBeenCalledOnce();
         return callback;
@@ -253,13 +257,13 @@ describe('E-01: Program display capture binds the window and its owned main fram
   it('refuses a frame whose window is not Program, even with the stream URL', () => {
     const stand = programCapture();
     const other = Object.assign(page('stream', 2), { mainFrame: stand.frame });
-    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([{ webContents: other } as BrowserWindow]);
+    getAllWindows.mockReturnValue([{ webContents: other } as BrowserWindow]);
     expectRefused(stand);
   });
 
   it('refuses a frame that has no registered BrowserWindow', () => {
     const stand = programCapture();
-    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([]);
+    getAllWindows.mockReturnValue([]);
     expectRefused(stand);
   });
 
