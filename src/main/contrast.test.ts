@@ -557,7 +557,6 @@ describe('comfortable appearances (Session 60, the owner’s Q60-30 and Q60-36)'
   });
 });
 
-
 /** Source-derived consumer pairs: an opaque token check alone missed these two rendered regressions. */
 const searchResults = readFileSync(join(renderer, 'library', 'SearchResults.tsx'), 'utf8');
 const layerBar = readFileSync(join(renderer, 'operator', 'LayerBar.tsx'), 'utf8');
@@ -574,7 +573,9 @@ function classPaint(classes: string, prefix: string, colours: Colours, under: Sr
   const hex = token === 'white' ? '#ffffff' : colours[token as keyof Colours];
   if (!hex) throw new Error(`Unknown ${prefix} paint in ${classes}`);
   const alpha = found[2] === undefined ? 1 : Number(found[2]) / 100;
-  return [1, 3, 5].map((at, i) => parseInt(hex.slice(at, at + 2), 16) * alpha + (under[i] ?? 0) * (1 - alpha));
+  return [1, 3, 5].map(
+    (at, i) => parseInt(hex.slice(at, at + 2), 16) * alpha + (under[i] ?? 0) * (1 - alpha),
+  );
 }
 
 function srgbRatio(a: Srgb, b: Srgb): number {
@@ -598,7 +599,9 @@ describe('search words and lit covers as their shared consumers draw them, in ev
       for (const surface of ['panel', 'panel-2', 'panel-3'] as const) {
         const fill = classPaint(markedClasses, 'bg', c, srgb(c[surface]));
         const words = classPaint(markedClasses, 'text', c, fill);
-        expect(srgbRatio(words, fill), `${a.name}: marked words on left ${surface}`).toBeGreaterThanOrEqual(4.5);
+        expect(srgbRatio(words, fill), `${a.name}: marked words on left ${surface}`).toBeGreaterThanOrEqual(
+          4.5,
+        );
       }
     },
   );

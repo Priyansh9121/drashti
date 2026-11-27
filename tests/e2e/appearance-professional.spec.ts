@@ -120,11 +120,16 @@ for (const [id, name] of DESKS) {
   });
 }
 
-
 /** Read browser colours, including Tailwind's translucent color(srgb ...) values. */
 function channels(colour: string): [number, number, number, number] {
   const s = /^color\(srgb ([\d.e-]+) ([\d.e-]+) ([\d.e-]+)(?: \/ ([\d.e-]+))?\)$/u.exec(colour);
-  if (s) return [Number(s[1]) * 255, Number(s[2]) * 255, Number(s[3]) * 255, s[4] === undefined ? 1 : Number(s[4])];
+  if (s)
+    return [
+      Number(s[1]) * 255,
+      Number(s[2]) * 255,
+      Number(s[3]) * 255,
+      s[4] === undefined ? 1 : Number(s[4]),
+    ];
   const r = /^rgba?\(([\d.]+), ([\d.]+), ([\d.]+)(?:, ([\d.]+))?\)$/u.exec(colour);
   if (!r) throw new Error(`Cannot read computed colour: ${colour}`);
   return [Number(r[1]), Number(r[2]), Number(r[3]), r[4] === undefined ? 1 : Number(r[4])];
@@ -136,10 +141,13 @@ function composite(colour: string, under: readonly number[]): number[] {
 }
 
 function computedRatio(a: readonly number[], b: readonly number[]): number {
-  const light = (rgb: readonly number[]) => rgb.reduce((sum, channel, i) => {
-    const s = channel / 255;
-    return sum + (s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4) * ([0.2126, 0.7152, 0.0722][i] ?? 0);
-  }, 0);
+  const light = (rgb: readonly number[]) =>
+    rgb.reduce((sum, channel, i) => {
+      const s = channel / 255;
+      return (
+        sum + (s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4) * ([0.2126, 0.7152, 0.0722][i] ?? 0)
+      );
+    }, 0);
   const [hi = 0, lo = 0] = [light(a), light(b)].sort((x, y) => y - x);
   return (hi + 0.05) / (lo + 0.05);
 }
@@ -151,7 +159,14 @@ async function paints(target: Locator) {
     const backgrounds: string[] = [];
     for (let up = el.parentElement; up; up = up.parentElement)
       backgrounds.unshift(getComputedStyle(up).backgroundColor);
-    return { backgrounds, fill: s.backgroundColor, words: s.color, edge: s.borderTopColor, width: s.borderTopWidth, style: s.borderTopStyle };
+    return {
+      backgrounds,
+      fill: s.backgroundColor,
+      words: s.color,
+      edge: s.borderTopColor,
+      width: s.borderTopWidth,
+      style: s.borderTopStyle,
+    };
   });
   const ground = drawn.backgrounds.reduce((under, top) => composite(top, under), [0, 0, 0]);
   const fill = composite(drawn.fill, ground);
@@ -167,7 +182,9 @@ async function markedWords(win: Page, hit: Locator, where: string): Promise<void
 }
 
 async function litCovers(win: Page, simple: boolean, live: string, where: string): Promise<void> {
-  for (const id of simple ? ['simple-blackout', 'simple-wallpaper'] : ['blackout-button', 'wallpaper-button']) {
+  for (const id of simple
+    ? ['simple-blackout', 'simple-wallpaper']
+    : ['blackout-button', 'wallpaper-button']) {
     const cover = win.getByTestId(id);
     await expect(cover).toHaveAttribute('data-dimmed', 'true');
     const before = await cover.boundingBox();
@@ -179,7 +196,10 @@ async function litCovers(win: Page, simple: boolean, live: string, where: string
     expect(p.width, `${where}: ${id} border width`).toBe('1px');
     expect(p.style, `${where}: ${id} border style`).toBe('solid');
     expect(await cover.boundingBox(), `${where}: ${id} holds its box while lit`).toEqual(before);
-    expect(computedRatio(p.edge, p.ground), `${where}: ${id} lit edge; fill/bar=${computedRatio(p.fill, p.ground)}; ${JSON.stringify(p)}`).toBeGreaterThanOrEqual(3);
+    expect(
+      computedRatio(p.edge, p.ground),
+      `${where}: ${id} lit edge; fill/bar=${computedRatio(p.fill, p.ground)}; ${JSON.stringify(p)}`,
+    ).toBeGreaterThanOrEqual(3);
     expect(computedRatio(p.words, p.fill), `${where}: ${id} lit words`).toBeGreaterThanOrEqual(4.5);
     await cover.click();
     await expect(cover).toHaveAttribute('data-dimmed', 'true');
@@ -201,7 +221,10 @@ for (const { a, source } of CONTRAST_LOOKS) {
       await win.setViewportSize({ width: 1024, height: 645 });
       await win.emulateMedia({ reducedMotion: 'reduce' });
       await operatorReady(win);
-      if (source) await app.evaluate(({ nativeTheme }, value) => { nativeTheme.themeSource = value; }, source);
+      if (source)
+        await app.evaluate(({ nativeTheme }, value) => {
+          nativeTheme.themeSource = value;
+        }, source);
       await chooseMenuItem(app, `appearance-${source ? 'follow' : a.id}`);
       await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
       await expect(win.locator('html')).toHaveAttribute('data-window-look', source ? 'depth' : 'flat');
@@ -217,7 +240,13 @@ for (const { a, source } of CONTRAST_LOOKS) {
           const made = await d.library.newFromWords(title ?? '', words ?? '');
           if (!made.ok) throw new Error(made.message);
           if (title === 'Placeholder detail result') {
-            const saved = await d.kirtans.setDetails(made.id, { category: 'Kirtan', kavi: 'Contrastprobe poet', raag: null, occasions: [], audioMediaId: null });
+            const saved = await d.kirtans.setDetails(made.id, {
+              category: 'Kirtan',
+              kavi: 'Contrastprobe poet',
+              raag: null,
+              occasions: [],
+              audioMediaId: null,
+            });
             if (!saved.ok) throw new Error(saved.message);
           }
         }
@@ -245,7 +274,9 @@ for (const { a, source } of CONTRAST_LOOKS) {
       }
       await closeLibrary(win);
       await litCovers(win, false, a.colours.live, `${name}, Pro Mode`);
-      expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'))).toMatchObject({ ok: true });
+      expect(
+        await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple')),
+      ).toMatchObject({ ok: true });
       await expect(win.getByTestId('simple-buttons')).toBeVisible();
       await litCovers(win, true, a.colours.live, `${name}, Simple Mode`);
     } finally {

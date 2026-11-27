@@ -98,8 +98,8 @@ const COVER_OFF = 'border-field bg-transparent text-faint';
 const LIT = 'border-live-edge bg-layer text-fg';
 /** A layer's clear with nothing up (alpha.24): its icon alone, a square as tall as the bar's buttons. */
 const COMPACT = 'relative inline-flex size-8 shrink-0 items-center justify-center rounded-md border';
-/** A cover on (the Wallpaper, Black-out): LIVE's red. */
-const ON = 'border-live bg-live text-white';
+/** A cover on (the Wallpaper, Black-out): LIVE's red fill and its contrasting edge against the bar. */
+const ON = 'border-live-edge bg-live text-white';
 
 /**
  * An unseen copy of a look a bar button can take (aria-hidden, invisible), in its room's one grid cell with the button:
