@@ -8,6 +8,7 @@ import { scanPaths } from '../import/scan';
 import { isInside } from '../media/contained';
 import { openDatabase } from '../db/database';
 import { ImportRepo } from '../db/imports';
+import { VideoCaptionsRepo } from '../db/video-captions';
 import { MediaStore } from '../import/media-store';
 import { runImport } from '../import/pipeline';
 import { pp6Playlist, pp6Presentation, cocoaRtf } from '../import/testing/pp6-fixtures';
@@ -178,5 +179,45 @@ describe('alpha.24 selected-folder links reached through document references', (
     const scan = await scanPaths([selected, link]);
     expect(scan.files.map((file) => file.path)).toEqual([link]);
     expect(scan.skipped).toEqual([]);
+  });
+});
+
+describe('alpha.24 media and caption source reads', () => {
+  it('keeps the chosen name and format for an inside media link with a differently named target', async () => {
+    const { selected, outside } = await fixture();
+    await writeFile(join(selected, 'data.bin'), 'Generated placeholder video bytes.');
+    const link = join(selected, 'chosen.mp4');
+    await symlink(join(selected, 'data.bin'), link, 'file');
+    const db = openDatabase(':memory:');
+    const media = new MediaStore(db, { dir: join(outside, 'media'), freeBytes: () => 1024 ** 4 });
+    try {
+      const result = await runImport({ db, media, runId: randomUUID(), paths: [selected], options: {} });
+      const report = new ImportRepo(db).report(result.id);
+      expect(report?.items.find((item) => item.sourcePath === link)).toMatchObject({
+        name: 'chosen.mp4',
+        outcome: 'imported',
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('does not read an outside caption link as a selected video sidecar', async () => {
+    const { selected, outside } = await fixture();
+    await writeFile(join(selected, 'Sample.mp4'), 'Generated placeholder video bytes.');
+    const target = join(outside, 'private-placeholder.srt');
+    await writeFile(target, '1\n00:00:01,000 --> 00:00:02,000\nPrivate placeholder line.\n');
+    const link = join(selected, 'Sample.en.srt');
+    await symlink(target, link, 'file');
+    const db = openDatabase(':memory:');
+    const media = new MediaStore(db, { dir: join(outside, 'media'), freeBytes: () => 1024 ** 4 });
+    try {
+      await runImport({ db, media, runId: randomUUID(), paths: [selected], options: {} });
+      const row = db.prepare('SELECT id FROM media').get() as { id: string };
+      expect(row).toBeDefined();
+      expect(new VideoCaptionsRepo(db).view(row.id).tracks).toEqual([]);
+    } finally {
+      db.close();
+    }
   });
 });
