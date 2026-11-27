@@ -38,17 +38,18 @@ async function page() {
   // Import before installing document: importing shared UI on a phone must not start an operator observer.
   const api = await import('./transient-motion');
   const operator = vi.fn(() => true);
+  const output = vi.fn(() => !operator());
   const opened = vi.fn(() => true);
   const copies = [{ remove: vi.fn() }, { remove: vi.fn() }];
   vi.stubGlobal('HTMLElement', Surface);
   vi.stubGlobal('getComputedStyle', () => ({ opacity: '1' }));
   vi.stubGlobal('document', {
-    body: { classList: { contains: operator }, lastElementChild: null },
+    body: { classList: { contains: operator }, matches: output, lastElementChild: null },
     documentElement: { hasAttribute: opened },
     querySelectorAll: vi.fn(() => copies),
   });
   const surface = new Surface();
-  return { ...api, operator, opened, copies, surface, node: surface as unknown as HTMLElement };
+  return { ...api, operator, output, opened, copies, surface, node: surface as unknown as HTMLElement };
 }
 
 describe('the existing exit system is used only for safe operator surfaces', () => {
@@ -62,6 +63,14 @@ describe('the existing exit system is used only for safe operator surfaces', () 
       createElement(Notice, { title: 'Placeholder operator notice' }),
     );
     expect(operatorNotice).toContain('data-motion="notice"');
+  });
+
+  it('keeps the existing notice arrival in secondary desktop windows', async () => {
+    const { operator, output } = await page();
+    operator.mockReturnValue(false);
+    output.mockReturnValue(false);
+    const html = renderToStaticMarkup(createElement(Notice, { title: 'Placeholder desktop notice' }));
+    expect(html).toContain('data-motion="notice"');
   });
 
   it('delegates an ordinary operator menu to the existing exit system', async () => {

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -11,6 +11,17 @@ const time = (name: string) => {
 };
 
 describe('operator transient motion budgets', () => {
+  it('loads the transient stylesheet through the operator entry only', () => {
+    const renderer = join(__dirname, '..', 'renderer');
+    const stylesheet = 'transient-motion.css';
+    const html = readFileSync(join(renderer, 'index.html'), 'utf8');
+    expect(html).toContain(`href="./src/ui/${stylesheet}"`);
+    for (const name of readdirSync(renderer).filter((name) => name.endsWith('.html') && name !== 'index.html'))
+      expect(readFileSync(join(renderer, name), 'utf8'), name).not.toContain(stylesheet);
+    for (const name of ['ui/transient-motion.ts', 'ui/Menu.tsx', 'ui/Tooltip.tsx', 'ui/Notice.tsx', 'chat/ChatPop.tsx'])
+      expect(readFileSync(join(renderer, 'src', name), 'utf8'), name).not.toContain(stylesheet);
+  });
+
   it('every Calm entrance, including sheets and the dim, settles within 180 ms', () => {
     for (const name of ['tooltip', 'menu', 'notice', 'dialog', 'scrim', 'sheet']) {
       expect(time(name), name).toBeGreaterThan(0);
