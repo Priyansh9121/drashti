@@ -8,7 +8,9 @@ import {
   type ClipExportResult,
 } from '../../shared/video-copies';
 import { safeName } from '../links/names';
+import { JOINED_PARTS_ORIGINAL, clipPartsLength } from '../../shared/clip-parts';
 import { clipExportArgs } from './clip-export-plan';
+import { frameFacts } from './combine-plan';
 import { hasAlpha, type MediaInfo } from './plan';
 import type { ConvertService } from './convert-service';
 
@@ -85,6 +87,12 @@ export class ClipExports {
   private readonly entries: ExportEntry[] = [];
   private closed = false;
   private resumed = false;
+  /**
+   * The requests an earlier run kept, read once as this run starts, before it can keep anything (a22-vidparts): kept
+   * beside this run's until resume() takes them, so an export asked for before then is never read back as an earlier
+   * run's and exported twice, and a close before then keeps them. null: none, or not readable.
+   */
+  private earlierKept: z.infer<typeof pendingSchema> | null;
   /** Copies into Media going now (a copy of the same bytes takes up an earlier leftover's row): nothing is removed. */
   private copying = 0;
   /** The rows live exports hold (copied into Media, not listed yet): never removed. */
@@ -105,6 +113,19 @@ export class ClipExports {
         )
       : [];
     for (const file of files.slice(-ClipExports.LEFT_MOST)) this.unclean.add(file);
+    let kept: unknown;
+    try {
+      kept = deps.kept.load();
+    } catch {
+      kept = null;
+    }
+    const parsed = pendingSchema.safeParse(kept);
+    this.earlierKept = parsed.success ? parsed.data : null;
+  }
+  /** How many requests wait or go: this run's, and an earlier run's not resumed yet. */
+  private active(): number {
+    const own = this.entries.filter((e) => e.job.state === 'waiting' || e.job.state === 'preparing').length;
+    return own + (this.resumed ? 0 : (this.earlierKept?.length ?? 0));
   }
   /** The request no longer names `made` (it is in the list of what is left now). */
   private forget(entry: ExportEntry, made: string): void {
@@ -162,8 +183,8 @@ export class ClipExports {
   private keep(): boolean {
     if (this.closed) return true;
     try {
-      this.deps.kept.save(
-        this.entries
+      this.deps.kept.save([
+        ...this.entries
           .filter((e) => e.job.state === 'waiting' || e.job.state === 'preparing')
           .map((e) => ({
             request: e.request,
@@ -171,7 +192,9 @@ export class ClipExports {
             identity: e.source.identity,
             ...(e.made === null ? {} : { made: e.made }),
           })),
-      );
+        // Not resumed yet: still an earlier run's, kept as they were read.
+        ...(this.resumed ? [] : (this.earlierKept ?? [])),
+      ]);
       return true;
     } catch {
       return false;
@@ -182,11 +205,14 @@ export class ClipExports {
     const parsed = clipExportRequestSchema.safeParse(raw);
     if (!parsed.success)
       return { ok: false, message: 'Choose a start and end inside the video, then try Export again.' };
-    if (this.entries.filter((e) => e.job.state === 'waiting' || e.job.state === 'preparing').length >= 20)
+    if (this.active() >= 20)
       return {
         ok: false,
         message: 'Many clips are waiting. Let some finish or stop one, then export again.',
       };
+    // Saved edits cover Start and End only: joined parts come from the original (alpha.24).
+    if (parsed.data.parts && parsed.data.frame === 'edited')
+      return { ok: false, message: JOINED_PARTS_ORIGINAL };
     const resolved = this.deps.resolve(parsed.data);
     if (!resolved.ok) return resolved;
     const title = basename(safeName(resolved.source.name, 'Video'), extname(resolved.source.name));
@@ -242,18 +268,21 @@ export class ClipExports {
   resume(): void {
     if (this.closed || this.resumed) return;
     this.resumed = true;
-    const parsed = pendingSchema.safeParse(this.deps.kept.load());
-    const requests = parsed.success ? parsed.data : [];
+    // As read when this run started, never this run's own (a22-vidparts).
+    const kept = this.earlierKept;
+    this.earlierKept = null;
+    const requests = kept ?? [];
     // What earlier runs left (their requests ended, or the request list unreadable), and what a request refused below
     // left: removed now if it may be, in one pass. A kept request's own file goes as it runs again.
     const earlier = [...this.unclean].filter((file) => !requests.some((saved) => saved.made === file));
-    if (!parsed.success) {
+    if (kept === null) {
       void this.removeLeft(earlier);
       return;
     }
-    for (const saved of parsed.data) {
-      const resolved = this.deps.resolve(saved.request);
-      if (!resolved.ok || resolved.source.identity !== saved.identity) {
+    for (const saved of kept) {
+      const joinedEdited = saved.request.parts !== undefined && saved.request.frame === 'edited';
+      const resolved = joinedEdited ? null : this.deps.resolve(saved.request);
+      if (!resolved?.ok || resolved.source.identity !== saved.identity) {
         // What a quit left of it in Media (copied, never listed) goes too, when it may.
         if (saved.made) earlier.push(saved.made);
         const source: ClipExportSource = {
@@ -269,8 +298,9 @@ export class ClipExports {
         const entry = this.add(saved.request, source, saved.destination);
         entry.job.state = 'failed';
         entry.job.note = null;
-        entry.job.message =
-          'The video changed while Drashti was closed. Open Export and choose the clip again.';
+        entry.job.message = joinedEdited
+          ? JOINED_PARTS_ORIGINAL
+          : 'The video changed while Drashti was closed. Open Export and choose the clip again.';
         continue;
       }
       void this.run(this.add(saved.request, resolved.source, saved.destination, saved.made ?? null));
@@ -291,7 +321,16 @@ export class ClipExports {
       if (this.closed || job.state === 'stopped') return;
     }
     const info: MediaInfo = { durationMs: source.durationMs, video: null, audio: null };
-    const lengthMs = source.outputLengthMs ?? source.endMs - source.startMs;
+    // Joined parts (alpha.24) are the original's (start refuses Saved edits with them), in its own time.
+    const parts = request.parts;
+    const lengthMs =
+      source.outputLengthMs ?? (parts ? clipPartsLength(parts) : source.endMs - source.startMs);
+    /**
+     * How far the new clip's length may be from the one expected: as before for one part; joined, each further part may
+     * add one frame of the source's (its picture's last frame running to the frame after the part's end, its sound
+     * padded to match at the join, so the two stay together), learnt from FFmpeg's words as it is read.
+     */
+    let lengthSlackMs = 250;
     const prepared: { info: MediaInfo | null; importId: string | null; temporary: string | null } = {
       info: null,
       importId: null,
@@ -303,8 +342,13 @@ export class ClipExports {
       strictPriority: true,
       kind: 'clip',
       lengthMs,
-      inspect: (read) => {
+      inspect: (read, words) => {
         Object.assign(info, read);
+        if (parts) {
+          const [top = 0, bottom = 1] = (frameFacts(words.words).rate ?? '10').split('/').map(Number);
+          const frameMs = top > 0 && bottom > 0 ? (1000 * bottom) / top : 100;
+          lengthSlackMs = 250 + (parts.length - 1) * frameMs;
+        }
         if (!read.durationMs || source.startMs < 0 || source.endMs > read.durationMs || lengthMs <= 0)
           return 'The selected part is outside this video. Choose its start and end again.';
         if (hasAlpha(read) && request.container === 'mp4')
@@ -322,11 +366,12 @@ export class ClipExports {
                 shape: request.shape,
                 info,
                 container: request.container,
+                ...(parts ? { parts } : {}),
               },
               tmp,
             ),
       validate: (read) => {
-        if (!read.video || !read.durationMs || Math.abs(read.durationMs - lengthMs) > 250)
+        if (!read.video || !read.durationMs || Math.abs(read.durationMs - lengthMs) > lengthSlackMs)
           return 'The exported clip did not have the expected length. Check the selected times, then try Export again.';
         if (request.shape === 'vertical' && (read.video.width !== 1080 || read.video.height !== 1920))
           return 'The vertical clip did not have the expected picture size. Try Export again.';

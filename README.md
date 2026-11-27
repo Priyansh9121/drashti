@@ -370,7 +370,7 @@ This section moved to [docs/running-a-show.md](docs/running-a-show.md) (26 Nov 2
 
 ## Editing a video
 
-In Pro Mode, right-click a ready local video in Media or a playlist for **Edit Video…**. Its private source preview, **Go to time** and **Trim timeline** use the original video's time. **Picture** holds framing, crop, turn, flip, colour and blurred fill; **Sound** chooses the track and steady noise reduction for a talk; **Playback** holds speed and fades. **Use this frame as library thumbnail** keeps the chosen frame with Save. The original stays unchanged.
+In Pro Mode, right-click a ready local video in Media or a playlist for **Edit Video…**. Its private source preview, **Go to time** and **Trim timeline** use the original video's time. **Picture** holds framing, crop, turn, flip, colour and blurred fill; **Sound** chooses the track and steady noise reduction for a talk; **Playback** holds speed and fades. **Use this frame as library thumbnail** keeps the chosen frame with Save. Trim's times may be typed as seconds or as a time such as **10:00**, and **Add a part** (alpha.24) lets **Export clip…** join two or more parts of the video into one new clip, such as minutes 0 to 10 and 20 to 30. The original stays unchanged.
 
 **Save** keeps changes for the next showing; a video already up keeps playing as it was. Preparation waits while anything is up, streaming or recording. Once **Ready for next showing** appears, **Preview saved edits** checks the prepared copy privately; the source preview stays as it was taken. **Cancel** can discard the draft; **Reset edits** takes effect only on Save. Existing markers and playlist row points stay. **Sound and picture…** keeps its own tone, delays and Shape, changing playback at once.
 
