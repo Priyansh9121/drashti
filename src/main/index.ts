@@ -8415,7 +8415,9 @@ function start(): void {
     cannotPlay: (node, report) => {
       const file = media.kindAndName(report.mediaId);
       if (file?.kind !== 'video') return;
-      const screen = screenRepo.screens().find((s) => s.id === report.screenId)?.name ?? report.screenId;
+      // Its screen's words, as Screens says them (S1-1): a node's screens are among all the screens, never this
+      // computer's own list, which named it by its id.
+      const screen = screenWords().get(report.screenId) ?? report.screenId;
       const told = nodeCannotPlay.heard(node, screen, file, report);
       if (!told) return;
       log.warn(told.log);
@@ -9579,8 +9581,9 @@ function start(): void {
     return null;
   });
   // The videos still up that a screen could not play (alpha.23, a22-halldrop), as LIVE names them under its picture:
-  // read as the operator window opens, and told again as one goes off.
-  const nameOfScreen = (screenId: string) => screenRepo.screens().find((s) => s.id === screenId)?.name;
+  // read as the operator window opens, and told again as one goes off. Two of one name told apart, "… (2)", as its
+  // Stopped notice and Screens say it (S1-1, the review's S1).
+  const nameOfScreen = (screenId: string) => screenWords().get(screenId);
   const notOnList = () => hallWords.list(nameOfScreen);
   hallWordsChanged = () => {
     sendToOperator(IPC.media.notOnScreensChanged, notOnList());
@@ -9637,7 +9640,7 @@ function start(): void {
     const screenId = manager.screenIdFor(e.sender.id);
     const where: CannotPlayWhere | null =
       screenId !== undefined
-        ? { screen: screenRepo.screens().find((s) => s.id === screenId)?.name ?? screenId, id: screenId }
+        ? { screen: screenWords().get(screenId) ?? screenId, id: screenId }
         : fromOperator(e)
           ? 'live'
           : streaming.isProgram(e.sender)
