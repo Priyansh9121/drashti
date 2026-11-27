@@ -125,6 +125,9 @@ test('Calm tooltips, menus, notices and sheets arrive and leave within budget wi
     await win.keyboard.press('Escape');
     await expect(tip).toHaveCount(0);
 
+    // Escape also closes the Library sheet that owns the row. Restore it for the menu checks.
+    await expect(win.getByTestId('library-sheet')).toHaveCount(0);
+    await openLibrary(win);
     await row.focus();
     await row.click({ button: 'right' });
     await arrives(win.getByRole('menu'), 180);
