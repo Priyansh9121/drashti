@@ -26,7 +26,7 @@ import {
   stopAnswering,
 } from './access';
 import type { AccessStandIn } from '../access-standin';
-import { clearOfShowControls, expectFits } from './fit';
+import { clearOfShowControls, expectFits, fitFaults } from './fit';
 import {
   holdStill,
   launchApp,
@@ -456,6 +456,46 @@ test('with no answer: no line at the first missed checks; after 2 minutes (12 s 
     await expect(win.getByTestId('app-info')).toBeVisible();
     expect(await layout(win), 'nothing moved as the line went').toEqual(before);
     expect(await statusBar(win), 'nothing in the status bar moved as the line went').toEqual(bar);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the line’s words in sight in the status bar (alpha.24): whole, never cut short, at 1024 × 645 and 1410 × 900, in Pro and Simple Mode, the whole line in its tooltip', async () => {
+  test.setTimeout(150_000);
+  const { app, win, access: list } = await showing({ ...QUICK, DRASHTI_TEST_ACCESS_STOP_MS: '600000' });
+  try {
+    stopAnswering(list);
+    const line = win.getByTestId('access-offline-notice');
+    await expect(line).toBeVisible({ timeout: 30_000 });
+    for (const mode of ['pro', 'simple'] as const) {
+      if (mode === 'simple') {
+        await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+        await expect(win.getByTestId('simple-mode')).toBeVisible();
+      }
+      for (const size of [CI_WINDOW, { width: 1410, height: 900 }]) {
+        const where = `${mode === 'pro' ? 'Pro' : 'Simple'} Mode at ${String(size.width)} × ${String(size.height)}`;
+        await sizeOperatorWindow(app, win, size);
+        await expect(line, where).toBeVisible();
+        // Nothing in the status bar cut short, the line's words among them (fit.ts: Drashti's own words never end in
+        // "…"), once the window has settled at this size.
+        await expect
+          .poll(async () => (await fitFaults(win, [])).filter((f) => f.startsWith('the status bar')), {
+            message: `${where}: what does not fit in the status bar`,
+          })
+          .toEqual([]);
+        // The words in sight whole, and saying what it is about.
+        const shown = await line.evaluate((p) => {
+          const words = p.querySelector('span:not(.sr-only)');
+          return words ? { text: words.textContent, cut: words.scrollWidth > words.clientWidth + 1 } : null;
+        });
+        expect(shown, where).not.toBeNull();
+        expect(shown?.cut, `${where}: the words in sight cut`).toBe(false);
+        expect(shown?.text, where).toContain('access list');
+        // The whole line in its tooltip, wherever the mouse rests on it.
+        await expect(line, where).toHaveAttribute('title', LINE);
+      }
+    }
   } finally {
     await app.close();
   }
