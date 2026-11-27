@@ -42,6 +42,18 @@ const WHOSE: Record<ScreenSwitch, string> = {
   stage: 'the stage screens on this computer',
 };
 
+/**
+ * A switch's tooltip: its name first, as every top bar button's since uitop ("Stream: …", "Ready?: …"; topbar, the a25
+ * list's item 39: it began "Turn off the …"), then what pressing it does.
+ */
+export function switchTip(which: ScreenSwitch, on: boolean): string {
+  const name = SWITCH_NAMES[which];
+  if (!on) return `${name}: turn on ${WHOSE[which]} again, where they were.`;
+  return which === 'stage'
+    ? `${name}: turn off ${WHOSE[which]}. They show the audience picture instead; the show carries on.`
+    : `${name}: turn off ${WHOSE[which]}. Their displays go back to the computer; the show carries on.`;
+}
+
 const say = (problem: string | null) => {
   if (problem) useNotice.setState({ text: problem });
 };
@@ -86,13 +98,7 @@ function SwitchButton({ which, platform }: { which: ScreenSwitch; platform: stri
   const name = SWITCH_NAMES[which];
   return (
     <Tooltip
-      content={
-        on
-          ? which === 'stage'
-            ? `Turn off ${WHOSE[which]}: they show the audience picture instead. The show carries on.`
-            : `Turn off ${WHOSE[which]}: their displays go back to the computer. The show carries on.`
-          : `Turn on ${WHOSE[which]} again, where they were.`
-      }
+      content={switchTip(which, on)}
       kbd={shortcutText(KEY[which], platform)}
       side="bottom"
     >

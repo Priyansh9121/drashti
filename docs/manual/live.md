@@ -4,7 +4,7 @@ The right column starts with **LIVE**: what the hall sees this moment. Under it 
 
 ## LIVE
 
-**What it is.** A small copy of the hall's picture, headed **LIVE**, framed in red while something is up. The word **LIVE** in red is in the top bar, beside what is live (with only a background or a picture in picture up, it names it: **Live: Picture · …**, **Live: Video input · …**); in the playlist, the row on the screens has a red edge and a small red dot. Under it, a time bar for whatever plays, and a line for a picture in picture or a video input.
+**What it is.** A small copy of the hall's picture, headed **LIVE**, framed in red while something is up. The word **LIVE** in red is in the top bar whenever anything is on the hall's screens, the stream or the hall's sound, beside what is live (with no slide up, it names what is: **Live: Picture · …**, **Live: Video input · …**, **Live: Lower third · …**, **Live: Message · …**, **Live: Audio**); with everything cleared it says **Off** and what was cleared (**Cleared: … · slide 3 of 5**); in the playlist, the row on the screens has a red edge and a small red dot. Under it, a time bar for whatever plays, and a line for a picture in picture or a video input.
 
 **When you would use it.** All the time: glance at it after every change.
 

@@ -19,7 +19,15 @@ import { Tooltip } from '../ui/Tooltip';
 import { cx } from '../ui/cx';
 import { LiveStatus } from './StatusLine';
 import { ScreenSwitchButtons } from './ScreenSwitches';
-import { COUNT_IF_NARROW, HIDDEN_IF_NARROWER, iconClass, type IconAloneButton, wordsClass } from './top-bar';
+import {
+  COLOURS_AT_ONCE,
+  COUNT_IF_NARROW,
+  HELP_ROOM,
+  HIDDEN_IF_NARROWER,
+  iconClass,
+  type IconAloneButton,
+  wordsClass,
+} from './top-bar';
 
 /** Whether the Announcements button shows: while the network is on, or while any is waiting or on the screens. */
 function useAnnouncementsShown(): boolean {
@@ -47,14 +55,18 @@ function Divider() {
   return <span aria-hidden="true" className="h-5 w-px shrink-0 bg-header-field/40" />;
 }
 
-/** A ? beside a button: gone below 1280 px while the top bar is crowded, as each panel has its own (top-bar.ts). */
+/**
+ * A ? beside a button, or its room while Help is off (top-bar.ts, HELP_ROOM): gone below 1280 px while the top bar is
+ * crowded, as each panel has its own (top-bar.ts), with Help on or off alike.
+ */
 function Help({ crowded, children }: { crowded: boolean; children: ReactNode }) {
   return <span className={cx('flex', crowded && HIDDEN_IF_NARROWER)}>{children}</span>;
 }
 
 /**
  * Announcements from phones: shown while the network is on, or while any is
- * waiting or on the screens, with how many are waiting.
+ * waiting or on the screens, with how many are waiting. Its colours change at once as one comes to wait (top-bar.ts,
+ * COLOURS_AT_ONCE).
  */
 function AnnouncementsButton({ help, crowded }: { help: ReactNode; crowded: boolean }) {
   const shown = useAnnouncementsShown();
@@ -68,7 +80,7 @@ function AnnouncementsButton({ help, crowded }: { help: ReactNode; crowded: bool
           icon={Inbox}
           onClick={openAnnouncements}
           data-testid="open-announcements"
-          className={waiting > 0 ? COUNT_IF_NARROW : iconClass('announcements', crowded)}
+          className={cx(COLOURS_AT_ONCE, waiting > 0 ? COUNT_IF_NARROW : iconClass('announcements', crowded))}
         >
           {waiting > 0 ? (
             // How many wait stays in sight beside the icon, one line of words with it ("Announcements (2)").
@@ -106,10 +118,10 @@ export function Header({
   extra?: ReactNode;
 }) {
   // What is this? (Sessions 31–36) for Stream, Phones and Announcements: each ? beside its button, its words
-  // under the header, in the window's flow.
-  const stream = useWhatIsThis('stream', { compact: true });
-  const phones = useWhatIsThis('phones', { compact: true });
-  const announcements = useWhatIsThis('announcements', { compact: true });
+  // under the header, in the window's flow; its room held while Help is off, so Help moves nothing in the bar (topbar).
+  const stream = useWhatIsThis('stream', HELP_ROOM);
+  const phones = useWhatIsThis('phones', HELP_ROOM);
+  const announcements = useWhatIsThis('announcements', HELP_ROOM);
   const cards = [stream.card, phones.card, announcements.card].filter(Boolean);
   // Phones on (Session 51, S2-3): the network's badge and Announcements too, so the others give up their words at
   // wider windows than with Phones off (top-bar.ts).

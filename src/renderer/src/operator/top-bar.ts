@@ -75,3 +75,18 @@ export const COUNT_IF_NARROW = 'max-[1408px]:px-2';
 export const WORDS_IF_NARROWER = 'max-[1280px]:sr-only';
 /** A ? beside a top bar button, gone below 1280 px while Phones is on. */
 export const HIDDEN_IF_NARROWER = 'max-[1280px]:hidden';
+
+/**
+ * The ? beside Stream, Phones and Announcements (help/WhatIsThis.tsx): the header's compact room, held while Help is off
+ * (alpha.24, topbar; the a25 list's item 6), so turning Help on or off moves nothing in the bar. The widths above count
+ * that room whether Help is on or off; before, with Help off, Stream moved 40 px and Phones 20 px as Help came on.
+ */
+export const HELP_ROOM = { compact: true, keepRoom: true } as const;
+
+/**
+ * The Announcements button's colours change at once (alpha.24, topbar; the a25 list's item 30): as one comes to wait it
+ * turns the warning's colours in the same frame, never eased over 120 ms (the redesign's rule: an operator window's
+ * motion is transform and opacity). It still dims while pressed and, Lively, lifts as any button does. Important, so it
+ * holds over the motion rules (app.css, ui/motion.css: unlayered, by data-variant) as over the button's own fade.
+ */
+export const COLOURS_AT_ONCE = '[transition-property:opacity,transform,translate]!';

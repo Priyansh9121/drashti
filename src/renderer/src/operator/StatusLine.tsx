@@ -55,6 +55,8 @@ export interface LiveLineFacts {
   item: PlaylistItemInfo | undefined;
   /** Media's files, as this window has read them (none yet: a picture or video is named by its kind). */
   media: readonly MediaSummary[];
+  /** The name of the timer up for the audience, when one is and this window knows it (topbar). */
+  timer?: string | undefined;
 }
 
 /** LIVE's line: its LIVE badge (or Off) and its words. */
@@ -82,59 +84,103 @@ function backgroundName(background: BackgroundLayer, media: readonly MediaSummar
   }
 }
 
-/** The background and the picture-in-picture box up, in words, the background first; null with neither. */
-function upWords(layers: Layers, media: readonly MediaSummary[]): string | null {
+/** How many, in words: "2 messages", "3 announcements". */
+const howMany = (n: number, one: string) => `${String(n)} ${one}s`;
+
+/**
+ * Everything up on the audience screens, the stream or the hall's sound, in words, in this order: the background, the
+ * picture-in-picture box, the lower third, the audience's timer, the messages, the ticker, the audio (topbar: before,
+ * only the background and the box); null with none of those. A slide is not among them: the line names it.
+ */
+function upWords(layers: Layers, media: readonly MediaSummary[], timer: string | undefined): string | null {
+  const third = layers.lowerThird?.lines.map((l) => l.trim()).find((l) => l !== '');
+  const ticker = layers.ticker?.items ?? [];
   const parts = [
     ...(layers.background ? [backgroundName(layers.background, media)] : []),
     ...(layers.pip ? [`Picture in picture · ${boxName(layers.pip.source, media)}`] : []),
+    // One for the stream alone is broadcast, so it is said too (the owner's delegate's answer).
+    ...(layers.lowerThird ? [third === undefined ? 'Lower third' : `Lower third · ${third}`] : []),
+    ...(layers.timer ? [timer === undefined ? 'Timer' : `Timer · ${timer}`] : []),
+    ...(layers.messages.length === 1
+      ? [`Message · ${layers.messages[0]?.text ?? ''}`]
+      : layers.messages.length > 1
+        ? [howMany(layers.messages.length, 'message')]
+        : []),
+    ...(layers.ticker
+      ? [
+          ticker.length === 1
+            ? `Ticker · ${ticker[0]?.text ?? ''}`
+            : ticker.length > 1
+              ? `Ticker · ${howMany(ticker.length, 'announcement')}`
+              : 'Ticker',
+        ]
+      : []),
+    // Its title is beside the line (the audio status), so the line says only that it is the audio.
+    ...(layers.audio ? [layers.audio.pausedAtMs === undefined ? 'Audio' : 'Audio · paused'] : []),
   ];
   return parts.length > 0 ? parts.join(', ') : null;
 }
 
 /**
- * LIVE's line in the top bar: whether something is on the screens (its LIVE badge, or Off) and what, in words.
+ * Whether anything is on the audience screens, the stream or the hall's sound (topbar, the owner's delegate's A to the
+ * a25 list's item 4): a slide, a background, the picture-in-picture box, a lower third (the stream's alone too), a
+ * message, the ticker, the audio or the audience's timer. Never the wallpaper shown with nothing up, nor Black-out alone
+ * (its own badge says that), nor what only the stage screens show (their message and timers are for those on stage).
+ */
+function somethingLive(layers: Layers): boolean {
+  return (
+    layers.slide !== null ||
+    layers.background !== null ||
+    layers.pip !== null ||
+    layers.lowerThird !== null ||
+    layers.messages.length > 0 ||
+    layers.ticker !== null ||
+    layers.audio !== null ||
+    (layers.timer ?? null) !== null
+  );
+}
+
+/**
+ * LIVE's line in the top bar: whether something is live (its LIVE badge, or Off) and what, in words.
  * A timer up alone first (Session 50), then the presentation's slide the show is at (said cleared once it is), then a
  * playlist's picture, video, sound or video input row (Session 56). Since uitop (alpha.24) its badge is the only LIVE
- * said in words, so it is LIVE too whenever the LIVE column's red frame is (its own badge before): a slide, a
- * background or the picture-in-picture box up (livesay). What is up that the line does not name, it names after it:
- * a background or the box up alone, or under the show's place cleared. Never for the wallpaper shown with nothing up,
- * nor Black-out alone (its own badge says that), nor a message, a ticker, a lower third or a timer for the audience
- * alone (the LIVE column never counted those either).
+ * said in words; since topbar (alpha.24, the a25 list's item 4) it is LIVE whenever anything is on the audience
+ * screens, the stream or the hall's sound (somethingLive). What is up that the line does not name, it names after it:
+ * anything up alone, or under the show's place cleared. With everything cleared it says Off and "Cleared: <the place>",
+ * never "Live:" beside Off (item 32). Never LIVE for the wallpaper shown with nothing up, nor Black-out alone.
  */
-export function liveLine({ live, layers, presentation, item, media }: LiveLineFacts): LiveLine {
+export function liveLine({ live, layers, presentation, item, media, timer }: LiveLineFacts): LiveLine {
   const slideShown = layers?.slide !== null;
   // A timer up alone in the slide's place (Session 50): named instead of the slide the show is at.
   const timerAlone = layers?.slide?.timer?.name ?? null;
   const itemUp = itemStillUp(item, layers);
-  let text = 'Nothing live';
-  // Whether the line names what is up.
-  let named = false;
-  if (timerAlone !== null) {
-    text = `Live: Timer · ${timerAlone}`;
-    named = true;
-  } else if (live?.presentationId && live.slideIndex !== null) {
+  // The show's place, when the line names one, and whether it was cleared.
+  let place: string | null = null;
+  let cleared = false;
+  if (timerAlone !== null) place = `Timer · ${timerAlone}`;
+  else if (live?.presentationId && live.slideIndex !== null) {
     // A deck's slide's click (Session 54, C2).
-    text = `Live: ${presentation ?? 'presentation'} · slide ${live.slideIndex + 1} of ${live.slideCount}${slideShown ? clickWords(layers?.slide) : ' (cleared)'}`;
-    named = slideShown;
+    place = `${presentation ?? 'presentation'} · slide ${String(live.slideIndex + 1)} of ${String(live.slideCount)}${slideShown ? clickWords(layers?.slide) : ''}`;
+    cleared = !slideShown;
   } else if (live?.playlist) {
-    text = `Live: ${item?.label ?? 'playlist item'}${itemUp ? '' : ' (cleared)'}`;
-    named = itemUp;
+    place = item?.label ?? 'playlist item';
+    cleared = !itemUp;
   }
-  // On the screens as the LIVE column's red frame has it (operator/LivePreview.tsx's somethingUp).
-  const onScreens = layers
-    ? layers.slide !== null || layers.background !== null || layers.pip !== null
-    : false;
-  if (onScreens && !named && layers) {
-    const up = upWords(layers, media) ?? 'Slide';
-    text = text === 'Nothing live' ? `Live: ${up}` : `${text} · ${up}`;
-  }
+  const up = layers ? somethingLive(layers) : false;
   const onAir =
-    onScreens ||
+    up ||
     timerAlone !== null ||
     Boolean(live?.presentationId && slideShown) ||
     Boolean(live?.playlist && !live.presentationId && itemUp);
-  return { onAir, text };
+  // What is up that the line does not name (a slide up without a place in a presentation: "Slide").
+  const more = () => (layers ? upWords(layers, media, timer) : null) ?? 'Slide';
+  if (place === null) return { onAir, text: up ? `Live: ${more()}` : 'Nothing live' };
+  if (!cleared) return { onAir, text: `Live: ${place}` };
+  return { onAir, text: onAir ? `Live: ${place} (cleared) · ${more()}` : `Cleared: ${place}` };
 }
+
+/** A badge in LIVE's room: the room's whole width, its word in the middle. */
+const BADGE_IN_ROOM = 'col-start-1 row-start-1 justify-center';
 
 /** What is on the screens, in words: the header says it at all times. */
 export function LiveStatus() {
@@ -159,6 +205,11 @@ export function LiveStatus() {
   const media = useMedia((s) => s.media);
   const mediaLoaded = useMedia((s) => s.loaded);
   const fileUp = layers?.background?.kind === 'media' || layers?.pip?.source.kind === 'media';
+  // The audience's timer up, by its name (topbar).
+  const timer = useEngine((s) => {
+    const id = s.state?.layers.timer?.timerId;
+    return id === undefined ? undefined : s.state?.timers.find((t) => t.id === id)?.name;
+  });
   useEffect(() => {
     if (fileUp && !mediaLoaded) void loadMedia();
   }, [fileUp, mediaLoaded]);
@@ -168,10 +219,24 @@ export function LiveStatus() {
     presentation: name ?? passage ?? repeatName ?? repeating,
     item,
     media,
+    timer,
   });
+  // LIVE's badge and Off's in one room, the wider one's (topbar): the other is held there unseen and unread, after the
+  // one shown, so what is live starts at the same place whichever is said and nothing beside it moves.
+  const shown = onAir ? (
+    <LiveBadge className={BADGE_IN_ROOM} />
+  ) : (
+    <Badge className={BADGE_IN_ROOM}>Off</Badge>
+  );
+  const held = onAir ? <Badge className={BADGE_IN_ROOM}>Off</Badge> : <LiveBadge className={BADGE_IN_ROOM} />;
   return (
     <div className="flex min-w-0 items-center gap-2 text-sm" data-testid="live-status" aria-live="polite">
-      {onAir ? <LiveBadge /> : <Badge>Off</Badge>}
+      <span className="inline-grid shrink-0" data-live-badge-room="">
+        {shown}
+        <span aria-hidden="true" className="invisible col-start-1 row-start-1 grid">
+          {held}
+        </span>
+      </span>
       <Truncate text={text} className={cx('font-medium', !onAir && 'text-muted')} data-testid="live-text" />
       {blackout && <Badge tone="live">Black-out</Badge>}
       {audio !== null && (
