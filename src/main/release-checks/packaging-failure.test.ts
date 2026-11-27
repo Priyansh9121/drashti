@@ -58,6 +58,22 @@ describe('a failed packaging’s report on the run page', () => {
     expect(kept).not.toContain('line 94');
   });
 
+  it('hides each line of a secret with line breaks (a key’s text, base64 in lines), 8 characters or more', () => {
+    const lines = ['SENTINEL-KEY-LINE-ONE-abcdefgh', 'SENTINEL-KEY-LINE-TWO-ijklmnop', 'short'];
+    const output = [
+      `  • first ${lines[0] ?? ''}`,
+      `  ⨯ second ${lines[1] ?? ''} and a short word`,
+      '  • done',
+    ].join('\n');
+    for (const secret of [lines.join('\n'), `${lines.join('\r\n')}\r\n`]) {
+      const report = failureReport(output, { status: 1, secrets: [secret] });
+      const shown = `${report.annotation}\n${report.summary}`;
+      expect(shown).not.toContain('SENTINEL');
+      expect(report.summary).toContain('  • first ***');
+      expect(report.annotation).toContain('⨯ second *** and a short word');
+    }
+  });
+
   it('hides every signing secret packaging is given', () => {
     for (const name of [
       'MAC_CERT_PASSWORD',

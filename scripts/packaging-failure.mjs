@@ -26,12 +26,25 @@ const escape = (text) => text.replace(/%/gu, '%25').replace(/\r/gu, '%0D').repla
 
 /**
  * The report for electron-builder's `output` (stdout and stderr as they came) after it exited with `status`.
- * `secrets`: values to hide (4 characters or more; shorter ones would hide ordinary words).
+ * `secrets`: values to hide (4 characters or more; shorter ones would hide ordinary words), and each line of 8
+ * characters or more of one with line breaks.
  */
 export function failureReport(output, { status, secrets = [], keep = 40 }) {
+  // Each whole value, and each line of one with line breaks (a key's text, base64 in lines: the output is read
+  // line by line, so the whole could never match), longest first.
   const hidden = secrets
-    .filter((value) => typeof value === 'string' && value.trim().length >= 4)
-    .map((value) => value.trim());
+    .filter((value) => typeof value === 'string')
+    .flatMap((value) => [
+      value.trim(),
+      ...(/[\r\n]/u.test(value.trim())
+        ? value
+            .split(/\r?\n|\r/u)
+            .map((line) => line.trim())
+            .filter((line) => line.length >= 8)
+        : []),
+    ])
+    .filter((value) => value.length >= 4)
+    .sort((a, b) => b.length - a.length);
   const lines = String(output)
     .replace(COLOURS, '')
     .split(/\r?\n|\r/u)
