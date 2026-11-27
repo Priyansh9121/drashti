@@ -11,6 +11,7 @@ import type { CSSProperties, DragEvent, MouseEvent, ReactNode } from 'react';
 import { create } from 'zustand';
 import { formatDuration } from '../../../shared/format';
 import { actionFor, LIBRARY_KEYMAP } from '../../../shared/keymap';
+import { moveTitle } from './move-title';
 import type { RenderSlide } from '../../../shared/model';
 import type { ItemOrder, PlaylistItemInfo, TimerCue } from '../../../shared/playlists';
 import type { PresentationDoc } from '../../../shared/library';
@@ -28,7 +29,7 @@ import { openLinkDialog } from '../links/link-store';
 import { MediaStill } from '../render/MediaStill';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
-import { Badge, LiveBadge, MissingBadge } from '../ui/Badge';
+import { Badge, LiveDot, LiveEdge, MissingBadge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { rowTops, slideRows, useLivelyArrival } from '../ui/motion';
@@ -286,7 +287,10 @@ function ItemBody({
   /** A presentation's name row (Session 55): whether its slides are folded under it. */
   fold?: boolean | null;
 }) {
-  const liveBadge = live ? <LiveBadge /> : null;
+  // Up (alpha.24, uitop: LIVE is said once, in words, by the top bar's badge): a red edge at the row's start and a dot
+  // at its end, "Live" to a screen reader as the badge said it.
+  const liveBadge = live ? <LiveDot /> : null;
+  const liveEdge = live ? <LiveEdge /> : null;
   const conversion = useConvert((state) =>
     item.kind === 'media' ? jobFor(state.jobs, item.mediaId) : undefined,
   );
@@ -316,6 +320,7 @@ function ItemBody({
   const Chevron = fold ? ChevronRight : ChevronDown;
   return (
     <span className="flex items-center gap-2.5">
+      {liveEdge}
       {fold === null ? (
         <RowNumber number={number} />
       ) : (
@@ -531,9 +536,10 @@ function keepSlideFocus(
 
 /**
  * Up and Down on the chosen item, on a line under it so its name keeps its room: it moves a place,
- * as one Undo step, without dragging (Alt+↑ ↓ too).
+ * as one Undo step, without dragging (Alt+↑ ↓ too: ⌥↑ ↓ on a Mac).
  */
 function MoveButtons({
+  platform,
   name,
   first,
   last,
@@ -541,6 +547,8 @@ function MoveButtons({
   onMove,
   before = null,
 }: {
+  /** This computer, for the keys in the tooltips (moveTitle). */
+  platform: string;
   name: string;
   first: boolean;
   last: boolean;
@@ -572,7 +580,7 @@ function MoveButtons({
         icon={ArrowUp}
         data-move="up"
         disabled={first}
-        title="Up a place (Alt+↑)"
+        title={moveTitle(-1, platform)}
         onClick={(e) => {
           press(e, -1, 'up');
         }}
@@ -584,7 +592,7 @@ function MoveButtons({
         icon={ArrowDown}
         data-move="down"
         disabled={last}
-        title="Down a place (Alt+↓)"
+        title={moveTitle(1, platform)}
         onClick={(e) => {
           press(e, 1, 'down');
         }}
@@ -1318,7 +1326,8 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
           const slides = own?.slides ?? [];
           const doc =
             item.kind === 'presentation' && !isRepeat ? (docs[item.presentationId] ?? undefined) : undefined;
-          // One of its slides is up: its name row says LIVE too (folded, its slides are not there to say it).
+          // One of its slides is up: its name row is marked up too, its edge and dot (folded, its slides are not there
+          // to say it).
           const slideUp = slides.some(isSlideLive);
           // A presentation's slide rows move (Part 4b), by a drag or from the keyboard: not a passage's, nor a Repeat
           // Slides playlist's steps.
@@ -1451,7 +1460,8 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
                 }}
                 className={cx(
                   rowClass({ selected: shownItem === item.id, marked: isMarked, dropTarget: filling }),
-                  'pr-10 pl-2.5',
+                  // Relative: a row that is up has its red edge at its start (ItemBody).
+                  'relative pr-10 pl-2.5',
                   item.kind === 'header' ? 'min-h-8 pt-2 pb-1' : 'min-h-11 py-1.5',
                   look,
                   itemFound && !isLive && 'border-accent! bg-panel-2',
@@ -1469,6 +1479,7 @@ function PlaylistItems({ platform, openId, simple }: { platform: string; openId:
               {/* Simple Mode moves rows by dragging (and Alt+↑ ↓): no Up, Down or order under the chosen one. */}
               {isMarked && anchorId === item.id && !simple && (
                 <MoveButtons
+                  platform={platform}
                   name={itemName(item)}
                   first={row === 0}
                   last={row === rows.length - 1}

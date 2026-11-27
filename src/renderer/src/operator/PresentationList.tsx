@@ -24,7 +24,7 @@ import { MediaList } from '../library/MediaList';
 import { ADD_LINE_HEIGHT, AddToPlaylistButton, rowMenu, usePlaylistOpen } from '../playlists/AddToPlaylist';
 import { libraryPresentation } from '../files/targets';
 import { startDrag } from '../playlists/drag';
-import { Badge, LiveBadge } from '../ui/Badge';
+import { Badge, LiveDot, LiveEdge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
 import { TextInput } from '../ui/Field';
 import { FileText, FolderOpen, Import, Link2, ListFilter, Plus, Search, Upload } from '../ui/icons';
@@ -82,6 +82,8 @@ const PresentationRow = memo(function PresentationRow({
   };
   return (
     <div className={`${rowClass({ selected, marked })} group relative flex h-full flex-col`}>
+      {/* Up (alpha.24, uitop: the word LIVE is said once, in the top bar): its red edge here and its dot at its end. */}
+      {live && <LiveEdge />}
       <button
         type="button"
         draggable
@@ -116,7 +118,7 @@ const PresentationRow = memo(function PresentationRow({
               ))}
           </span>
         </span>
-        {live && <LiveBadge />}
+        {live && <LiveDot />}
       </button>
       {selected && <AddToPlaylistButton pick={pick} className="px-1.5 pb-1.5" />}
       {/* Last in the Tab order (after Add to playlist), at the end of the name's line (Session 26a). */}

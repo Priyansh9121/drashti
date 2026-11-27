@@ -18,7 +18,7 @@ import { LOWER_THIRD_MAX_LINES, lowerThirdOf } from '../../../shared/program';
 import { useStream } from '../stream/stream-store';
 import { missingFontsOf } from '../render/font-probe';
 import { stopRepeat } from '../playlists/repeat-actions';
-import { Badge, LiveBadge } from '../ui/Badge';
+import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Eraser, Repeat2, Square, Timer } from '../ui/icons';
@@ -215,7 +215,8 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
           {/* The Stream panel's primary kept in the GPU's cache, unseen (Session 60, X21: operator/PanelWarmUp.tsx). */}
           {!chipless && <PanelKindKeeper />}
         </h2>
-        {blackout ? <Badge tone="live">Black-out</Badge> : somethingUp ? <LiveBadge /> : null}
+        {/* LIVE is said once, by the top bar's badge (alpha.24, uitop): here its red frame says it; Black-out in words. */}
+        {blackout && <Badge tone="live">Black-out</Badge>}
         {help.button}
       </div>
       {help.card && <div className="-mx-3">{help.card}</div>}
@@ -352,9 +353,11 @@ function TimerAlone({ shown }: { shown: TimerShow }) {
       <span className="min-w-0 flex-1 truncate" title={shown.name}>
         <span className="font-bold">Timer</span> · {shown.name}
       </span>
+      {/* A show control (the release lead's bug hunt, S3-1): it changes what the hall sees, at once, never moving. */}
       <Button
         size="sm"
         icon={Eraser}
+        instant
         data-testid="live-timer-off"
         onClick={() => void dispatch({ type: 'clearLayer', layer: 'slide' })}
       >
@@ -378,9 +381,11 @@ function AudienceTimerUp({ state }: { state: EngineState }) {
       <span className="min-w-0 flex-1 truncate" title={name}>
         <span className="font-bold">Timer for the audience</span> · {name}
       </span>
+      {/* A show control (the release lead's bug hunt, S3-1): it changes what the hall sees, at once, never moving. */}
       <Button
         size="sm"
         icon={Eraser}
+        instant
         data-testid="live-audience-timer-off"
         onClick={() => void dispatch({ type: 'hideAudienceTimer' })}
       >
