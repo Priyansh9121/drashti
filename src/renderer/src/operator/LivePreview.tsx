@@ -353,9 +353,11 @@ function TimerAlone({ shown }: { shown: TimerShow }) {
       <span className="min-w-0 flex-1 truncate" title={shown.name}>
         <span className="font-bold">Timer</span> · {shown.name}
       </span>
+      {/* A show control (the release lead's bug hunt, S3-1): it changes what the hall sees, at once, never moving. */}
       <Button
         size="sm"
         icon={Eraser}
+        instant
         data-testid="live-timer-off"
         onClick={() => void dispatch({ type: 'clearLayer', layer: 'slide' })}
       >
@@ -379,9 +381,11 @@ function AudienceTimerUp({ state }: { state: EngineState }) {
       <span className="min-w-0 flex-1 truncate" title={name}>
         <span className="font-bold">Timer for the audience</span> · {name}
       </span>
+      {/* A show control (the release lead's bug hunt, S3-1): it changes what the hall sees, at once, never moving. */}
       <Button
         size="sm"
         icon={Eraser}
+        instant
         data-testid="live-audience-timer-off"
         onClick={() => void dispatch({ type: 'hideAudienceTimer' })}
       >
