@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useStatusPriority } from './status-priority';
 import type { ScreenStatus } from '../../../shared/screens';
 import { captionsFor, type CaptionsShown } from '../../../shared/captions';
 import { screensSummary } from '../../../shared/screens-summary';
@@ -278,63 +279,56 @@ export function LiveStatus() {
 }
 
 /**
- * "2 screens showing · 1 display not connected · 1 keeps restarting · 1 stopped", so a volunteer notices a dead
- * output (the words: shared/screens-summary.ts).
- *
- * The status bar's first item (alpha.24, lead 2's statusbar; alpha.25 item 17): its words in a held room, as wide as
- * its steady forms ("No screens set up", and "N screens showing" with as many digits as now, all one width), so Sound,
- * the calendar and Help after it hold still as screens come and go; only a longer line, a display not connected or a
- * screen stopped, takes more. 24 px tall (WCAG 2.5.8).
+ * The whole screens sentence remains the name and tooltip. A fixed slot, including through failures and restarts,
+ * uses the count and warning icon when the words need more room; its neighbours never move as the sentence changes.
  */
 export function ScreensSummary({ onOpen }: { onOpen: (() => void) | null }) {
-  // Select the stored array itself: a new [] per call would re-render forever.
   const status = useScreens((s) => s.snapshot?.status) ?? NO_STATUS;
   const { text, tone } = screensSummary(status);
+  const { slotRef, wordsRef, compact } = useStatusPriority(text);
+  const showing = status.filter((s) => s.state === 'showing' && s.restarts === undefined).length;
   const IconShape = tone === 'muted' ? Monitor : MonitorOff;
-  const place = 'col-start-1 row-start-1 flex min-h-6 items-center gap-1.5 rounded-sm px-1.5';
   const look = cx(
-    place,
+    'status-summary flex h-6 shrink-0 items-center gap-1.5 rounded-sm px-1.5 tabular-nums',
     tone === 'danger'
       ? 'bg-danger-bg text-danger-fg'
       : tone === 'warning'
         ? 'bg-warning-bg text-warning-fg'
         : 'text-muted',
   );
-  // Without anything to open: the same words, not a button.
-  const shown = !onOpen ? (
-    <span className={look} data-testid="screens-summary">
-      <IconShape size={13} aria-hidden="true" />
-      {text}
+  const contents = (
+    <>
+      <IconShape size={13} aria-hidden="true" className="shrink-0" />
+      <span ref={wordsRef} className={cx('whitespace-nowrap', compact && 'sr-only')}>
+        {text}
+      </span>
+      {compact && <span aria-hidden="true">{showing}</span>}
+    </>
+  );
+  return !onOpen ? (
+    <span
+      ref={slotRef}
+      className={look}
+      aria-label={text}
+      title={text}
+      data-testid="screens-summary"
+      data-compact={compact}
+    >
+      {contents}
     </span>
   ) : (
     <button
+      ref={slotRef}
       type="button"
       onClick={onOpen}
-      title="Open the screens dashboard"
+      title={`${text} · Open the screens dashboard`}
+      aria-description="Open the screens dashboard"
+      aria-label={text}
       className={cx(look, tone === 'muted' && 'hover:text-fg')}
       data-testid="screens-summary"
+      data-compact={compact}
     >
-      <IconShape size={13} aria-hidden="true" />
-      {text}
+      {contents}
     </button>
   );
-  return (
-    // The room: the summary over its steady forms' unseen copies, as wide as the widest (outside it, so its words are
-    // only its own).
-    <span className="grid shrink-0 tabular-nums">
-      {shown}
-      {heldForms(text).map((form) => (
-        <span key={form} aria-hidden="true" className={cx(place, 'invisible')}>
-          <span className="inline-block w-[13px] shrink-0" />
-          {form}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-/** The summary's steady forms, for its room: none set up, and the most with as many digits as it says now. */
-function heldForms(text: string): string[] {
-  const digits = Math.max(1, /\d+/u.exec(text)?.[0].length ?? 1);
-  return ['No screens set up', `${'8'.repeat(digits)} screens showing`];
 }

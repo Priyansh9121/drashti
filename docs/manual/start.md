@@ -66,6 +66,8 @@ Drashti puts slides, pictures, videos and sound on the hall's screens. This manu
 
 **What it is.** The line along the very bottom. It says how many screens are showing, where the sound goes, what is coming in, any warning, and Drashti's version. **Audience off**, **Stage off**, **Audio muted** or **Video muted** show there while they are so, after **Help**, so the screens' count, the sound and **Help** never move as they come and go. With no internet, after about 2 minutes **No access list · 14 days** shows there, short, in place of the version, with the days left (the hours in the last day, the minutes in the last hour); rest the mouse on it (or let a screen reader read it) for the whole line, **Can’t reach the access list: Drashti keeps working for … more.** **Help** there shows every **?** and the keys on the buttons (**Help and when something goes wrong › What is this?**).
 
+The status bar stays in one row. In a narrow window its screens summary shows the count with a screen or warning icon, and Sound shows its icon and levels; where the levels differ, Audio comes before Video (for example, 0/100%). Rest the mouse on either for the whole sentence; a screen reader reads the whole sentence too. Their slots keep the same width as warnings come and go.
+
 **When you would use it.** Whenever you want to know at a glance that all is well.
 
 **How:**

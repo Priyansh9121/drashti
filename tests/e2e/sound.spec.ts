@@ -396,7 +396,13 @@ test('only the audio player may see sound outputs; the choice is remembered, and
       label: 'Placeholder Mixer',
     }),
   );
-  await expect(win.getByTestId('sound-warning')).toHaveText('Sound output "Placeholder Mixer" not connected');
+  await expect(win.getByTestId('sound-warning')).toHaveAccessibleName(
+    'Sound output "Placeholder Mixer" not connected',
+  );
+  await expect(win.getByTestId('sound-warning')).toHaveAttribute(
+    'title',
+    /Sound output "Placeholder Mixer" not connected/,
+  );
   await expect.poll(() => audio.evaluate(() => document.body.dataset['output'])).toBe('missing');
   expect(await audio.evaluate(() => document.body.dataset['sinkId'])).toBe('');
   await app.close();

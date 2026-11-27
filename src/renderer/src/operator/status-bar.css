@@ -7,3 +7,24 @@
 footer[aria-label='Status'] :focus-visible {
   outline-offset: -2px;
 }
+
+/* Reserve the combined-state budget from first paint. Only the words inside a slot collapse, never its width. */
+footer[aria-label='Status'] .status-summary {
+  width: 144px;
+}
+footer[aria-label='Status'] .status-sound {
+  width: 176px;
+}
+@media (width < 1536px) {
+  footer[aria-label='Status'] .status-summary,
+  footer[aria-label='Status'] .status-sound {
+    column-gap: 4px;
+    padding-inline: 2px;
+  }
+  footer[aria-label='Status'] .status-summary {
+    width: 36px;
+  }
+  footer[aria-label='Status'] .status-sound {
+    width: 72px;
+  }
+}

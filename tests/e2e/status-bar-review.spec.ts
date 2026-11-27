@@ -276,7 +276,7 @@ for (const mode of ['pro', 'simple'] as const)
     });
 
 for (const mode of ['pro', 'simple'] as const)
-  test(`MUST-2 ${mode}: missing, stopped and restarting screens never widen the summary or move Sound, calendar, Help or show controls`, async () => {
+  test(`MUST-2 ${mode}: missing, stopped and restarting screens hold steady, including calendar, mirroring and all warnings`, async () => {
     const { app, userData } = await launchApp();
     try {
       const win = await operatorPage(app);

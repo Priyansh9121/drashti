@@ -3,6 +3,8 @@ import { HelpSwitch } from '../help/HelpSwitch';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { showReport } from '../help/report-store';
 import { useEffect } from 'react';
+import { kindLevel } from '../../../shared/sound';
+import { useStatusPriority } from './status-priority';
 import { createPortal } from 'react-dom';
 import { festivalsLine, samvatLine } from '../../../shared/calendar';
 import { useEngine } from '../engine/engine-store';
@@ -51,7 +53,7 @@ import { ScreensSaidNotice } from '../screens/ScreensSaid';
  * saying so). Notices pop up just above it (NoticeArea).
  *
  * Its own controls hold still (alpha.24, lead 2's statusbar; alpha.25 item 17): what is always there comes first, in
- * its order (the screens' summary, its words in a held room; Sound; the calendar; Help, with its ?'s room held), and
+ * its order (the screens' summary and Sound in fixed slots; the calendar; Help, with its ?'s room held), and
  * what comes and goes after it (Audience off and Stage off with Turn on, the warnings, what is muted, the captions'
  * warning), then the passing news, which gives up its room, the screens' line and the version's place. So nothing
  * that is always there moves as anything comes or goes (until then Sound and Help moved some 163 px as Stage off came
@@ -59,41 +61,48 @@ import { ScreensSaidNotice } from '../screens/ScreensSaid';
  * window's edge, 1.5 px under the controls, cuts none of it.
  */
 
-/** Where the sound goes; a warning while the chosen output is not connected. */
+/** Where the sound goes, with the two effective levels when its held slot needs the compact form. */
 function SoundStatus({ onOpen }: { onOpen: (() => void) | null }) {
   const status = useSound((s) => s.status);
+  const audio = useEngine((s) => Math.round(kindLevel(s.state, 'audio') * 100));
+  const video = useEngine((s) => Math.round(kindLevel(s.state, 'video') * 100));
+  const chosen = status?.chosen;
+  const missing = status?.state === 'missing' && chosen != null;
+  const words = missing
+    ? `Sound output "${chosen.label}" not connected`
+    : `Sound: ${status?.chosen?.label ?? 'System default'}`;
+  const { slotRef, wordsRef, compact } = useStatusPriority(words, status !== null);
   useEffect(() => {
     connectSound();
   }, []);
-  if (!status) return null;
-  const missing = status.state === 'missing' && status.chosen !== null;
-  if (missing && status.chosen)
-    return (
-      <button
-        type="button"
-        onClick={onOpen ?? undefined}
-        disabled={!onOpen}
-        data-testid="sound-warning"
-        className="flex min-h-6 min-w-0 items-center gap-1.5 rounded-sm bg-warning-bg px-1.5 text-warning-fg"
-      >
-        <AlertTriangle size={13} aria-hidden="true" className="shrink-0" />
-        <span className="truncate">{`Sound output "${status.chosen.label}" not connected`}</span>
-      </button>
-    );
+  if (!status) return <span aria-hidden="true" className="status-sound h-6 shrink-0" />;
+  const IconShape = missing ? AlertTriangle : Volume2;
+  const levels = `Audio: ${audio}%, Video: ${video}%`;
   return (
     <button
+      ref={slotRef}
       type="button"
       onClick={onOpen ?? undefined}
       disabled={!onOpen}
-      title={onOpen ? 'Choose the sound output in Screens' : undefined}
-      className="flex min-h-6 min-w-0 items-center gap-1.5 rounded-sm px-1.5 text-muted hover:text-fg"
-      data-testid="sound-status"
+      aria-label={words}
+      aria-description={`${levels}${onOpen ? ' · Choose the sound output in Screens' : ''}`}
+      title={`${words} · ${levels}${onOpen ? ' · Choose the sound output in Screens' : ''}`}
+      className={cx(
+        'status-sound flex h-6 shrink-0 items-center gap-1.5 rounded-sm px-1.5 tabular-nums',
+        missing ? 'bg-warning-bg text-warning-fg' : 'text-muted hover:text-fg',
+      )}
+      data-testid={missing ? 'sound-warning' : 'sound-status'}
+      data-compact={compact}
     >
-      <Volume2 size={13} aria-hidden="true" className="shrink-0" />
-      <span className="flex min-w-0">
-        <span className="shrink-0 whitespace-pre max-[1280px]:sr-only">Sound: </span>
-        <span className="truncate">{status.chosen?.label ?? 'System default'}</span>
+      <IconShape size={13} aria-hidden="true" className="shrink-0" />
+      <span ref={wordsRef} className={cx('whitespace-nowrap', compact && 'sr-only')}>
+        {words}
       </span>
+      {compact && (
+        <span aria-hidden="true" className="truncate">
+          {audio === video ? `${audio}%` : `${audio}/${video}%`}
+        </span>
+      )}
     </button>
   );
 }
@@ -317,8 +326,8 @@ export function StatusBar({
         className="flex h-7 shrink-0 items-center gap-3 border-t border-line bg-ink px-2 text-xs text-muted max-[1280px]:gap-2"
         aria-label="Status"
       >
-        {/* What is always there, first (alpha.24, statusbar): nothing that comes or goes is before it, so none of it
-            moves. The screens dashboard opens from the summary in both modes (Simple Mode only looks). */}
+        {/* Fixed slots reserve the compact budget before any warning arrives. Their words collapse within the
+            slots, so neither a disconnected output nor a failed screen can move the next control. */}
         <ScreensSummary onOpen={openDashboard} />
         <SoundStatus onOpen={onOpenScreens} />
         <TodayStatus onOpen={onOpenCalendar} />
