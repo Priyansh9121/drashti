@@ -15,6 +15,7 @@ const time = (name: string) => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  vi.mocked(leave).mockReset();
   vi.mocked(motionOff).mockReturnValue(false);
 });
 
@@ -54,8 +55,8 @@ describe('operator transient motion budgets', () => {
 
 class Surface {
   isConnected = true;
-  closest = vi.fn((): Element | null => null);
-  querySelector = vi.fn((): Element | null => null);
+  closest = vi.fn<(selector: string) => Element | null>(() => null);
+  querySelector = vi.fn<(selector: string) => Element | null>(() => null);
 }
 
 async function page() {
@@ -123,5 +124,39 @@ describe('the existing exit system is used only for safe operator surfaces', () 
     vi.mocked(motionOff).mockReturnValue(true);
     removeTransientCopies();
     for (const copy of copies) expect(copy.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not flash opaque when a surface closes partway through its entrance', async () => {
+    const { leaveTransient, node } = await page();
+    Object.assign(node, { style: { opacity: '0.8' } });
+    vi.stubGlobal('getComputedStyle', () => ({ opacity: '0.4' }));
+    let copiedOpacity = '';
+    vi.mocked(leave).mockImplementation(() => {
+      copiedOpacity = node.style.opacity;
+    });
+    leaveTransient(node, 'pop');
+    expect(copiedOpacity).toBe('0.4');
+    expect(node.style.opacity).toBe('0.8');
+  });
+
+  it('keeps a chat exit private in report pictures, bounded to the card and its travel', async () => {
+    const { leaveTransient, surface, node } = await page();
+    surface.closest.mockImplementation((selector: string) =>
+      selector.includes('data-report-private') ? node : null,
+    );
+    const host = Object.assign(new Surface(), {
+      hasAttribute: vi.fn(() => true),
+      setAttribute: vi.fn(),
+      style: {},
+    });
+    Object.assign(node, {
+      getBoundingClientRect: () => ({ left: 300, top: 400, width: 320, height: 80 }),
+    });
+    vi.mocked(leave).mockImplementation(() => {
+      Object.assign(document.body, { lastElementChild: host });
+    });
+    leaveTransient(node, 'notice');
+    expect(host.setAttribute).toHaveBeenCalledWith('data-report-private', '');
+    expect(host.style).toMatchObject({ left: '284px', top: '384px', width: '352px', height: '112px' });
   });
 });
