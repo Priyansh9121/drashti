@@ -316,8 +316,8 @@ test('the operator window and its panels', async () => {
   await shot(win, 'keys-sheet');
   await win.keyboard.press('Escape');
 
-  // What is this? on the Messages panel (the Looks panel's until Session 55): its words under the heading, in the
-  // live column. In a window tall enough for the heading and its words whole under the LIVE block (since alpha.21 only
+  // What is this? on the Messages panel (the Looks panel's until Session 55): its words in a card beside the live
+  // column (since alpha.24, helpcards; under the heading, in the live column, until then), both in the picture. In a window tall enough for the heading and its words whole under the LIVE block (since alpha.21 only
   // what is under it scrolls: at 720 high the words' first lines were hidden under it, the heading too).
   await win.setViewportSize({ width: 1280, height: 1000 });
   await toTop();
@@ -327,7 +327,7 @@ test('the operator window and its panels', async () => {
   await card.scrollIntoViewIfNeeded();
   for (const whole of [win.getByTestId('what-is-this-messages'), card])
     await expect(whole, 'the heading and its words whole in the picture').toBeInViewport({ ratio: 1 });
-  await part(win, 'what-is-this', [win.getByRole('complementary', { name: 'Live' })]);
+  await part(win, 'what-is-this', [win.getByRole('complementary', { name: 'Live' }), card]);
   await win.getByRole('button', { name: 'Got it' }).click();
   await win.setViewportSize({ width: 1280, height: 720 });
 

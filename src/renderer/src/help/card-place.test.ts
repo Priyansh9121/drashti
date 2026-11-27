@@ -41,6 +41,7 @@ describe('where a ? card opens', () => {
   it('a ? in the left column: in the middle, against the left column, level with the ?', () => {
     const p = placeCard(room(box(190, 300, 214, 324), 'left'));
     expect(p.left).toBe(MIDDLE.left + CARD_GAP);
+    expect(p.left).toBeGreaterThan(LEFT.right);
     expect(p.top).toBe(300);
   });
 

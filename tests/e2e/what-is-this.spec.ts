@@ -21,8 +21,9 @@ import { CI_WINDOW } from './window-size';
 
 /*
  * "What is this?" on the operator panels (Session 25): the ? on a panel's heading opens its two or
- * three sentences under the heading, never over the show controls; Got it (or Esc) closes them and
- * gives the keyboard back to the ?. Pro Mode only. Open the manual (x37, the owner's "Yes, A" to Q60-25: Read more
+ * three sentences, never over the show controls (since alpha.24, helpcards: in a card over the window, beside its ?'s
+ * column in the middle or under its ?, so nothing moves; in the flow under the heading until then); Got it (or Esc)
+ * closes them and gives the keyboard back to the ?. Pro Mode only. Open the manual (x37, the owner's "Yes, A" to Q60-25: Read more
  * until then) opens the Drashti Manual at that panel's chapter.
  */
 
@@ -34,7 +35,7 @@ async function showRunning(win: Page) {
   await expect(win.getByTestId('live-text')).toContainText(`${KIRTAN} · slide 2 of 5`);
 }
 
-test('What is this? opens a panel’s words under its heading, never over the show controls', async () => {
+test('What is this? opens a panel’s words by its heading, never over the show controls', async () => {
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
@@ -63,7 +64,7 @@ test('What is this? opens a panel’s words under its heading, never over the sh
   await expect(card.getByRole('button', { name: 'Got it' })).toBeFocused();
   await expect(ask).toHaveAttribute('aria-expanded', 'true');
   await expectNoSeriousA11yIssues(win, 'a panel’s What is this?');
-  // In the panel's own space: the show controls along the bottom are still what is at their middle.
+  // Over the window in the middle, by its heading: the show controls along the bottom are still what is at their middle.
   const covered = await win
     .getByTestId('layer-bar')
     .getByRole('button')

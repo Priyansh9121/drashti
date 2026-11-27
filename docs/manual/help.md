@@ -18,15 +18,15 @@
 
 ## What is this?
 
-**What it is.** **Help**, in the status bar along the bottom, shows the small **?** on each panel's heading (and beside **Next** and **Back**, the show controls, **Stream**, **Phones** and the status bar) and the keys on the buttons. Drashti starts with it off, so the window is calm, and remembers it on this computer. A **?** says in two or three sentences what the panel is for, in the panel's own space; **Open the manual** opens this manual at that panel's chapter. Without Help, hold **Alt** (**Option ⌥** on a Mac) to see the keys while you hold it; let go of it, then press the key (a key pressed with it still held does nothing).
+**What it is.** **Help**, in the status bar along the bottom, shows the small **?** on each panel's heading (and beside **Next** and **Back**, the show controls, **Stream**, **Phones** and the status bar) and the keys on the buttons. Drashti starts with it off, so the window is calm, and remembers it on this computer. A **?** says in two or three sentences what the panel is for, in a card over the window beside it (in the middle, so nothing moves and **LIVE** and the show controls stay in sight); **Open the manual** opens this manual at that panel's chapter. Without Help, hold **Alt** (**Option ⌥** on a Mac) to see the keys while you hold it; let go of it, then press the key (a key pressed with it still held does nothing).
 
 **When you would use it.** When you are not sure what a panel does, or which key a button has.
 
 **How:**
 
 1. Press **Help** in the status bar (in a narrow window, its round **?**), or choose **Help**, then **Show Help** in the menu bar. It stays pressed, and **Show Help** ticked, while it is on.
-2. Press the **?** on the panel's heading, and read its sentences under the heading.
-3. Press **Open the manual** to read more, or **Got it** to close them.
+2. Press the **?** on the panel's heading, and read its sentences in the card that opens beside it.
+3. Press **Open the manual** to read more, or **Got it** to close them (**Esc**, the **?** again or a click anywhere else in the window closes them too).
 4. Press **Help** again (or choose **Show Help** again) to put every **?** and key away.
 
 ![What is this? opened on the Messages panel](../screenshots/what-is-this.png)
