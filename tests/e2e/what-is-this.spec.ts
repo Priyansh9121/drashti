@@ -215,18 +215,24 @@ const cardFaults = (win: Page) =>
     return faults;
   });
 
-/** Two of the window's frames, so a change has been laid out and drawn. */
-const twoFrames = (win: Page) =>
-  win.evaluate(
-    () =>
-      new Promise<void>((done) => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            done();
-          });
-        });
-      }),
-  );
+/** The window's layout once it holds still (two reads 50 ms apart the same): a scroll into view has been laid out. */
+async function steadyLayout(win: Page): Promise<string[]> {
+  let got: string[] = [];
+  let last = '';
+  await expect
+    .poll(
+      async () => {
+        got = await layout(win);
+        const now = JSON.stringify(got);
+        const same = now === last;
+        last = now;
+        return same;
+      },
+      { message: 'the window holds still', intervals: [50] },
+    )
+    .toBe(true);
+  return got;
+}
 
 test('every ? card is drawn over the window, not in it: nothing moves as it opens, and it is whole in sight in the middle, clear of the top bar, LIVE’s column and the bottom bar, at 1024 × 645 and 1410 × 900 (helpcards)', async () => {
   test.setTimeout(240_000);
@@ -262,8 +268,7 @@ test('every ? card is drawn over the window, not in it: nothing moves as it open
       const where = `${id} at ${at}`;
       const ask = win.getByTestId(id);
       await ask.scrollIntoViewIfNeeded();
-      await twoFrames(win);
-      const before = await layout(win);
+      const before = await steadyLayout(win);
       await ask.click();
       await expect(card).toBeVisible();
       await expect(
