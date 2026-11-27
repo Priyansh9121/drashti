@@ -30,15 +30,37 @@ async function openManual(help: PanelHelp): Promise<void> {
   showManual({ chapter: help.chapter, passage });
 }
 
-/** The ? for a heading, and the words it opens under it (both null without a topic, in Simple Mode or with Help off). */
+/**
+ * The ?'s room: the header's and the sabha flow's smaller (`compact`, 20 px), every other 24 px; held with Help off
+ * (`keepRoom`) at the same size.
+ */
+const askSize = (compact: boolean) => (compact ? 'h-5 w-5' : 'h-6 w-6');
+
+/**
+ * The ? itself, always a 24 px target (WCAG 2.5.8; qtargets, alpha.24; 20 px in a compact room until then): in a
+ * compact room its margin gives 2 px back on each side, so it takes the 20 px it took and no bar grows, and it reaches
+ * into the gaps beside it, over no other target.
+ */
+const targetSize = (compact: boolean) => (compact ? '-m-0.5 h-6 w-6' : 'h-6 w-6');
+
+/**
+ * The ? for a heading, and the words it opens under it (both null without a topic, in Simple Mode or with Help off).
+ * `keepRoom` (a panel's heading, ui/Panel.tsx): with Help off, an empty box of the ?'s size holds its place, never a
+ * button or a Tab stop and hidden from screen readers, so a heading that wraps with the ? wraps the same without it,
+ * and turning Help on or off moves nothing under it (the release lead's decision after lead 2's helpmenu hands-on:
+ * the Timers heading's ? sent Calendar and New timer to a second row, and every section below moved).
+ */
 export function useWhatIsThis(
   topic: PanelHelpId | null,
-  /**
-   * A smaller room (the header's and the sabha flow's, where room is short): the ? is the 24 px target every ? is
-   * (WCAG 2.5.8), its margin giving back 2 px on each side, so it takes the 20 px it took when it was 20 px itself
-   * (alpha.24, qtargets) and reaches into the gaps beside it, over no other target.
-   */
-  { compact = false }: { compact?: boolean } = {},
+  {
+    compact = false,
+    keepRoom = false,
+  }: {
+    /** A smaller room for the ? (the header's and the sabha flow's, where room is short). */
+    compact?: boolean;
+    /** Hold the ?'s room while Help is off (Pro Mode only, as the ? is). */
+    keepRoom?: boolean;
+  } = {},
 ): { button: ReactNode; card: ReactNode } {
   // Open in the turning on of Help it was opened in (its count, help-store.ts): Help off and on again finds it shut.
   const [openIn, setOpenIn] = useState<number | null>(null);
@@ -48,7 +70,18 @@ export function useWhatIsThis(
   const simple = useMode((s) => s.mode === 'simple');
   const on = useHelp((s) => s.on);
   const round = useHelp((s) => s.round);
-  if (topic === null || simple || !on) return { button: null, card: null };
+  if (topic === null || simple) return { button: null, card: null };
+  if (!on)
+    return {
+      button: keepRoom ? (
+        <span
+          aria-hidden="true"
+          data-what-is-this-room=""
+          className={cx('inline-block shrink-0', askSize(compact))}
+        />
+      ) : null,
+      card: null,
+    };
   const help = PANEL_HELP[topic];
   const open = openIn === round;
   const setOpen = (now: boolean) => {
@@ -73,7 +106,8 @@ export function useWhatIsThis(
       }}
       className={cx(
         'inline-flex shrink-0 items-center justify-center rounded-full border border-field font-bold text-muted hover:border-muted hover:text-fg',
-        compact ? '-m-0.5 h-6 w-6 text-[11px]' : 'h-6 w-6 text-xs',
+        targetSize(compact),
+        compact ? 'text-[11px]' : 'text-xs',
       )}
     >
       ?
