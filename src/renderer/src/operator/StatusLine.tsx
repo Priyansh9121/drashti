@@ -1,7 +1,8 @@
+import { useEffect } from 'react';
 import type { ScreenStatus } from '../../../shared/screens';
 import { screensSummary } from '../../../shared/screens-summary';
 import { useEngine } from '../engine/engine-store';
-import { useLibrary } from '../library/library-store';
+import { loadMedia, useLibrary, useMedia } from '../library/library-store';
 import { usePlaylists } from '../playlists/playlist-store';
 import { usePassageName } from '../shastra/passage-names';
 import { useScreens } from '../screens/screens-store';
@@ -9,9 +10,10 @@ import { Badge, LiveBadge } from '../ui/Badge';
 import { cx } from '../ui/cx';
 import { Monitor, MonitorOff, Music } from '../ui/icons';
 import { Truncate } from '../ui/Truncate';
-import type { Layers, SlideLayer } from '../../../shared/engine/state';
+import type { BackgroundLayer, Layers, LiveCursor, SlideLayer } from '../../../shared/engine/state';
 import { lastStep, stepOf } from '../../../shared/deck-show';
-import type { PlaylistItemInfo } from '../../../shared/playlists';
+import type { MediaSummary, PlaylistItemInfo } from '../../../shared/playlists';
+import { boxName } from './pip-store';
 import { repeatPlaylistOf } from '../../../shared/repeat';
 
 /** A deck's slide's click, in words, after "slide N of M" (Session 54, C2): "click 1 of 2", "2 clicks to come". */
@@ -43,15 +45,101 @@ export function itemStillUp(item: PlaylistItemInfo | undefined, layers: Layers |
 
 const NO_STATUS: ScreenStatus[] = [];
 
+/** What LIVE's line in the top bar is told: the show's place and layers, and the names this window knows. */
+export interface LiveLineFacts {
+  live: LiveCursor | null | undefined;
+  layers: Layers | null | undefined;
+  /** The live presentation's name: the library's, a Shastra passage's reference, or a Repeat's playlist. */
+  presentation: string | undefined;
+  /** The playlist row the show is at, when its playlist is open. */
+  item: PlaylistItemInfo | undefined;
+  /** Media's files, as this window has read them (none yet: a picture or video is named by its kind). */
+  media: readonly MediaSummary[];
+}
+
+/** LIVE's line: its LIVE badge (or Off) and its words. */
+export interface LiveLine {
+  onAir: boolean;
+  text: string;
+}
+
+/** A background up, in words: its kind and its name (a file's as Media names it, when this window knows it). */
+function backgroundName(background: BackgroundLayer, media: readonly MediaSummary[]): string {
+  switch (background.kind) {
+    case 'color':
+      return 'Background colour';
+    case 'media': {
+      const kind = background.media === 'video' ? 'Video' : 'Picture';
+      const name = media.find((m) => m.id === background.mediaId)?.name;
+      return name === undefined ? kind : `${kind} · ${name}`;
+    }
+    case 'input':
+      return `Video input · ${background.name}`;
+    case 'window':
+      return `Window · ${background.name}`;
+    case 'link':
+      return `Stream link · ${background.name}`;
+  }
+}
+
+/** The background and the picture-in-picture box up, in words, the background first; null with neither. */
+function upWords(layers: Layers, media: readonly MediaSummary[]): string | null {
+  const parts = [
+    ...(layers.background ? [backgroundName(layers.background, media)] : []),
+    ...(layers.pip ? [`Picture in picture · ${boxName(layers.pip.source, media)}`] : []),
+  ];
+  return parts.length > 0 ? parts.join(', ') : null;
+}
+
+/**
+ * LIVE's line in the top bar: whether something is on the screens (its LIVE badge, or Off) and what, in words.
+ * A timer up alone first (Session 50), then the presentation's slide the show is at (said cleared once it is), then a
+ * playlist's picture, video, sound or video input row (Session 56). Since uitop (alpha.24) its badge is the only LIVE
+ * said in words, so it is LIVE too whenever the LIVE column's red frame is (its own badge before): a slide, a
+ * background or the picture-in-picture box up (livesay). What is up that the line does not name, it names after it:
+ * a background or the box up alone, or under the show's place cleared. Never for the wallpaper shown with nothing up,
+ * nor Black-out alone (its own badge says that), nor a message, a ticker, a lower third or a timer for the audience
+ * alone (the LIVE column never counted those either).
+ */
+export function liveLine({ live, layers, presentation, item, media }: LiveLineFacts): LiveLine {
+  const slideShown = layers?.slide !== null;
+  // A timer up alone in the slide's place (Session 50): named instead of the slide the show is at.
+  const timerAlone = layers?.slide?.timer?.name ?? null;
+  const itemUp = itemStillUp(item, layers);
+  let text = 'Nothing live';
+  // Whether the line names what is up.
+  let named = false;
+  if (timerAlone !== null) {
+    text = `Live: Timer · ${timerAlone}`;
+    named = true;
+  } else if (live?.presentationId && live.slideIndex !== null) {
+    // A deck's slide's click (Session 54, C2).
+    text = `Live: ${presentation ?? 'presentation'} · slide ${live.slideIndex + 1} of ${live.slideCount}${slideShown ? clickWords(layers?.slide) : ' (cleared)'}`;
+    named = slideShown;
+  } else if (live?.playlist) {
+    text = `Live: ${item?.label ?? 'playlist item'}${itemUp ? '' : ' (cleared)'}`;
+    named = itemUp;
+  }
+  // On the screens as the LIVE column's red frame has it (operator/LivePreview.tsx's somethingUp).
+  const onScreens = layers
+    ? layers.slide !== null || layers.background !== null || layers.pip !== null
+    : false;
+  if (onScreens && !named && layers) {
+    const up = upWords(layers, media) ?? 'Slide';
+    text = text === 'Nothing live' ? `Live: ${up}` : `${text} · ${up}`;
+  }
+  const onAir =
+    onScreens ||
+    timerAlone !== null ||
+    Boolean(live?.presentationId && slideShown) ||
+    Boolean(live?.playlist && !live.presentationId && itemUp);
+  return { onAir, text };
+}
+
 /** What is on the screens, in words: the header says it at all times. */
 export function LiveStatus() {
   const live = useEngine((s) => s.state?.live);
-  const slideShown = useEngine((s) => s.state?.layers.slide !== null);
-  // A timer up alone in the slide's place (Session 50): named instead of the slide the show is at.
-  const timerAlone = useEngine((s) => s.state?.layers.slide?.timer?.name ?? null);
   const blackout = useEngine((s) => s.state?.blackout ?? false);
-  // A deck's slide's click (Session 54, C2).
-  const click = useEngine((s) => clickWords(s.state?.layers.slide));
   const audio = useEngine((s) => s.state?.layers.audio?.title ?? null);
   const name = useLibrary((s) => s.presentations.find((p) => p.id === live?.presentationId)?.name);
   // A Shastra passage is not in the library's list: its reference instead.
@@ -67,19 +155,20 @@ export function LiveStatus() {
   // (Session 56: a cover going on takes a video off).
   const item = usePlaylists((s) => s.items.find((i) => i.id === live?.playlist?.itemId));
   const layers = useEngine((s) => s.state?.layers);
-  const itemUp = itemStillUp(item, layers);
-  let text = 'Nothing live';
-  if (timerAlone !== null) {
-    text = `Live: Timer · ${timerAlone}`;
-  } else if (live?.presentationId && live.slideIndex !== null) {
-    text = `Live: ${name ?? passage ?? repeatName ?? repeating ?? 'presentation'} · slide ${live.slideIndex + 1} of ${live.slideCount}${slideShown ? click : ' (cleared)'}`;
-  } else if (live?.playlist) {
-    text = `Live: ${item?.label ?? 'playlist item'}${itemUp ? '' : ' (cleared)'}`;
-  }
-  const onAir =
-    timerAlone !== null ||
-    Boolean(live?.presentationId && slideShown) ||
-    Boolean(live?.playlist && !live.presentationId && itemUp);
+  // A file up is named as Media names it (livesay): its list read once, when one is up and this window has not yet.
+  const media = useMedia((s) => s.media);
+  const mediaLoaded = useMedia((s) => s.loaded);
+  const fileUp = layers?.background?.kind === 'media' || layers?.pip?.source.kind === 'media';
+  useEffect(() => {
+    if (fileUp && !mediaLoaded) void loadMedia();
+  }, [fileUp, mediaLoaded]);
+  const { onAir, text } = liveLine({
+    live,
+    layers,
+    presentation: name ?? passage ?? repeatName ?? repeating,
+    item,
+    media,
+  });
   return (
     <div className="flex min-w-0 items-center gap-2 text-sm" data-testid="live-status" aria-live="polite">
       {onAir ? <LiveBadge /> : <Badge>Off</Badge>}

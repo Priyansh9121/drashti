@@ -225,6 +225,11 @@ test('Add a Video Input… names the fake camera; one click puts it on the hall�
   await expect(row.locator('[data-live-edge]')).toHaveCount(1);
   await expect(row.locator('[data-badge]')).toHaveCount(0);
   await expect(row.getByTestId('video-input-show')).toContainText('Live');
+  // Up alone, the top bar says LIVE in words and names it (alpha.24, livesay: it said Off · Nothing live, and only
+  // the LIVE picture's red frame said it was up, colour alone).
+  const status = win.getByTestId('header-states').getByTestId('live-status');
+  await expect(status.locator('[data-badge]').first()).toHaveText('Live');
+  await expect(status.getByTestId('live-text')).toHaveText(`Live: Video input · ${INPUT}`);
 
   // On the hall's screen: the fake camera's moving pattern, fitted inside.
   await playsOn(hall, HALL);

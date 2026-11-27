@@ -232,6 +232,10 @@ test('wallpapers in the Playlists panel: pictures dropped or imported, anything 
     'data-nothing-up',
     'wallpaper',
   );
+  // It is not something up: the top bar says Off, Nothing live (alpha.24, livesay).
+  const status = win.getByTestId('header-states').getByTestId('live-status');
+  await expect(status.locator('[data-badge]').first()).toHaveText('Off');
+  await expect(status.getByTestId('live-text')).toHaveText('Nothing live');
 
   // A display plugged in shows it at once (nothing is up).
   await plugIn(app, 1);
