@@ -33,7 +33,10 @@ import { Tooltip } from '../ui/Tooltip';
  * ran some 30 px past the window's edge). And with Audience off, whose item takes the most room in the bar, the line's
  * words give way in a window under 1280 px wide (its icon and buttons stay; the whole line is still its tooltip and
  * read out), so the bar's items fit in every mix of Audience, Stage, the line and the access line (the sweep in
- * screens-said-still.spec.ts).
+ * screens-said-still.spec.ts): on the lines that keep an action button (Pro Mode's Stage line and set lines, whose
+ * button still says what to do) and on Simple Mode's set lines (news only: the screens set themselves up). Stage's line
+ * in Simple Mode and mirroring in both modes keep their words (saidwords, lead 2's (C)): the warnings that matter, an
+ * icon and an X alone saying nothing; measured, they fit at 1024 × 645 with Audience off.
  */
 
 interface SaidView {
@@ -97,8 +100,11 @@ const ICONS = { 'no-stage': MonitorOff, set: Monitor, mirroring: Info } as const
 
 function SaidLine({ said, onChange }: { said: ScreensSaid; onChange: ((displayId: number) => void) | null }) {
   const first = said.displayIds[0];
-  // Audience off (its item the bar's widest): below 1280 px wide the words give way to the icon and buttons.
+  // Audience off (its item the bar's widest): below 1280 px wide the words give way to the icon and buttons, on a set
+  // line and on Pro Mode's Stage line (with Set up Stage screen…); Simple's Stage line and mirroring keep them.
   const audienceOff = useScreenSwitches((s) => s.known && !s.switches.audience);
+  const givesWay =
+    said.kind === 'set' || (said.kind === 'no-stage' && onChange !== null && first !== undefined);
   // No Stage screen in the bar's warning look, as Stage off's beside it; a display set up or mirroring as news.
   const warning = said.kind === 'no-stage';
   const IconShape = ICONS[said.kind];
@@ -121,7 +127,7 @@ function SaidLine({ said, onChange }: { said: ScreensSaid; onChange: ((displayId
         {/* In sight, the short words; read out, the whole line. */}
         <span
           aria-hidden="true"
-          className={cx(audienceOff && 'max-[1280px]:hidden')}
+          className={cx(audienceOff && givesWay && 'max-[1280px]:hidden')}
           data-testid="screens-said-short"
         >
           {saidShort(said)}
