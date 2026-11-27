@@ -20,3 +20,8 @@ export interface CrossFadeFacts {
 export function crossFades(f: CrossFadeFacts): boolean {
   return f.looksOtherwise && f.motion === 'lively' && f.chip === 'yes' && f.quiet && !f.reduced && f.canFade;
 }
+
+/** A scoped, stationary fade, including Calm; Lively’s band sweep keeps its separate existing gate. */
+export function softCrossFades(f: CrossFadeFacts): boolean {
+  return crossFades(f);
+}
