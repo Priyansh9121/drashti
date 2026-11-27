@@ -71,23 +71,6 @@
   translate: 0 calc(var(--lift) * -1);
 }
 
-/* Scoped pictures only: no root capture, group movement, frozen show controls or input-blocking overlay. */
-:root[data-opened]::view-transition {
-  pointer-events: none;
-}
-:root[data-opened]::view-transition-group(*) {
-  animation: none;
-}
-:root[data-opened]::view-transition-old(*),
-:root[data-opened]::view-transition-new(*) {
-  mix-blend-mode: normal;
-}
-:root[data-opened]::view-transition-old(*) {
-  animation: motionlooks-out var(--motionlooks-out, var(--dur-crossfade)) var(--ease-in) both;
-}
-:root[data-opened]::view-transition-new(*) {
-  animation: motionlooks-in var(--motionlooks-in, var(--dur-crossfade)) var(--ease-out) both;
-}
 @keyframes motionlooks-in {
   from {
     opacity: 0;
@@ -96,15 +79,6 @@
     opacity: 1;
   }
 }
-@keyframes motionlooks-out {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
-}
-
 /* The three samples hold exactly the same room. They contain no readable words or interactive targets. */
 [data-motion-preview] {
   position: relative;
@@ -139,6 +113,13 @@
   :root[data-opened][data-chip='yes'][data-interface-motion='calm']
     [data-variant]:not([data-show-control]):not([data-show-control] *):not(:has([data-show-control])):not(
       :disabled
+    ):active {
+    opacity: 1;
+    box-shadow: inset 0 0 0 1px var(--color-field);
+  }
+  :root[data-opened][data-chip='yes'][data-interface-motion='calm']
+    [data-variant]:not([data-show-control]):not([data-show-control] *):not(:has([data-show-control])):not(
+      :disabled
     ):hover {
     box-shadow: inset 0 0 0 1px var(--color-field);
   }
@@ -161,16 +142,5 @@
     [data-motion-preview='lively']
     [data-motion-preview-mark] {
     animation: motionlooks-in var(--dur-step) var(--ease-out) both;
-  }
-}
-
-:root[data-interface-motion='off'][data-opened]::view-transition-old(*),
-:root[data-interface-motion='off'][data-opened]::view-transition-new(*) {
-  animation: none !important;
-}
-@media (prefers-reduced-motion: reduce), (forced-colors: active) {
-  :root[data-opened]::view-transition-old(*),
-  :root[data-opened]::view-transition-new(*) {
-    animation: none !important;
   }
 }

@@ -21,7 +21,10 @@ describe('the release lead’s interface capture prohibition', () => {
 
   it('keeps Calm press words fully opaque while its decorative edge answers', () => {
     const css = readFileSync(join(src, 'renderer/src/ui/motion.css'), 'utf8');
-    const active = /:root\[data-opened\]\[data-chip='yes'\]\[data-interface-motion='calm'\][^{]*:active\s*\{([^}]*)\}/u.exec(css)?.[1] ?? '';
+    const active =
+      /:root\[data-opened\]\[data-chip='yes'\]\[data-interface-motion='calm'\][^{]*:active\s*\{([^}]*)\}/u.exec(
+        css,
+      )?.[1] ?? '';
     expect(active).toMatch(/opacity:\s*1\s*;/u);
     expect(active).toContain('box-shadow:');
   });
@@ -32,7 +35,9 @@ describe('the release lead’s interface capture prohibition', () => {
       expect(code, path).not.toMatch(/interface-fade|softCrossFades|crossFades|flushSync|pendingMode/u);
     }
     const help = readFileSync(join(src, 'shared/interface-fade.ts'), 'utf8');
-    expect(help).not.toMatch(/cloneNode|createElement|drawImage|capturePage|toDataURL|view-transition|navigator\.gpu/u);
+    expect(help).not.toMatch(
+      /cloneNode|createElement|drawImage|capturePage|toDataURL|view-transition|navigator\.gpu/u,
+    );
     expect(help).not.toMatch(/'look'|'mode'/u);
   });
 });

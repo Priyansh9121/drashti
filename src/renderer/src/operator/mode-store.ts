@@ -1,7 +1,4 @@
 import { create } from 'zustand';
-import { flushSync } from 'react-dom';
-import { fadeInterface, stopInterfaceFade } from '../../../shared/interface-fade';
-import { sinceShowChanged } from '../engine/show-changed';
 import type { OperatorMode } from '../../../shared/mode';
 
 /** Simple Mode or Pro Mode, as the main process keeps it (null until it has said). */
@@ -9,25 +6,9 @@ export const useMode = create<{ mode: OperatorMode | null }>(() => ({
   mode: null,
 }));
 
-// The event and the reply can name the same mode before Chromium takes its old snapshot.
-let pendingMode: OperatorMode | null = null;
-
-/** One synchronous commit inside a safe fade; a repeated IPC answer never cancels the same pending change. */
+/** The main process’s mode is live at once; duplicate IPC event/reply answers need no second update. */
 function drawMode(mode: OperatorMode): void {
-  if ((pendingMode ?? useMode.getState().mode) === mode) return;
-  stopInterfaceFade();
-  const before = useMode.getState().mode;
-  pendingMode = mode;
-  fadeInterface(
-    () => {
-      pendingMode = null;
-      flushSync(() => {
-        useMode.setState({ mode });
-      });
-    },
-    'mode',
-    before !== null && sinceShowChanged() > 800,
-  );
+  if (useMode.getState().mode !== mode) useMode.setState({ mode });
 }
 
 let connected = false;

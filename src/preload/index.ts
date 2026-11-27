@@ -1,4 +1,3 @@
-import { fadeInterface, stopInterfaceFade } from '../shared/interface-fade';
 import { contextBridge, ipcRenderer, type IpcRendererEvent, webUtils } from 'electron';
 import type { DrashtiBridge } from '../shared/bridge';
 import type { EventChannel, EventContract, InvokeArgs, InvokeChannel, InvokeResult } from '../shared/ipc';
@@ -6,7 +5,7 @@ import type { AppearanceNow } from '../shared/appearance/appearances';
 import { drawAppearance, type AppearanceRoot } from '../shared/appearance/draw';
 import { IPC } from '../shared/ipc';
 import { summariesOf } from '../shared/library';
-import { crossFades, softCrossFades } from './cross-fade';
+import { bandSweeps } from './band-sweep';
 import { bridgeFor, pageOf } from './page-groups';
 import { EngineViewStamp } from './engine-seen';
 
@@ -1008,7 +1007,10 @@ const OWN_WINDOWS: readonly (string | null)[] = [
 ];
 /** The page's document and MutationObserver, as far as this needs them (the preload has no DOM types). */
 const dom = globalThis as unknown as {
-  document: { documentElement: AppearanceRoot | null };
+  document: {
+    documentElement: AppearanceRoot | null;
+    getAnimations(): { transitionProperty?: string; cancel(): void }[];
+  };
   MutationObserver: new (seen: () => void) => {
     observe(target: unknown, options: { childList: boolean }): void;
     disconnect(): void;
@@ -1037,46 +1039,34 @@ if (OWN_WINDOWS.includes(pageOf(here))) {
       made.observe(dom.document, { childList: true });
     }
   }
-  // Safe interface pictures cross-fade in Calm and Lively, with no root or show control captured; never while the
-  // show is changing (a change in the last 800 ms, or one arriving during it, which ends it at once).
+  // Appearance changes never capture the document or defer their draw. Only the existing decorative band sweep
+  // needs the show-quiet guard; it changes no words and uses no snapshot.
   let showChangedAt = 0;
   ipcRenderer.on(IPC.engine.message, () => {
     showChangedAt = Date.now();
-    stopInterfaceFade();
   });
   let drawn = now;
   ipcRenderer.on(IPC.appearance.changed, (_event, next: AppearanceNow) => {
-    const doc = dom.document as unknown as {
-      startViewTransition?: (change: () => void) => { skipTransition(): void; finished: Promise<void> };
-    };
-    const looksOtherwise =
-      drawn !== null && (drawn.id !== next.id || drawn.base !== next.base || drawn.depth !== next.depth);
-    drawn = next;
-    const quiet = Date.now() - showChangedAt > 800;
-    const reduced = (
-      globalThis as unknown as { matchMedia?: (q: string) => { matches: boolean } }
-    ).matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    // Lively's cross-fade, with a graphics chip only (cross-fade.ts; alpha.24's review of uimotion, MUST-1).
-    const facts = {
-      looksOtherwise,
+    const sweep = bandSweeps({
+      looksOtherwise:
+        drawn !== null && (drawn.id !== next.id || drawn.base !== next.base || drawn.depth !== next.depth),
       motion: next.motion,
       chip: next.chip,
-      quiet,
-      reduced: reduced === true,
-      canFade: typeof doc.startViewTransition === 'function',
-    };
-    const fades = crossFades(facts);
-    fadeInterface(
-      () => {
-        draw(next);
-        if (fades) {
-          // The band is decoration alone; show controls and output pictures are never captured.
-          const root = dom.document.documentElement;
-          if (root) root.dataset['bandSweep'] = root.dataset['bandSweep'] === 'a' ? 'b' : 'a';
-        }
-      },
-      'look',
-      softCrossFades(facts),
-    );
+      quiet: Date.now() - showChangedAt > 800,
+      reduced:
+        (globalThis as unknown as { matchMedia?: (q: string) => { matches: boolean } }).matchMedia?.(
+          '(prefers-reduced-motion: reduce)',
+        ).matches === true,
+    });
+    drawn = next;
+    draw(next);
+    // getAnimations flushes styles, not pixels. End CSS transitions in this same task so old word colours never
+    // interpolate over a newly drawn palette. Script effects (the live Help '?') and decorative loops stay separate.
+    for (const animation of dom.document.getAnimations())
+      if (typeof animation.transitionProperty === 'string') animation.cancel();
+    if (sweep) {
+      const root = dom.document.documentElement;
+      if (root) root.dataset['bandSweep'] = root.dataset['bandSweep'] === 'a' ? 'b' : 'a';
+    }
   });
 }

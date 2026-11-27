@@ -5,8 +5,12 @@ function style() {
   return {
     getPropertyValue: (name: string) => values.get(name) ?? '',
     getPropertyPriority: () => '',
-    setProperty: (name: string, value: string) => { values.set(name, value); },
-    removeProperty: (name: string) => { values.delete(name); },
+    setProperty: (name: string, value: string) => {
+      values.set(name, value);
+    },
+    removeProperty: (name: string) => {
+      values.delete(name);
+    },
   };
 }
 
@@ -32,7 +36,10 @@ function question(text = '?', blocked = false, holdsShow = false) {
 
 async function page() {
   vi.resetModules();
-  const root = { style: style(), dataset: { opened: '', chip: 'yes', interfaceMotion: 'calm' } as Record<string, string> };
+  const root = {
+    style: style(),
+    dataset: { opened: '', chip: 'yes', interfaceMotion: 'calm' } as Record<string, string>,
+  };
   const safe = question();
   const word = question('Screens');
   const show = question('?', true);
@@ -105,8 +112,7 @@ describe('Help fades only its live question marks, with no document capture', ()
       expect(p.root.dataset['interfaceFade']).toBeUndefined();
       p.safe.finish();
       await p.safe.finished;
-      await Promise.resolve();
-      expect(p.disconnect).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(p.disconnect).toHaveBeenCalledTimes(1));
     }
   });
 
