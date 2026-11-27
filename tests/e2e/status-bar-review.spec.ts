@@ -281,6 +281,8 @@ for (const mode of ['pro', 'simple'] as const)
     try {
       const win = await operatorPage(app);
       await operatorReady(win);
+      await sizeOperatorWindow(app, win, CI_WINDOW);
+      const beforeCalendar = await settledSteady(win);
       const now = new Date();
       const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const file = join(userData, 'placeholder-calendar.json');
@@ -303,7 +305,17 @@ for (const mode of ['pro', 'simple'] as const)
         }),
       );
       await win.evaluate((file) => (globalThis as PageGlobals).drashti.library.importPaths([file]), file);
-      await expect(win.getByTestId('today-calendar')).toBeVisible();
+      const calendar = win.getByTestId('today-calendar');
+      await expect(calendar).toBeVisible();
+      const calendarWords = 'Samvat 1001, Month Half Day';
+      await expect.soft(calendar).toHaveAccessibleName(calendarWords);
+      expect.soft(await calendar.getAttribute('title')).toContain(calendarWords);
+      expect.soft(await calendar.evaluate((el) => el.getBoundingClientRect().width)).toBe(24);
+      // The compact calendar's place exists before its date arrives, so Help and the show controls stay put.
+      expect
+        .soft((await steady(win)).filter((line) => !line.startsWith('[data-testid="today-calendar"]')))
+        .toEqual(beforeCalendar);
+      await ring(win, calendar, `${mode}: compact calendar edge and keyboard ring`);
       if (mode === 'simple')
         await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
       const snapshot = await win.evaluate(() => (globalThis as PageGlobals).drashti.screens.get());
