@@ -88,17 +88,24 @@ async function measured<T>(promise: Promise<T>): Promise<{ value: T; elapsedMs: 
 }
 
 async function startBeat(app: ElectronApplication) {
-  await app.evaluate(() => {
-    const globals = globalThis as MainGlobals;
-    const state: Beat = { last: performance.now(), worst: 0, ticks: 0 };
-    state.timer = setInterval(() => {
-      const now = performance.now();
-      state.worst = Math.max(state.worst, now - state.last);
-      state.last = now;
-      state.ticks++;
-    }, 10);
-    globals.__drashtiGeneratedSourcePreparationHeartbeat = state;
-  });
+  await app.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        // On Main's own turn: no Node timer made inside the call (src/main/e2e-main-evaluate.test.ts).
+        setImmediate(() => {
+          const globals = globalThis as MainGlobals;
+          const state: Beat = { last: performance.now(), worst: 0, ticks: 0 };
+          state.timer = setInterval(() => {
+            const now = performance.now();
+            state.worst = Math.max(state.worst, now - state.last);
+            state.last = now;
+            state.ticks++;
+          }, 10);
+          globals.__drashtiGeneratedSourcePreparationHeartbeat = state;
+          resolve();
+        });
+      }),
+  );
 }
 const pending = (win: Page) =>
   win.evaluate(
@@ -272,12 +279,18 @@ test('preparing a complex generated source leaves Main responsive to live comman
             })
             .catch(() => undefined);
     await app
-      .evaluate(() => {
-        const globals = globalThis as MainGlobals;
-        const probe = globals.__drashtiGeneratedSourcePreparationHeartbeat;
-        if (probe?.timer) clearInterval(probe.timer);
-        delete globals.__drashtiGeneratedSourcePreparationHeartbeat;
-      })
+      .evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            setImmediate(() => {
+              const globals = globalThis as MainGlobals;
+              const probe = globals.__drashtiGeneratedSourcePreparationHeartbeat;
+              if (probe?.timer) clearInterval(probe.timer);
+              delete globals.__drashtiGeneratedSourcePreparationHeartbeat;
+              resolve();
+            });
+          }),
+      )
       .catch(() => undefined);
     try {
       await app.close();
