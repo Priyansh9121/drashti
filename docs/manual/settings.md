@@ -4,7 +4,16 @@ How Drashti looks on this computer, how it opens, and what it does by itself: ba
 
 ## Appearance
 
-**What it is.** **View › Appearance**: Drashti's own colours on this computer. There are sixty-four, in families: **Plain** (**Black** and **White**), **Flags** (**Dhaja** and **Tiranga**), **Dusk**, **Festivals**, **Nature**, **Jewels**, **Crafts and textiles** and **Mandir materials**, besides **Follow the computer** (Black or White, as the computer is set). Since alpha.24, following the computer, the window is drawn in **Depth**: the three columns are rounded panels on a darker ground, with small gaps between them; the top bar and the bars along the bottom sit on that ground with no lines; buttons in the columns are soft filled pills that brighten under the pointer; the sections under LIVE are rounded rows with no lines between them; and what is live has a red frame with a light red ring or tint. Choosing **Black** or **White** by name gives the plain look as before. Every one is easy on the eyes: the dark ones are deep colours rather than black, and the light ones soft paper rather than bright white, with words that read clearly without glaring. Black keeps its look as it was. The hall's screens, the stream and the phones never change with it.
+**What it is.** **View › Appearance**: Drashti's own colours on this computer. There are sixty-eight, in families: **Plain** (**Black** and **White**), **Flags** (**Dhaja** and **Tiranga**), **Dusk**, **Festivals**, **Nature**, **Jewels**, **Crafts and textiles**, **Mandir materials** and **Show tools**, besides **Follow the computer** (Black or White, as the computer is set). Since alpha.24, following the computer, the window is drawn in **Depth**: the three columns are rounded panels on a darker ground, with small gaps between them; the top bar and the bars along the bottom sit on that ground with no lines; buttons in the columns are soft filled pills that brighten under the pointer; the sections under LIVE are rounded rows with no lines between them; and what is live has a red frame with a light red ring or tint. Choosing **Black** or **White** by name gives the plain look as before. Every one is easy on the eyes: the dark ones are deep colours rather than black, and the light ones soft paper rather than bright white, with words that read clearly without glaring. Black keeps its look as it was. The hall's screens, the stream and the phones never change with it.
+
+**Show tools** has four still looks for a show desk:
+
+- **Broadcast**: graphite panels, red LIVE, pale green Next and amber warnings, for a clear view of what is up and what comes next.
+- **Stage desk**: a very dark ground, dim warm panels and softer cream words, for a dark hall.
+- **Daylight**: light panels, dark words and strong edges, for a bright room or a projector showing the operator window.
+- **Signal**: blue and violet panels, a magenta top bar and lime Next, for a bold desk that is easy to pick out.
+
+Each has its own picture under **Show tools** in the Appearance window. Choose one there or from **View › Appearance**; it stays chosen on this computer. These looks use the same flat layout as the other named appearances. **Depth** belongs to **Follow the computer**. LIVE and the warnings keep their words and meanings, the show controls stay in place, and the hall, stage, stream and phones keep their own look.
 
 **When you would use it.** To make the window easier on the eyes, or to suit the occasion.
 

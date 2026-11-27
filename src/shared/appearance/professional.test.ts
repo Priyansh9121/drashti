@@ -37,9 +37,16 @@ describe('professional show appearances', () => {
       const c = { ...a.colours, ...a.zones[zone] };
       for (const word of ['fg', 'muted', 'faint', 'accent', 'danger', 'rec'] as const)
         for (const surface of ['ink', 'panel', 'panel-2', 'panel-3'] as const)
-          expect(contrastRatio(c[word], c[surface]), `${id} ${zone} ${word} on ${surface}`).toBeGreaterThanOrEqual(4.5);
+          expect(
+            contrastRatio(c[word], c[surface]),
+            `${id} ${zone} ${word} on ${surface}`,
+          ).toBeGreaterThanOrEqual(4.5);
       for (const edge of ['line', 'line-strong', 'field', 'live-edge', 'primary-edge'] as const)
-        expect(contrastRatio(c[edge], c.panel), `${id} ${zone} ${edge}`).toBeGreaterThanOrEqual(3);
+        for (const surface of ['ink', 'panel', 'panel-2', 'panel-3'] as const)
+          expect(
+            contrastRatio(c[edge], c[surface]),
+            `${id} ${zone} ${edge} on ${surface}`,
+          ).toBeGreaterThanOrEqual(3);
     }
   });
 
@@ -53,7 +60,8 @@ describe('professional show appearances', () => {
           deltaE00(a.colours.primary, b.colours.primary),
         ].sort((x, y) => y - x);
         expect(distances[1], `${a.name} and ${b.name}`).toBeGreaterThanOrEqual(10);
-        if (a.base === b.base) expect(lookApart(a, b), `${a.name} and ${b.name}`).toBeGreaterThanOrEqual(LOOKS_APART);
+        if (a.base === b.base)
+          expect(lookApart(a, b), `${a.name} and ${b.name}`).toBeGreaterThanOrEqual(LOOKS_APART);
       }
     }
   });

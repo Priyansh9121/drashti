@@ -2,7 +2,14 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { builtIn } from '../../src/shared/appearance/appearances';
 import { settled } from './a11y';
-import { chooseMenuItem, launchApp, operatorPage, operatorReady, OWN_APPEARANCE, relaunchApp } from './helpers';
+import {
+  chooseMenuItem,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  OWN_APPEARANCE,
+  relaunchApp,
+} from './helpers';
 import { PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 const DESKS = [
@@ -18,25 +25,28 @@ const rgb = (hex: string) =>
 /** Compare with an existing named appearance: the same flat layout and six-pixel band. */
 async function controls(win: Page) {
   await settled(win);
-  return win.locator('[data-show-control]:visible').evaluateAll((els) => els.map((el) => {
-    const box = el.getBoundingClientRect();
-    return {
-      id: el.getAttribute('data-testid'),
-      words: el.textContent,
-      box: [box.x, box.y, box.width, box.height],
-      font: getComputedStyle(el).fontFamily,
-    };
-  }));
+  return win.locator('[data-show-control]:visible').evaluateAll((els) =>
+    els.map((el) => {
+      const box = el.getBoundingClientRect();
+      return {
+        id: el.getAttribute('data-testid'),
+        words: el.textContent,
+        box: [box.x, box.y, box.width, box.height],
+        font: getComputedStyle(el).fontFamily,
+      };
+    }),
+  );
 }
 
-const forced = (win: Page) => win.evaluate(() => {
-  const header = document.querySelector('[data-testid="app-header"]');
-  return {
-    words: getComputedStyle(document.body).color,
-    ground: getComputedStyle(document.body).backgroundColor,
-    header: header ? getComputedStyle(header).backgroundColor : null,
-  };
-});
+const forced = (win: Page) =>
+  win.evaluate(() => {
+    const header = document.querySelector('[data-testid="app-header"]');
+    return {
+      words: getComputedStyle(document.body).color,
+      ground: getComputedStyle(document.body).backgroundColor,
+      header: header ? getComputedStyle(header).backgroundColor : null,
+    };
+  });
 
 for (const [id, name] of DESKS) {
   test(`${name}: its own preview, selected by keyboard, flat controls in place, system colours and restart`, async () => {
@@ -64,8 +74,14 @@ for (const [id, name] of DESKS) {
     const preview = choice.getByTestId('appearance-preview');
     await expect(preview).toHaveCount(1);
     await expect(preview).toHaveAttribute('aria-hidden', 'true');
-    await expect(preview.locator(':scope > div').first()).toHaveCSS('background-color', rgb(a.decoration.header));
-    await expect(preview.getByText('Next', { exact: true })).toHaveCSS('background-color', rgb(a.colours.primary));
+    await expect(preview.locator(':scope > div').first()).toHaveCSS(
+      'background-color',
+      rgb(a.decoration.header),
+    );
+    await expect(preview.getByText('Next', { exact: true })).toHaveCSS(
+      'background-color',
+      rgb(a.colours.primary),
+    );
     await choice.focus();
     await win.keyboard.press('Space');
     await expect(choice).toHaveAttribute('aria-checked', 'true');
@@ -81,6 +97,10 @@ for (const [id, name] of DESKS) {
     // Compare each base with the existing system-colour drawing, including the hidden decoration.
     await win.emulateMedia({ forcedColors: 'active' });
     await chooseMenuItem(app, a.base === 'dark' ? 'appearance-black' : 'appearance-white');
+    await expect(win.locator('html')).toHaveAttribute(
+      'data-appearance',
+      a.base === 'dark' ? 'black' : 'white',
+    );
     const system = await forced(win);
     await chooseMenuItem(app, `appearance-${id}`);
     await expect(win.locator('[data-band]')).toBeHidden();
