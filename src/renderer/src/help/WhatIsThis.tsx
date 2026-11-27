@@ -56,6 +56,9 @@ const targetSize = (compact: boolean) => (compact ? '-m-0.5 h-6 w-6' : 'h-6 w-6'
 /** The window's columns, as operator/Layout.tsx marks them. */
 const ZONES = ['left', 'middle', 'right'] as const;
 
+/** Activating any ? closes the previous card before the new card receives the keyboard. */
+const CARD_OPEN = 'drashti:what-is-this-open';
+
 /** An element's box, or null when it is not drawn. */
 function boxOf(el: Element | null | undefined): Box | null {
   if (!el || el.getClientRects().length === 0) return null;
@@ -185,12 +188,20 @@ export function useWhatIsThis(
         // Its buttons come straight after its ?.
         e.preventDefault();
         own[0]?.focus();
-      } else if (!e.shiftKey && at !== null && at === own.at(-1)) {
-        // Out of it: on from its ?, so to what follows the ? (the window's own Tab moves on from there).
-        ask.focus({ preventScroll: true });
-      } else if (e.shiftKey && at !== null && at === own[0]) {
-        e.preventDefault();
-        ask.focus();
+      } else if (own.some((button) => button === at)) {
+        // Portal actions have no native Tab entry at the end of the body. Walk them here, at their ?'s position.
+        const index = own.findIndex((button) => button === at);
+        const next = own[index + (e.shiftKey ? -1 : 1)];
+        if (next) {
+          e.preventDefault();
+          next.focus();
+        } else if (e.shiftKey) {
+          e.preventDefault();
+          ask.focus();
+        } else {
+          // On from its ?: native Tab goes to the next ordinary control in this column.
+          ask.focus({ preventScroll: true });
+        }
       } else if (e.shiftKey && !card.contains(at)) {
         backIn = true;
         setTimeout(() => {
@@ -223,6 +234,7 @@ export function useWhatIsThis(
     document.addEventListener('keydown', keys, { capture: true, signal });
     document.addEventListener('focusin', landed, { capture: true, signal });
     document.addEventListener('pointerdown', pointer, { capture: true, signal });
+    document.addEventListener(CARD_OPEN, () => setOpenIn(null), { signal });
     return () => {
       stop.abort();
       resize.disconnect();
@@ -276,13 +288,14 @@ export function useWhatIsThis(
             size="sm"
             variant="ghost"
             data-testid="what-is-this-manual"
+            tabIndex={-1}
             onClick={() => {
               void openManual(help);
             }}
           >
             Open the manual
           </Button>
-          <Button size="sm" data-got-it="" aria-describedby={`${id}-text`} onClick={close}>
+          <Button size="sm" tabIndex={-1} data-got-it="" aria-describedby={`${id}-text`} onClick={close}>
             Got it
           </Button>
         </div>
@@ -302,6 +315,7 @@ export function useWhatIsThis(
           data-testid={`what-is-this-${topic}`}
           data-what-is-this=""
           onClick={() => {
+            if (!shown) document.dispatchEvent(new Event(CARD_OPEN));
             setOpenIn(shown ? null : round);
           }}
           className={cx(
