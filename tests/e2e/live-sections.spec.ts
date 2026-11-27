@@ -168,7 +168,9 @@ async function chromiumNames(win: Page): Promise<{ role: string; name: string }[
     const { nodes } = await cdp.send('Accessibility.getFullAXTree');
     return nodes.flatMap((n) => {
       const role = String(n.role?.value ?? '');
-      return ['heading', 'button', 'region'].includes(role) ? [{ role, name: String(n.name?.value ?? '') }] : [];
+      return ['heading', 'button', 'region'].includes(role)
+        ? [{ role, name: String(n.name?.value ?? '') }]
+        : [];
     });
   } finally {
     await cdp.detach();
