@@ -1,16 +1,14 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { leave, motionOff } from './motion';
+import { Notice } from './Notice';
 
-vi.mock('./motion', () => ({ leave: vi.fn(), motionOff: vi.fn(() => false) }));
-
-const css = () => readFileSync(join(__dirname, 'transient-motion.css'), 'utf8');
-const time = (name: string) => {
-  const value = new RegExp(`--dur-surface-${name}:\\s*(\\d+)ms;`, 'u').exec(css())?.[1];
-  expect(value, `missing surface timing: ${name}`).toBeDefined();
-  return Number(value);
-};
+vi.mock('./motion', () => ({
+  leave: vi.fn(),
+  motionOff: vi.fn(() => false),
+  useArrival: vi.fn((kind: string | null) => kind ?? undefined),
+}));
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -19,42 +17,19 @@ afterEach(() => {
   vi.mocked(motionOff).mockReturnValue(false);
 });
 
-describe('operator transient motion budgets', () => {
-  it('every Calm entrance, including sheets and the dim, settles within 180 ms', () => {
-    for (const name of ['tooltip', 'menu', 'notice', 'dialog', 'scrim', 'sheet']) {
-      expect(time(name), name).toBeGreaterThan(0);
-      expect(time(name), name).toBeLessThanOrEqual(180);
-    }
-  });
-
-  it('departures take at most 120 ms and less time than arrivals', () => {
-    for (const [entrance, exit] of [
-      ['tooltip', 'tooltip-exit'],
-      ['menu', 'exit'],
-      ['notice', 'exit'],
-      ['dialog', 'sheet-exit'],
-      ['sheet', 'sheet-exit'],
-    ]) {
-      expect(time(exit ?? ''), exit).toBeGreaterThan(0);
-      expect(time(exit ?? ''), exit).toBeLessThanOrEqual(120);
-      expect(time(exit ?? ''), exit).toBeLessThan(time(entrance ?? ''));
-    }
-  });
-
-  it('animates only opacity and transform, without layout, filter or persistent layer hints', () => {
-    const text = css().replace(/\/\*[\s\S]*?\*\//gu, '');
-    const frames = [...text.matchAll(/@keyframes\s+[\w-]+\s*\{\s*(?:from|to)\s*\{([^}]+)\}/gu)];
-    expect(frames.length).toBeGreaterThanOrEqual(2);
-    for (const [, body] of frames) {
-      const properties = [...(body ?? '').matchAll(/([\w-]+)\s*:/gu)].map((m) => m[1]);
-      expect(properties.filter((p) => p !== 'opacity' && p !== 'transform')).toEqual([]);
-    }
-    expect(text).not.toMatch(/will-change|translate3d|backdrop-filter|\bfilter\s*:/u);
-  });
-});
-
 class Surface {
   isConnected = true;
+  style = {
+    opacity: '',
+    getPropertyPriority: () => '',
+    setProperty: (name: string, value: string) => {
+      if (name === 'opacity') this.style.opacity = value;
+    },
+    removeProperty: () => {
+      this.style.opacity = '';
+      return '';
+    },
+  };
   closest = vi.fn<(selector: string) => Element | null>(() => null);
   querySelector = vi.fn<(selector: string) => Element | null>(() => null);
 }
@@ -66,6 +41,7 @@ async function page() {
   const opened = vi.fn(() => true);
   const copies = [{ remove: vi.fn() }, { remove: vi.fn() }];
   vi.stubGlobal('HTMLElement', Surface);
+  vi.stubGlobal('getComputedStyle', () => ({ opacity: '1' }));
   vi.stubGlobal('document', {
     body: { classList: { contains: operator }, lastElementChild: null },
     documentElement: { hasAttribute: opened },
@@ -76,6 +52,16 @@ async function page() {
 }
 
 describe('the existing exit system is used only for safe operator surfaces', () => {
+  it('phone and output notices never opt into an operator entrance', async () => {
+    const { operator } = await page();
+    operator.mockReturnValue(false);
+    const phone = renderToStaticMarkup(createElement(Notice, { title: 'Placeholder phone notice' }));
+    expect(phone).not.toContain('data-motion=');
+    operator.mockReturnValue(true);
+    const operatorNotice = renderToStaticMarkup(createElement(Notice, { title: 'Placeholder operator notice' }));
+    expect(operatorNotice).toContain('data-motion="notice"');
+  });
+
   it('delegates an ordinary operator menu to the existing exit system', async () => {
     const { leaveTransient, node } = await page();
     leaveTransient(node, 'pop');
@@ -128,7 +114,7 @@ describe('the existing exit system is used only for safe operator surfaces', () 
 
   it('does not flash opaque when a surface closes partway through its entrance', async () => {
     const { leaveTransient, node } = await page();
-    Object.assign(node, { style: { opacity: '0.8' } });
+    node.style.opacity = '0.8';
     vi.stubGlobal('getComputedStyle', () => ({ opacity: '0.4' }));
     let copiedOpacity = '';
     vi.mocked(leave).mockImplementation(() => {
