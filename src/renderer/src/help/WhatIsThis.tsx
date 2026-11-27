@@ -30,11 +30,27 @@ async function openManual(help: PanelHelp): Promise<void> {
   showManual({ chapter: help.chapter, passage });
 }
 
-/** The ? for a heading, and the words it opens under it (both null without a topic, in Simple Mode or with Help off). */
+/** The ?'s size: the header's smaller (`compact`), every other 24 px. Its room, held with Help off, is the same. */
+const askSize = (compact: boolean) => (compact ? 'h-5 w-5' : 'h-6 w-6');
+
+/**
+ * The ? for a heading, and the words it opens under it (both null without a topic, in Simple Mode or with Help off).
+ * `keepRoom` (a panel's heading, ui/Panel.tsx): with Help off, an empty box of the ?'s size holds its place, never a
+ * button or a Tab stop and hidden from screen readers, so a heading that wraps with the ? wraps the same without it,
+ * and turning Help on or off moves nothing under it (the release lead's decision after lead 2's helpmenu hands-on:
+ * the Timers heading's ? sent Calendar and New timer to a second row, and every section below moved).
+ */
 export function useWhatIsThis(
   topic: PanelHelpId | null,
-  /** A smaller ? (the header's, where room is short). */
-  { compact = false }: { compact?: boolean } = {},
+  {
+    compact = false,
+    keepRoom = false,
+  }: {
+    /** A smaller ? (the header's, where room is short). */
+    compact?: boolean;
+    /** Hold the ?'s room while Help is off (Pro Mode only, as the ? is). */
+    keepRoom?: boolean;
+  } = {},
 ): { button: ReactNode; card: ReactNode } {
   // Open in the turning on of Help it was opened in (its count, help-store.ts): Help off and on again finds it shut.
   const [openIn, setOpenIn] = useState<number | null>(null);
@@ -44,7 +60,18 @@ export function useWhatIsThis(
   const simple = useMode((s) => s.mode === 'simple');
   const on = useHelp((s) => s.on);
   const round = useHelp((s) => s.round);
-  if (topic === null || simple || !on) return { button: null, card: null };
+  if (topic === null || simple) return { button: null, card: null };
+  if (!on)
+    return {
+      button: keepRoom ? (
+        <span
+          aria-hidden="true"
+          data-what-is-this-room=""
+          className={cx('inline-block shrink-0', askSize(compact))}
+        />
+      ) : null,
+      card: null,
+    };
   const help = PANEL_HELP[topic];
   const open = openIn === round;
   const setOpen = (now: boolean) => {
@@ -69,7 +96,8 @@ export function useWhatIsThis(
       }}
       className={cx(
         'inline-flex shrink-0 items-center justify-center rounded-full border border-field font-bold text-muted hover:border-muted hover:text-fg',
-        compact ? 'h-5 w-5 text-[11px]' : 'h-6 w-6 text-xs',
+        askSize(compact),
+        compact ? 'text-[11px]' : 'text-xs',
       )}
     >
       ?

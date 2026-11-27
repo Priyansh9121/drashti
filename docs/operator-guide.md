@@ -2,7 +2,7 @@
 
 This guide is for the **operators**: the people who run a sabha's screens in Drashti's Pro Mode, from switching on to switching off. It goes through a whole sabha in the order things happen. A small sabha with one projector, run by a volunteer, can use Simple Mode instead (section 9), and setting Drashti up (screens, backups, the node, schedules) is in the admin's guide (`docs/admin-guide.md`), for whoever looks after Drashti.
 
-On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows the menu bar is hidden: press **Alt** to show it.
+On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows the menu bar is hidden: tap **Alt** to show it (held a moment, **Alt** shows the buttons' keys instead).
 
 **The Drashti Manual** (since alpha.20): **Help**, then **Drashti Manual…** (the first item, in Pro Mode and Simple Mode) tells every part of this window in short steps, a chapter for each, with its pictures: what each feature is, when you would use it, and how. Choose a chapter on the left, or type a word in **Search the manual**; **Print…** prints it, and **Save as PDF…** saves it where you choose (for the setup kit); both wait while anything is up, on air or recording, saying so. It needs no internet, and **Esc** closes it. For a tool, choose **Tools**; for file playback, **LIVE, Back and Next**; for reporting a problem, **Help and when something goes wrong**.
 
