@@ -102,9 +102,14 @@ test('with only a background or the picture-in-picture box up, the top bar still
   // As Media names the picture: its file's name, with its ending.
   const named = `${PICTURE}.png`;
 
-  for (const mode of ['pro', 'simple'] as const) {
+  const setMode = async (mode: 'pro' | 'simple') => {
     await win.evaluate((m) => (globalThis as PageGlobals).drashti.app.setMode(m), mode);
     await expect(win.getByTestId('simple-mode')).toHaveCount(mode === 'simple' ? 1 : 0);
+  };
+  const box = { type: 'showPip', source: { kind: 'media', mediaId: pictureMediaId } } as const;
+
+  for (const mode of ['pro', 'simple'] as const) {
+    await setMode(mode);
     const bar = topBar(win);
 
     // Nothing up (the chosen wallpaper, or black, shows): Off, and Nothing live.
@@ -137,8 +142,10 @@ test('with only a background or the picture-in-picture box up, the top bar still
     await expect(bar.badge, mode).toHaveText('Off');
     await expect(bar.text, mode).toHaveText('Nothing live');
 
-    // The picture-in-picture box alone (Session 50: something on the screens too).
-    await dispatch(win, { type: 'showPip', source: { kind: 'media', mediaId: pictureMediaId } });
+    // The picture-in-picture box alone (Session 50: something on the screens too). Simple Mode sets none up itself
+    // (shared/mode.ts, unless Picture in Picture is chosen for it): one put up in Pro Mode, below.
+    if (mode === 'simple') continue;
+    expect((await dispatch(win, box)).ok, mode).toBe(true);
     await expect(bar.badge, mode).toHaveText('Live');
     await expect(bar.text, mode).toHaveText(`Live: Picture in picture · ${named}`);
     await dispatch(win, { type: 'hidePip' });
@@ -146,10 +153,19 @@ test('with only a background or the picture-in-picture box up, the top bar still
     await expect(bar.text, mode).toHaveText('Nothing live');
   }
 
+  // A box put up in Pro Mode stays up in Simple Mode, which names it and takes it off: the same words there.
+  await setMode('pro');
+  expect((await dispatch(win, box)).ok).toBe(true);
+  await setMode('simple');
+  await expect(topBar(win).badge, 'simple').toHaveText('Live');
+  await expect(topBar(win).text, 'simple').toHaveText(`Live: Picture in picture · ${named}`);
+  await dispatch(win, { type: 'hidePip' });
+  await expect(topBar(win).badge, 'simple').toHaveText('Off');
+  await expect(topBar(win).text, 'simple').toHaveText('Nothing live');
+
   // Pro Mode: a slide up over the picture, then cleared (F2): the picture stays up, so LIVE, the cleared slide's place
   // and what is still up.
-  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
-  await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+  await setMode('pro');
   const bar = topBar(win);
   await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
   const slides = slidesOf(win, KIRTAN);
