@@ -291,8 +291,11 @@ describe('an open help card', () => {
   it('closes the previous card when the next ? is activated without a pointer (MUST-2)', () => {
     const midi = new Card('midi');
     const osc = new Card('osc');
-    const order = [midi.ask, osc.ask];
+    const oscToggle = new Element('OSC heading', doc);
+    const order = [midi.ask, oscToggle, osc.ask];
     midi.open();
+    tab(order);
+    expect(doc.activeElement).toBe(oscToggle);
     tab(order);
     expect(doc.activeElement).toBe(osc.ask);
     osc.enter();
@@ -302,6 +305,8 @@ describe('an open help card', () => {
     expect(doc.activeElement).toBe(osc.manual);
     tab(order, true);
     expect(doc.activeElement).toBe(osc.ask);
+    tab(order, true);
+    expect(doc.activeElement).toBe(oscToggle);
     tab(order, true);
     expect(doc.activeElement).toBe(midi.ask);
   });

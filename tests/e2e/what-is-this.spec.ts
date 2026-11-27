@@ -459,10 +459,13 @@ test('keyboard opening an adjacent card closes the older card and keeps backward
   await helpOn(win);
   const midi = win.getByTestId('what-is-this-midi');
   const osc = win.getByTestId('what-is-this-osc');
+  const oscToggle = win.getByTestId('group-osc-toggle');
   await midi.focus();
   await win.keyboard.press('Enter');
   const card = win.getByTestId('what-is-this');
   await expect(card).toContainText(PANEL_HELP.midi.text);
+  await win.keyboard.press('Tab');
+  await expect(oscToggle).toBeFocused();
   await win.keyboard.press('Tab');
   await expect(osc).toBeFocused();
   await win.keyboard.press('Enter');
@@ -470,7 +473,7 @@ test('keyboard opening an adjacent card closes the older card and keeps backward
   await expect(card).toContainText(PANEL_HELP.osc.text);
   await expect(midi).toHaveAttribute('aria-expanded', 'false');
   await expect(card.getByRole('button', { name: 'Got it' })).toBeFocused();
-  for (const target of [card.getByRole('button', { name: 'Open the manual' }), osc, midi]) {
+  for (const target of [card.getByRole('button', { name: 'Open the manual' }), osc, oscToggle, midi]) {
     await win.keyboard.press('Shift+Tab');
     await expect(target).toBeFocused();
     expect(
