@@ -57,6 +57,8 @@ export function AudienceTimerControls() {
             icon={counts ? Pause : Square}
             label={counts ? 'Pause' : 'Stop'}
             size="sm"
+            // A show control (alpha.24, the bug hunt's S3-1): it changes the screens at once and never moves.
+            instant
             onClick={() => void dispatch({ type: counts ? 'pauseTimer' : 'resetTimer', timerId: t.id })}
           />
         ) : (
@@ -65,6 +67,7 @@ export function AudienceTimerControls() {
             label="Start"
             variant="secondary"
             size="sm"
+            instant
             onClick={() => void dispatch({ type: 'startTimer', timerId: t.id })}
           />
         )}
@@ -73,6 +76,7 @@ export function AudienceTimerControls() {
             icon={RotateCcw}
             label="Reset"
             size="sm"
+            instant
             onClick={() => void dispatch({ type: 'resetTimer', timerId: t.id })}
           />
         )}
@@ -80,6 +84,7 @@ export function AudienceTimerControls() {
           size="sm"
           icon={Monitor}
           variant={shown ? 'live' : 'secondary'}
+          instant
           className="ml-auto"
           onClick={() =>
             void dispatch(

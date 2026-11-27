@@ -251,6 +251,8 @@ function Row({ row, pro, repeating }: { row: PlayingRow; pro: boolean; repeating
           size="sm"
           variant="secondary"
           disabled={!known}
+          // Show controls (alpha.24, QA24-UIMOTION-SKIP): what the hall sees and hears changes at once.
+          instant
           data-testid="time-bar-play"
           onClick={() => void dispatch(playCommand(playing.ref))}
         />
@@ -261,6 +263,7 @@ function Row({ row, pro, repeating }: { row: PlayingRow; pro: boolean; repeating
           size="sm"
           variant="secondary"
           disabled={!known}
+          instant
           data-testid="time-bar-pause"
           onClick={() => void dispatch(pauseCommand(playing.ref))}
         />

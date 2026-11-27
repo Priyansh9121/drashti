@@ -31,6 +31,8 @@ export function VideoInputNotice({ platform }: { platform: string }) {
             <Button
               variant="primary"
               size="sm"
+              // A show control (alpha.24, the bug hunt's S3-1): it changes the screens at once and never moves.
+              instant
               data-testid="video-input-clear"
               onClick={() => void dispatch({ type: 'clearLayer', layer: 'background' })}
             >
