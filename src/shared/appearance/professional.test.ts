@@ -38,7 +38,7 @@ describe('professional show appearances', () => {
       for (const word of ['fg', 'muted', 'faint', 'accent', 'danger', 'rec'] as const)
         for (const surface of ['ink', 'panel', 'panel-2', 'panel-3'] as const)
           expect(contrastRatio(c[word], c[surface]), `${id} ${zone} ${word} on ${surface}`).toBeGreaterThanOrEqual(4.5);
-      for (const edge of ['field', 'live-edge', 'primary-edge'] as const)
+      for (const edge of ['line', 'line-strong', 'field', 'live-edge', 'primary-edge'] as const)
         expect(contrastRatio(c[edge], c.panel), `${id} ${zone} ${edge}`).toBeGreaterThanOrEqual(3);
     }
   });

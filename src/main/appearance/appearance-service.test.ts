@@ -362,3 +362,19 @@ describe('AppearanceService', () => {
     );
   });
 });
+
+describe('professional appearances stay named and flat', () => {
+  it.each(['broadcast', 'stage-desk', 'daylight', 'signal'])('%s is selectable, kept over restart, and never enables Depth', (id) => {
+    const userData = fresh();
+    const first = new AppearanceService({ userData, say: () => undefined });
+    expect(first.choose(id)).toBe(true);
+    expect(first.now()).toMatchObject({ id, depth: false, look: [] });
+    expect(first.view().list.some((a) => a.id === id)).toBe(true);
+    const again = new AppearanceService({ userData, say: () => undefined });
+    expect(again.choice).toBe(id);
+    expect(again.now()).toMatchObject({ id, depth: false, look: [] });
+    expect(again.now().vars['--look-touch']).toBe('transparent');
+    expect(again.choose('follow')).toBe(true);
+    expect(again.now().depth).toBe(true);
+  });
+});
