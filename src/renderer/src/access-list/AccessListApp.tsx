@@ -214,7 +214,7 @@ export function AccessListApp() {
   // ⌘F (Ctrl+F) goes to the search, unless a dialog has the keyboard.
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
-      // With a Gujarati or Hindi layout, the F key's place (hunt S3-3), outside a field.
+      // With a Gujarati or Hindi layout, the F key's place (hunt S3-3).
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || shortcutKey(e).toLowerCase() !== 'f') return;
       if (document.querySelector('[aria-modal="true"]')) return;
       e.preventDefault();

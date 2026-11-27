@@ -318,10 +318,9 @@ test('with a Gujarati or Hindi keyboard layout, the editor’s own keys act by t
   const press = (key: string, code: string, more: { shiftKey?: boolean } = {}, focused = false) =>
     ed.evaluate(
       ({ key: k, code: c, mods, focused: f }) => {
-        (f ? document.activeElement : document.querySelector('[data-testid="editor-canvas"]'))
-          ?.dispatchEvent(
-            new KeyboardEvent('keydown', { key: k, code: c, bubbles: true, cancelable: true, ...mods }),
-          );
+        (f ? document.activeElement : document.querySelector('[data-testid="editor-canvas"]'))?.dispatchEvent(
+          new KeyboardEvent('keydown', { key: k, code: c, bubbles: true, cancelable: true, ...mods }),
+        );
       },
       { key, code, mods: { ...command, ...more }, focused },
     );

@@ -635,7 +635,7 @@ function Editor({ platform, name }: { platform: string; name: string }) {
       if (outsideBusy || translating) return;
       const m = mac ? e.metaKey : e.ctrlKey;
       if (!m || e.altKey) return;
-      // With a Gujarati or Hindi layout, the Latin letter in the key's place (hunt S3-3), outside a text box.
+      // With a Gujarati or Hindi layout, the Latin letter in the key's place (hunt S3-3), while typing too.
       const key = shortcutKey(e).toLowerCase();
       if (insertBase.current) {
         e.preventDefault();

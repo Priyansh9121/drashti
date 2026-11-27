@@ -231,7 +231,11 @@ describe('the key a window’s own shortcut reads (shortcutKey)', () => {
   });
 
   it('with Cmd or Ctrl, reads it in a field and an editable box too, as a Latin layout’s Save and Find act there', () => {
-    const boxes = [new StandInElement('INPUT'), new StandInElement('TEXTAREA'), new StandInElement('DIV', true)];
+    const boxes = [
+      new StandInElement('INPUT'),
+      new StandInElement('TEXTAREA'),
+      new StandInElement('DIV', true),
+    ];
     for (const command of [{ ctrlKey: true }, { metaKey: true }])
       for (const target of boxes) {
         expect(shortcutKey({ key: 'સ', code: 'KeyS', ...command, target }), target.tagName).toBe('S');

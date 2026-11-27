@@ -12,8 +12,11 @@ export function isTyping(target: unknown): boolean {
 export interface ShortcutPress {
   key: string;
   code?: string;
+  metaKey?: boolean;
+  ctrlKey?: boolean;
   isComposing?: boolean;
-  nativeEvent?: { isComposing?: boolean };
+  keyCode?: number;
+  nativeEvent?: { isComposing?: boolean; keyCode?: number };
   target?: unknown;
 }
 
@@ -22,15 +25,24 @@ export interface ShortcutPress {
  * and Redo, the Access List's Find, Adjust the picture's Undo, a list's Select all): the press's own key; or, with a
  * keyboard layout of another script (a Gujarati or Hindi layout's Ctrl with the S key says "સ"), the Latin letter,
  * digit or "." in its place on the keyboard, as the keymap reads it (latinKey: only another script's single letter,
- * mark, digit or stop on a letter, digit or full stop key). Never while typing in a field or an editable box, nor
- * during an IME's composition. A Latin layout's press is always its own key, nothing else asked of it.
+ * mark, digit or stop on a letter, digit or full stop key). With Cmd or Ctrl held, anywhere, typing in a field or a
+ * text box too, as a Latin layout's Save and Find act there (the release lead, 27 Nov: else an operator types Gujarati
+ * words, presses Ctrl+S and believes they saved); a letter alone never in a field or an editable box, as keyplat's B.
+ * Never during an IME's composition (isComposing, or its key code 229). A Latin layout's press is always its own key,
+ * nothing else asked of it.
  */
 export function shortcutKey(e: ShortcutPress): string {
   const latin = latinKey(e);
   if (latin === e.key) return e.key;
-  const composing = e.isComposing === true || e.nativeEvent?.isComposing === true;
+  const composing =
+    e.isComposing === true ||
+    e.nativeEvent?.isComposing === true ||
+    e.keyCode === 229 ||
+    e.nativeEvent?.keyCode === 229;
+  if (composing) return e.key;
+  if (e.metaKey === true || e.ctrlKey === true) return latin;
   const typing = e.target !== undefined && e.target !== null && isTyping(e.target);
-  return composing || typing ? e.key : latin;
+  return typing ? e.key : latin;
 }
 
 /** What the window's listener reads of a key press: a KeyboardEvent's parts (a test's stand-in has only these). */

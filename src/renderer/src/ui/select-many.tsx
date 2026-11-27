@@ -211,7 +211,7 @@ export function boxChoice(before: readonly string[], touched: readonly string[],
 
 /**
  * Cmd-A (Ctrl-A on Windows and Linux): every row of the list. With a Gujarati or Hindi layout, the A key's place
- * (hunt S3-3), outside a field.
+ * (hunt S3-3).
  */
 export function isSelectAll(e: KeyboardEvent, platform: string): boolean {
   const mod = platform === 'darwin' ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;

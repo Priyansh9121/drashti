@@ -266,7 +266,8 @@ const LATIN = /^\p{Script=Latin}$/u;
  * character of another script is replaced, never a Latin one (accented or not) nor a symbol: every Latin layout
  * (QWERTY, AZERTY, QWERTZ, Dvorak) is as it was, letter for letter, and a Mac's Option letters (∫, ™) too. A press
  * without its place (the main process's) is as it was. The windows' own keys outside the keymap read it too (alpha.24,
- * hunt S3-3: the slide editor's Save, Find, Undo and Redo; shortcutKey in the renderer, never while typing).
+ * hunt S3-3: the slide editor's Save, Find, Undo and Redo; shortcutKey in the renderer, never during an IME's
+ * composition).
  */
 export function latinKey(input: Pick<KeyInput, 'key' | 'code'>): string {
   const { key, code } = input;
