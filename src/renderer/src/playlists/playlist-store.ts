@@ -12,7 +12,7 @@ import type {
   TimerCue,
 } from '../../../shared/playlists';
 import { POSITION_MAX } from '../../../shared/playlists';
-import { useEngine } from '../engine/engine-store';
+import { getCurrentEngineState, useEngine } from '../engine/engine-store';
 import { showImportNotice } from '../library/import-notices';
 import { importPaths, type ImportDestination } from '../library/import-store';
 import { chooseNothing, leaveItem, showItem, showRepeatSteps, useLibrary } from '../library/library-store';
@@ -1064,7 +1064,7 @@ export async function removeMissingItems(playlistId: string): Promise<void> {
 
 /** The open playlist's item on the screens now, by its id: the playlist's place, while something of it is up. */
 export function liveItemOf(playlistId: string | null): string | null {
-  const st = useEngine.getState().state;
+  const st = getCurrentEngineState();
   if (playlistId === null || st?.live.playlist?.playlistId !== playlistId) return null;
   const up = st.layers.slide !== null || st.layers.background !== null || st.layers.audio !== null;
   return up ? st.live.playlist.itemId : null;

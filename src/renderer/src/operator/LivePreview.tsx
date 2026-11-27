@@ -68,7 +68,7 @@ function useLowerThirdShort(state: EngineState | null): { shown: number; total: 
  */
 export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   // The show, or the practice show while it is on (Session 26g: drawn here, never on a screen).
-  const state = useShowState();
+  const state = useShowState('live');
   const lowerThirdShort = useLowerThirdShort(state);
   // Fonts the live slide names that this computer does not have (Sessions 31–36, I18N-1).
   const live = state?.layers.slide?.slide;
@@ -93,7 +93,7 @@ export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   const chosenWallpaper = useWallpapers(
     (s) => s.view?.wallpapers.find((w) => w.id === s.view?.chosenId) ?? null,
   );
-  const rev = useShowRev();
+  const rev = useShowRev('live');
   const practising = usePractice((s) => s.on);
   // The videos up that one of this computer's screens could not play (alpha.23, a22-halldrop): LIVE shows them, the
   // screens named do not, so it says so while each stays up (the show's, never practice's).
