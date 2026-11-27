@@ -315,14 +315,44 @@ export function hostless(selector: string): string {
   return kept.length > 0 ? kept.join(', ') : ':not(*)';
 }
 
-/** Every style rule of these, however deep in layers and groups, with its :host parts taken out. */
-function dropHost(rules: CSSRuleList): void {
+/**
+ * What the window's looks key on in <html>'s own attributes, carried by a copy's host (lead 2's item 3; none yet).
+ */
+export const LOOK_KEYS: readonly string[] = [];
+
+/** The attributes a copy's frame never carries (none yet: a copy has no frame). */
+export const FRAME_DROPS: readonly string[] = [];
+
+/** A page rule's selector as a copy's shadow root takes it: no :host parts (hostless). */
+export function inCopy(selector: string): string {
+  return hostless(selector);
+}
+
+/** A copy's four corners. */
+export interface Corners {
+  topLeft: string;
+  topRight: string;
+  bottomRight: string;
+  bottomLeft: string;
+}
+
+/** The corners of `frame` (its radii) that `box` shares; '' where it does not (none yet: a copy is square). */
+export function sharedCorners(
+  _box: { top: number; right: number; bottom: number; left: number },
+  _frame: { top: number; right: number; bottom: number; left: number },
+  _radii: Corners,
+): Corners {
+  return { topLeft: '', topRight: '', bottomRight: '', bottomLeft: '' };
+}
+
+/** Every style rule of these, however deep in layers and groups, as a copy's shadow root takes it (inCopy). */
+function forCopy(rules: CSSRuleList): void {
   for (const rule of rules) {
     if (rule instanceof CSSStyleRule) {
-      const kept = hostless(rule.selectorText);
+      const kept = inCopy(rule.selectorText);
       if (kept !== rule.selectorText) rule.selectorText = kept;
     }
-    if ('cssRules' in rule) dropHost((rule as CSSGroupingRule).cssRules);
+    if ('cssRules' in rule) forCopy((rule as CSSGroupingRule).cssRules);
   }
 }
 
@@ -341,7 +371,7 @@ function pageStyles(): CSSStyleSheet[] {
     sheet = new CSSStyleSheet();
     sheet.replaceSync(text.join('\n'));
     // The copy draws in the window's own appearance, never the default one's (hostless).
-    dropHost(sheet.cssRules);
+    forCopy(sheet.cssRules);
     const found = new Set<string>();
     tokensIn(sheet.cssRules, found);
     tokens = [...found];
