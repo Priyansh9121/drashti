@@ -159,24 +159,21 @@ for (const mode of ['pro', 'simple'] as const)
         await expect(linkWords).toBeVisible();
       }
 
-      // The row goes live (the kirtan's first slide up): nothing in the header or Order's line moves.
+      // The row goes live (the kirtan from its first slide): nothing in the header or Order's line moves.
       const before = {
         header: await partsOf(header, HEADER_PARTS),
         order: mode === 'pro' ? await partsOf(moves, ORDER_PARTS) : [],
       };
+      // Played from its row (playItem: the playlist's place), as one click on it plays it; a goLive by the presentation
+      // alone is played from the library, and no row of the playlist is up.
+      const kirtanRow = middle.getByTestId('playlist-item').filter({ hasText: KIRTAN });
+      const itemId = (await kirtanRow.getAttribute('data-item-id')) ?? '';
+      expect(itemId).not.toBe('');
       await win.evaluate(
-        (id) =>
-          (globalThis as PageGlobals).drashti.engine.dispatch({
-            type: 'goLive',
-            presentationId: id,
-            slideIndex: 0,
-          }),
-        show.kirtanId,
+        (place) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'playItem', ...place }),
+        { playlistId: show.playlistId, itemId },
       );
-      await expect(middle.getByTestId('playlist-item').filter({ hasText: KIRTAN })).toHaveAttribute(
-        'data-live',
-        'true',
-      );
+      await expect(kirtanRow).toHaveAttribute('data-live', 'true');
       await laidOut(win);
       expect(await partsOf(header, HEADER_PARTS), 'the header as the row goes live').toEqual(before.header);
       if (mode === 'pro')
