@@ -107,7 +107,7 @@
     border-top-color: transparent;
   }
 
-  /* The ground: the top bar (Pro Mode's and Simple Mode's), the access line's strip, the quick bar and the status bar. */
+  /* The ground: the top bar (Pro Mode's and Simple Mode's), the quick bar and the status bar (the access line's place since alpha.24). */
   :root[data-window-look='depth'] body {
     --color-header: var(--depth-ground);
     --color-header-2: var(--depth-ground);
