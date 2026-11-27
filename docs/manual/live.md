@@ -4,7 +4,7 @@ The right column starts with **LIVE**: what the hall sees this moment. Under it 
 
 ## LIVE
 
-**What it is.** A small copy of the hall's picture, headed **LIVE**, in red. Under it, a time bar for whatever plays, and a line for a picture in picture or a video input.
+**What it is.** A small copy of the hall's picture, headed **LIVE**, framed in red while something is up. The word **LIVE** in red is in the top bar, beside what is live; in the playlist, the row on the screens has a red edge and a small red dot. Under it, a time bar for whatever plays, and a line for a picture in picture or a video input.
 
 **When you would use it.** All the time: glance at it after every change.
 
@@ -156,7 +156,7 @@ This is offered in Simple Mode too. For an audio playlist that carries on from i
 **How:**
 
 1. Pause the video with its time bar's **Pause**.
-2. Press **⋯** at the end of its bar, then **One frame back** or **One frame on**, or press **Alt** with **←** or **→** on the bar.
+2. Press **⋯** at the end of its bar, then **One frame back** or **One frame on**, or press **Alt** (Option on a Mac) with **←** or **→** on the bar.
 3. **⋯**, **Snapshot** puts that frame in **Media**; **Undo** takes it away.
 
 ![The time bars under Back and Next: a background video and the music](../screenshots/time-bar.png)
@@ -223,7 +223,7 @@ A video this computer cannot show is converted once the show is quiet: see **Bri
 **How:**
 
 1. Right-click a row and choose **Pin to the quick bar**.
-2. Click a pin, or press **Alt+1** to **Alt+8**, to put it up.
+2. Click a pin, or press **Alt+1** to **Alt+8** (**⌥1** to **⌥8** on a Mac), to put it up.
 3. Right-click a pin for **Move left**, **Move right** and **Unpin from the quick bar**.
 
 ![The quick bar just above the clear buttons, with four pins](../screenshots/quick-bar.png)

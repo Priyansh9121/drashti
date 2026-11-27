@@ -13,7 +13,7 @@ import { MediaStill } from '../render/MediaStill';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
 import { OversetMark, OversetWatch } from '../render/measure';
-import { Badge, LiveBadge, MissingBadge } from '../ui/Badge';
+import { Badge, LiveDot, MissingBadge } from '../ui/Badge';
 import { rowPointer } from './point-ahead';
 import { PreparingMark, preparingWords } from './PreparingMark';
 import { cx } from '../ui/cx';
@@ -335,7 +335,8 @@ export const SlideRow = memo(function SlideRow({
             </span>
           )}
         </span>
-        {live && <LiveBadge />}
+        {/* Up (alpha.24, uitop: LIVE said once, in the top bar): its red edge and a dot, "Live" to a screen reader. */}
+        {live && <LiveDot />}
       </button>
     </li>
   );

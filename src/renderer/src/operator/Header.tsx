@@ -19,7 +19,7 @@ import { Tooltip } from '../ui/Tooltip';
 import { cx } from '../ui/cx';
 import { LiveStatus } from './StatusLine';
 import { ScreenSwitchButtons } from './ScreenSwitches';
-import { COUNT_IF_NARROW, HIDDEN_IF_NARROWER, ICON_IF_NARROW, WORDS_IF_NARROW } from './top-bar';
+import { COUNT_IF_NARROW, HIDDEN_IF_NARROWER, iconClass, type IconAloneButton, wordsClass } from './top-bar';
 
 /** Whether the Announcements button shows: while the network is on, or while any is waiting or on the screens. */
 function useAnnouncementsShown(): boolean {
@@ -29,9 +29,22 @@ function useAnnouncementsShown(): boolean {
   return networkOn || waiting > 0 || showing > 0;
 }
 
-/** A button's words: for screen readers only while a crowded top bar shows its icon alone (top-bar.ts). */
-function Words({ crowded, children }: { crowded: boolean; children: string }) {
-  return <span className={crowded ? WORDS_IF_NARROW : undefined}>{children}</span>;
+/** A button's words: for screen readers only below the width where the top bar has room for them (top-bar.ts). */
+function Words({
+  button,
+  crowded,
+  children,
+}: {
+  button: IconAloneButton;
+  crowded: boolean;
+  children: string;
+}) {
+  return <span className={wordsClass(button, crowded)}>{children}</span>;
+}
+
+/** A hairline between the top bar group's parts (alpha.24, uitop): decoration only. */
+function Divider() {
+  return <span aria-hidden="true" className="h-5 w-px shrink-0 bg-header-field/40" />;
 }
 
 /** A ? beside a button: gone below 1280 px while the top bar is crowded, as each panel has its own (top-bar.ts). */
@@ -55,16 +68,18 @@ function AnnouncementsButton({ help, crowded }: { help: ReactNode; crowded: bool
           icon={Inbox}
           onClick={openAnnouncements}
           data-testid="open-announcements"
-          className={cx(crowded && (waiting > 0 ? COUNT_IF_NARROW : ICON_IF_NARROW))}
+          className={waiting > 0 ? COUNT_IF_NARROW : iconClass('announcements', crowded)}
         >
           {waiting > 0 ? (
             // How many wait stays in sight beside the icon, one line of words with it ("Announcements (2)").
             <span>
-              <span className={crowded ? WORDS_IF_NARROW : undefined}>Announcements </span>
+              <span className={wordsClass('announcements', crowded)}>Announcements </span>
               {`(${String(waiting)})`}
             </span>
           ) : (
-            <Words crowded={crowded}>Announcements</Words>
+            <Words button="announcements" crowded={crowded}>
+              Announcements
+            </Words>
           )}
         </Button>
       </Tooltip>
@@ -75,7 +90,10 @@ function AnnouncementsButton({ help, crowded }: { help: ReactNode; crowded: bool
 
 /**
  * Across the top: the name, what is on the screens, and the settings the operator opens; in the appearance's
- * header colour (Session 42), with its band under it.
+ * header colour (Session 42), with its band under it. Since alpha.24 (uitop, the owner's "too congested") the
+ * settings are one quiet group: a hairline round them and between their parts, every button without a box of its own
+ * (Audience and Stage a dot and their word), each showing its icon alone only where the bar has no room for its words
+ * (top-bar.ts). Same buttons, same order, same names.
  */
 export function Header({
   platform,
@@ -93,7 +111,8 @@ export function Header({
   const phones = useWhatIsThis('phones', { compact: true });
   const announcements = useWhatIsThis('announcements', { compact: true });
   const cards = [stream.card, phones.card, announcements.card].filter(Boolean);
-  // Phones on (Session 51, S2-3): below 1680 px wide, some buttons show their icon alone (top-bar.ts).
+  // Phones on (Session 51, S2-3): the network's badge and Announcements too, so the others give up their words at
+  // wider windows than with Phones off (top-bar.ts).
   const crowded = useAnnouncementsShown();
   // To Simple Mode: a double-click (or Enter twice), nothing else (the owner, 11 Nov 2026); one click says so.
   const toSimple = useDoubleClickSwitch('Simple Mode', () => void enterSimpleMode());
@@ -119,17 +138,24 @@ export function Header({
             <LiveStatus />
           </div>
         </HeaderStates>
-        <div className="flex shrink-0 items-center gap-2" data-crowded={crowded ? 'true' : undefined}>
+        <div
+          className="flex shrink-0 items-center gap-0.5 rounded-lg border border-header-field/40 p-0.5"
+          data-top-group=""
+          data-crowded={crowded ? 'true' : undefined}
+        >
           <span className="flex items-center gap-0.5">
-            <Tooltip content="The stream to YouTube, and recording" side="bottom">
+            {/* Its tooltip names it, as it may show its icon alone (top-bar.ts). */}
+            <Tooltip content="Stream: to YouTube, and recording" side="bottom">
               <Button
                 variant="ghost"
                 icon={Radio}
                 onClick={openStreamPanel}
                 data-testid="open-stream"
-                className={cx(crowded && ICON_IF_NARROW)}
+                className={iconClass('stream', crowded)}
               >
-                <Words crowded={crowded}>Stream</Words>
+                <Words button="stream" crowded={crowded}>
+                  Stream
+                </Words>
               </Button>
             </Tooltip>
             <Help crowded={crowded}>{stream.button}</Help>
@@ -144,17 +170,20 @@ export function Header({
                 icon={Smartphone}
                 onClick={openNetwork}
                 data-testid="open-network"
-                className={cx(crowded && ICON_IF_NARROW)}
+                className={iconClass('phones', crowded)}
               >
-                <Words crowded={crowded}>Phones</Words>
+                <Words button="phones" crowded={crowded}>
+                  Phones
+                </Words>
               </Button>
             </Tooltip>
             <Help crowded={crowded}>{phones.button}</Help>
           </span>
           <AnnouncementsButton help={announcements.button} crowded={crowded} />
+          <Divider />
           {/* Ready? (Session 55, Part 8): one press before the sabha checks the screens, sound, files and power. */}
           <Tooltip
-            content="Before the sabha: check the screens, sound, files, access and power"
+            content="Ready?: before the sabha, check the screens, sound, files, access and power"
             side="bottom"
           >
             <Button
@@ -162,24 +191,26 @@ export function Header({
               icon={ListChecks}
               onClick={openReady}
               data-testid="open-ready"
-              className={cx(crowded && ICON_IF_NARROW)}
+              className={iconClass('ready', crowded)}
             >
-              <Words crowded={crowded}>Ready?</Words>
+              <Words button="ready" crowded={crowded}>
+                Ready?
+              </Words>
             </Button>
           </Tooltip>
+          <Divider />
+          {/* Screens and the switches always keep their words (top-bar.ts); since alpha.24 a ghost too, no box. */}
           <Tooltip content="Screens and sound" kbd={shortcutText('openScreens', platform)} side="bottom">
-            <Button variant="secondary" icon={Monitor} onClick={onOpenScreens}>
+            <Button variant="ghost" icon={Monitor} onClick={onOpenScreens}>
               Screens
             </Button>
           </Tooltip>
           {/* Audience and Stage (Session 50): this computer's screens of each kind, off and on. */}
           <ScreenSwitchButtons platform={platform} />
+          <Divider />
+          {/* Its tooltip names it, as it may show its icon alone (top-bar.ts). */}
           <Tooltip
-            content={
-              crowded
-                ? 'Simple Mode: double-click (or press Enter twice) for this window with only what a sabha with one projector needs, for volunteers.'
-                : 'Double-click (or press Enter twice) for this window with only what a sabha with one projector needs, for volunteers.'
-            }
+            content="Simple Mode: double-click (or press Enter twice) for this window with only what a sabha with one projector needs, for volunteers."
             side="bottom"
           >
             <Button
@@ -187,9 +218,11 @@ export function Header({
               icon={LayoutGrid}
               onClick={toSimple.onClick}
               onDoubleClick={toSimple.onDoubleClick}
-              className={cx(crowded && ICON_IF_NARROW)}
+              className={iconClass('simple', crowded)}
             >
-              <Words crowded={crowded}>Simple Mode</Words>
+              <Words button="simple" crowded={crowded}>
+                Simple Mode
+              </Words>
             </Button>
           </Tooltip>
           {extra}

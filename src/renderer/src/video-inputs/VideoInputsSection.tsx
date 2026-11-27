@@ -4,7 +4,7 @@ import type { VideoInput } from '../../../shared/video-inputs';
 import { useEngine } from '../engine/engine-store';
 import { AddToPlaylistButton, rowMenu } from '../playlists/AddToPlaylist';
 import { startDrag } from '../playlists/drag';
-import { LiveBadge } from '../ui/Badge';
+import { LiveDot, LiveEdge } from '../ui/Badge';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Pencil } from '../ui/icons';
 import { rowClass } from '../ui/ListRow';
@@ -52,6 +52,8 @@ function InputRow({
       data-name={input.name}
       data-live={live ? 'true' : undefined}
     >
+      {/* Up (alpha.24, uitop: the word LIVE is said once, in the top bar): its red edge here and its dot at its end. */}
+      {live && <LiveEdge />}
       {/* Room at the end for Change and Delete, shown or not, so the row never changes as they show. */}
       <button
         type="button"
@@ -76,7 +78,7 @@ function InputRow({
             {inputRowNote(capture, input.fit)}
           </span>
         </span>
-        {live && <LiveBadge />}
+        {live && <LiveDot />}
       </button>
       {chosen && <AddToPlaylistButton pick={pick} className="px-1.5 pb-1.5" />}
       <RowAction

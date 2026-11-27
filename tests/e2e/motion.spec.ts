@@ -1211,6 +1211,17 @@ test('the controls that are not show controls answer: a press dims, Lively lifts
   await win.locator(network).hover();
   await expect.poll(() => style(network, 'translate')).toBe(noChip ? 'none' : '0px -1px');
   await win.mouse.move(2, 2);
+  // Audience and Stage change the hall's screens (uitop; the release lead's review, MUST-2): pointed at and held, with a
+  // chip or without, they stay as they are: no dimming, no lift, no press, nothing moving. Let go away from it: no click.
+  const stage = '[data-testid="switch-stage"]';
+  await win.locator(stage).hover();
+  await win.mouse.down();
+  expect(await style(stage, 'opacity', 'translate', 'transform', 'transition-property')).toBe(
+    '1 | none | none | none',
+  );
+  expect(await win.locator(stage).evaluate((el) => el.getAnimations().length)).toBe(0);
+  await win.mouse.move(2, 2);
+  await win.mouse.up();
   // A show control, pointed at: no transition, no lift, no dimming.
   await win.getByTestId('show-next').hover();
   expect(
