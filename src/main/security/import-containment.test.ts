@@ -3,13 +3,14 @@ import { randomUUID } from 'node:crypto';
 import { rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { scanPaths } from '../import/scan';
 import { isInside } from '../media/contained';
 import { openDatabase } from '../db/database';
 import { ImportRepo } from '../db/imports';
 import { MediaStore } from '../import/media-store';
 import { runImport } from '../import/pipeline';
+import { pp6Playlist, pp6Presentation, cocoaRtf } from '../import/testing/pp6-fixtures';
 
 const fixtures: string[] = [];
 afterEach(async () => {
@@ -111,5 +112,71 @@ describe('alpha.24 folder import report and read boundary', () => {
     const { link, report, presentations } = await importFixture(true);
     expect(presentations).toEqual([]);
     expect(report?.items).toEqual([expect.objectContaining({ sourcePath: link, outcome: 'skipped' })]);
+  });
+});
+
+describe('alpha.24 selected-folder links reached through document references', () => {
+  it('does not copy a rejected outside media link when an imported document names it', async () => {
+    const { selected, outside } = await fixture();
+    const target = join(outside, 'private-placeholder.png');
+    const link = join(selected, 'picture.png');
+    await writeFile(target, 'Placeholder image bytes.');
+    await symlink(target, link, 'file');
+    await writeFile(
+      join(selected, 'Chosen.pro6'),
+      pp6Presentation({
+        groups: [{ name: 'Verse', slides: [{ background: { path: link, kind: 'image' } }] }],
+      }),
+    );
+    const db = openDatabase(':memory:');
+    const media = new MediaStore(db, { dir: join(outside, 'media'), freeBytes: () => 1024 ** 4 });
+    const stage = vi.spyOn(media, 'stage');
+    try {
+      await runImport({ db, media, runId: randomUUID(), paths: [selected], options: {} });
+      expect(stage).not.toHaveBeenCalled();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('does not reintroduce a rejected document link through an imported playlist', async () => {
+    const { selected, outside } = await fixture();
+    const target = join(outside, 'private-placeholder.pro6');
+    const link = join(selected, 'alias.pro6');
+    await writeFile(
+      target,
+      pp6Presentation({
+        groups: [
+          {
+            name: 'Verse',
+            slides: [{ text: [{ rtf: cocoaRtf([['Private placeholder text.', 72, [255, 255, 255]]]) }] }],
+          },
+        ],
+      }),
+    );
+    await symlink(target, link, 'file');
+    await writeFile(
+      join(selected, 'Chosen.pro6pl'),
+      pp6Playlist([{ name: 'Chosen', entries: [{ document: link, name: 'Alias' }] }]),
+    );
+    const db = openDatabase(':memory:');
+    const media = new MediaStore(db, { dir: join(outside, 'media'), freeBytes: () => 1024 ** 4 });
+    try {
+      await runImport({ db, media, runId: randomUUID(), paths: [selected], options: {} });
+      expect(db.prepare('SELECT id FROM presentations').all()).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('honours an explicitly chosen file link even when its parent folder is also selected', async () => {
+    const { selected, outside } = await fixture();
+    const target = join(outside, 'chosen-placeholder.txt');
+    const link = join(selected, 'chosen.txt');
+    await writeFile(target, 'Chosen placeholder text.');
+    await symlink(target, link, 'file');
+    const scan = await scanPaths([selected, link]);
+    expect(scan.files.map((file) => file.path)).toEqual([link]);
+    expect(scan.skipped).toEqual([]);
   });
 });
