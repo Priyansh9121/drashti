@@ -14,7 +14,14 @@ import { MOVEMENTS } from '../../../shared/looks';
 import { TRANSITION_KINDS } from '../../../shared/model';
 import { OPENING_START_HOLD_MS } from '../../../shared/opening';
 import { deckTransitionFrame, deckWipeShows, wipeSlideMask } from './transition-frame';
-import { handOverWarmUp, type WarmScene, type WarmUpEnd, WARM_UP_LONGEST_MS, warmScenes } from './WarmUp';
+import {
+  handOverWarmUp,
+  paintedCoverPlace,
+  type WarmScene,
+  type WarmUpEnd,
+  WARM_UP_LONGEST_MS,
+  warmScenes,
+} from './WarmUp';
 
 /*
  * The GPU's warm-up (render/WarmUp.tsx; tests/e2e/warm-up.spec.ts looks at it drawn): before a screen with a graphics
@@ -423,5 +430,28 @@ describe('retiring warm-up pictures before the parent draws', () => {
     expect(watchHandOver('unseen', true).events).toEqual(['parent-ready']);
     for (const how of ['drawn', 'cap', 'cut', 'error', 'unseen'] as const)
       expect(watchHandOver(how, false).events, how).toEqual(['parent-ready']);
+  });
+});
+
+describe('the LIVE picture’s painted wide Cover copy (a24-coverpipe)', () => {
+  // On air the LIVE picture's Cover is painted with the window's own drawing under the box's rounded clip alone; where
+  // its shaded surface falls on the device's pixels and on that clip picks how the GPU draws it (CI's Mac, alpha.24's
+  // joined run 2: with Depth's 4 px gaps the first wide Cover made a multisampled, clipped shading pipeline).
+  it('takes four places in turn: part-way in and all the way in, each on whole device pixels and half a device pixel over', () => {
+    const from = 'translateX(78.2457%)';
+    expect([0, 1, 2, 3].map((turn) => paintedCoverPlace(turn, from, 0.25))).toEqual([
+      from,
+      `${from} translateX(0.25px)`,
+      'none',
+      'translateX(0.25px)',
+    ]);
+    // Round again: each place is drawn more than once while the warm-up lasts.
+    expect(paintedCoverPlace(4, from, 0.25)).toBe(from);
+    expect(paintedCoverPlace(7, from, 0.25)).toBe('translateX(0.25px)');
+  });
+
+  it('a slide coming in with no move of its own is all the way in already', () => {
+    expect(paintedCoverPlace(0, 'none', 0.5)).toBe('none');
+    expect(paintedCoverPlace(1, '', 0.5)).toBe('translateX(0.5px)');
   });
 });
