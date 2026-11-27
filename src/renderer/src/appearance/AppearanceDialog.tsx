@@ -19,6 +19,7 @@ import { Notice } from '../ui/Notice';
 import { radioKeys, radioTabIndex } from '../ui/radio';
 import { Toggle } from '../ui/Toggle';
 import { AppearancePreview } from './AppearancePreview';
+import { DepthPreview } from './DepthPreview';
 import {
   chooseAppearance,
   chooseMotion,
@@ -40,12 +41,15 @@ import { OwnAppearanceForm, type OwnStart } from './OwnAppearanceForm';
  * one's own deleted (asked first); a built-in one can't be.
  */
 
-/** Follow the computer's picture: Black, and White beside it. */
+/**
+ * Follow the computer's picture: Black, and White beside it, in B · Depth, as Follow the computer draws the window
+ * (alpha.24; the alpha.25 list's item 9: it drew them plain, as when chosen by name).
+ */
 export function FollowPreview() {
   return (
     <div className="grid grid-cols-2 gap-1.5" aria-hidden="true">
-      <AppearancePreview appearance={BLACK} />
-      <AppearancePreview appearance={WHITE} />
+      <DepthPreview appearance={BLACK} />
+      <DepthPreview appearance={WHITE} />
     </div>
   );
 }
