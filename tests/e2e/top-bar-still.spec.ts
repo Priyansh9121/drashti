@@ -2,7 +2,8 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../src/shared/lower-thirds';
 import { networkOn, NETWORK_ENV } from './devices';
-import { holdStill, launchApp, operatorPage, operatorReady, type PageGlobals, slidesOf } from './helpers';
+import { launchApp, operatorPage, operatorReady, type PageGlobals, slidesOf } from './helpers';
+import { settledRead } from './help';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 import { CI_WINDOW } from './window-size';
 
@@ -138,13 +139,7 @@ test('anything on the audience screens, the stream or the hall’s sound is LIVE
     await expect(bar.badge, mode).toHaveText('Off');
     await expect(bar.text, mode).toHaveText('Nothing live');
     // Measured once the window has settled after the switch.
-    let atRest = await barBoxes(win);
-    await holdStill(
-      async () => JSON.stringify(await barBoxes(win)) === JSON.stringify(atRest),
-      500,
-      `${mode}: the top bar settled`,
-    );
-    atRest = await barBoxes(win);
+    const atRest = await settledRead(win, CI_WINDOW, () => barBoxes(win), `${mode}: the top bar settled`);
     expect(atRest.length, `${mode}: what is measured`).toBeGreaterThanOrEqual(mode === 'pro' ? 10 : 3);
 
     for (const { what, up, words, off } of ups) {
@@ -209,13 +204,12 @@ test('turning Help on or off moves nothing in the top bar: Stream, Phones, Annou
       await win.setViewportSize(size);
       await expect(help, where).toHaveAttribute('aria-pressed', 'false');
       await expect(header.getByTestId('what-is-this-stream'), where).toHaveCount(0);
-      let atRest = await barBoxes(win);
-      await holdStill(
-        async () => JSON.stringify(await barBoxes(win)) === JSON.stringify(atRest),
-        500,
+      const atRest = await settledRead(
+        win,
+        size,
+        () => barBoxes(win),
         `${where}: the top bar settled after the resize`,
       );
-      atRest = await barBoxes(win);
       // Help on: the ? come where their room was (below 1280 px with Phones on there are none, as before), and nothing
       // in the bar moves.
       await help.dispatchEvent('click');
