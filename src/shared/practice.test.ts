@@ -89,6 +89,29 @@ describe('the practice show', () => {
     expect(practiceStep(first, { goTo: 9 })).toBe(first);
   });
 
+  // QA24-OOPS-COVERS (the owner: "Restore covers"), the oopsfix review's NOTE-2: Put it back keeps the covers as a show
+  // does (coversBack), where it took both off.
+  it('Put it back leaves on a cover that was on at Clear all and still is, as a show does; one put on since comes off', () => {
+    const covers = (p: Practice) => ({ blackout: p.blackout, wallpaper: p.wallpaper });
+    const off = { blackout: false, wallpaper: false };
+    const black = run({ goTo: 2 }, 'toggleBlackout', 'clearAll', 'putBack');
+    expect(black.index).toBe(2);
+    expect(covers(black)).toEqual({ blackout: true, wallpaper: false });
+    const wallpaper = run({ goTo: 2 }, 'toggleWallpaper', 'clearAll', 'putBack');
+    expect(wallpaper.index).toBe(2);
+    expect(covers(wallpaper)).toEqual({ blackout: false, wallpaper: true });
+    // Taken off since, or switched since (Black-out at Clear all, the Wallpaper now): off, the slide seen.
+    expect(covers(run({ goTo: 2 }, 'toggleBlackout', 'clearAll', 'toggleBlackout', 'putBack'))).toEqual(off);
+    expect(covers(run({ goTo: 2 }, 'toggleBlackout', 'clearAll', 'toggleWallpaper', 'putBack'))).toEqual(off);
+    // The slide moved on since Clear all: nothing to put back, the covers as they are.
+    expect(
+      covers(run({ goTo: 2 }, 'toggleBlackout', 'clearAll', 'next', 'toggleBlackout', 'putBack')),
+    ).toEqual({
+      blackout: true,
+      wallpaper: false,
+    });
+  });
+
   it('draws as an engine state of its own: the practice presentation, what comes next, nothing else', () => {
     const state = practiceState(run('next'));
     expect(state.live).toMatchObject({ presentationId: PRACTICE_ID, slideIndex: 0, slideCount: 5 });

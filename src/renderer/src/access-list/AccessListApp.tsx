@@ -15,6 +15,7 @@ import {
 } from '../../../shared/access-list';
 import { gmailKey, type AccessPerson } from '../../../shared/access-protocol';
 import { plural } from '../../../shared/text';
+import { shortcutKey } from '../operator/useKeymap';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { TextInput } from '../ui/Field';
@@ -213,7 +214,8 @@ export function AccessListApp() {
   // ⌘F (Ctrl+F) goes to the search, unless a dialog has the keyboard.
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'f') return;
+      // With a Gujarati or Hindi layout, the F key's place (hunt S3-3).
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || shortcutKey(e).toLowerCase() !== 'f') return;
       if (document.querySelector('[aria-modal="true"]')) return;
       e.preventDefault();
       searchBox.current?.focus();

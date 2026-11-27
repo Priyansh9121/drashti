@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { BLACK, builtIn, WHITE } from '../../src/shared/appearance/appearances';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { chooseMenuItem, launchApp, openLibrary, operatorPage, operatorReady, slidesOf } from './helpers';
+import { helpOn } from './help';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -67,6 +68,7 @@ for (const id of ['dhaja', 'tiranga']) {
     const { app } = await launchApp();
     const win = await operatorPage(app);
     await operatorReady(win);
+    await helpOn(win);
     await chooseMenuItem(app, `appearance-${id}`);
     await expect(win.locator('html')).toHaveAttribute('data-appearance', id);
     await inAShow(win);
@@ -150,7 +152,9 @@ const AT_9ED5D00: Record<string, unknown> = {
     underline: ['rgb(138, 180, 248)'],
     row: ['oklab(0.76608 -0.0191589 -0.106575 / 0.7)', 'rgb(38, 38, 43)'],
     heading: ['rgb(200, 200, 207)'],
-    under: [0, 72, 300, 579],
+    // alpha.24 (the owner's QA24-ACCESS-STRIP A, 27 Nov 2026): the access line is said in the status bar, in place of
+    // the version, and its strip under the top bar went, so the column is 24 px higher and taller again, 603 px.
+    under: [0, 48, 300, 603],
     headingText: 'Stage screen',
   },
   white: {
@@ -162,7 +166,8 @@ const AT_9ED5D00: Record<string, unknown> = {
     underline: ['rgb(29, 78, 216)'],
     row: ['oklab(0.488178 -0.0212675 -0.21611 / 0.7)', 'rgb(223, 225, 230)'],
     heading: ['rgb(67, 70, 78)'],
-    under: [0, 72, 300, 579],
+    // alpha.24: no access line's strip under the top bar (the owner's QA24-ACCESS-STRIP A), as in Black.
+    under: [0, 48, 300, 603],
     headingText: 'Stage screen',
   },
 };
@@ -235,6 +240,7 @@ test('Black draws exactly as at 9ed5d00: header, chosen tab and row, headings, a
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await helpOn(win);
   await chooseMenuItem(app, `appearance-${BLACK.id}`);
   await expect(win.locator('html')).toHaveAttribute('data-appearance', BLACK.id);
   await inAShow(win);
@@ -264,6 +270,7 @@ test('White, softened to paper (Session 60, Q60-36 Q2 A), draws its new colours 
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await helpOn(win);
   await chooseMenuItem(app, `appearance-${WHITE.id}`);
   await expect(win.locator('html')).toHaveAttribute('data-appearance', WHITE.id);
   await inAShow(win);

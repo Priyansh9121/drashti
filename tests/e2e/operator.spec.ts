@@ -90,9 +90,12 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
   await expect(output.locator('[data-lang="en"]')).toHaveText('Second test slide');
   await outputCaughtUp();
 
-  // Arrow keys and space move through the slides, and stop at the end.
+  // Arrow keys and space move through the slides, and stop at the end. The hall's screen keeps the slide before up while
+  // the new one waits for its pictures (Session 59, X19: render/SlideLayerView.tsx, picturesFirst), so for a moment both
+  // are on the page: the third slide alone, once it is the only one there (alpha.24 oopsfix's Windows ask: the single
+  // locator met both, a strict-mode error, 1 of 3).
   await win.keyboard.press('ArrowRight');
-  await expect(output.locator('[data-lang="en"]')).toHaveText('Third test slide');
+  await expect(output.locator('[data-lang="en"]')).toHaveText(['Third test slide']);
   await outputCaughtUp();
   await win.keyboard.press('ArrowRight');
   await win.keyboard.press('Space');

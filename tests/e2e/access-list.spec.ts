@@ -408,6 +408,17 @@ test('the Access List sorts, shows one status, searches, and saves the rows show
     await gmailHeader.getByRole('button').click();
     await expect(gmailHeader).toHaveAttribute('aria-sort', 'descending');
     await expect.poll(async () => (await shown(list))[0]).toBe(s.approver);
+    // ⌘F (Ctrl+F) goes to the search, with a Gujarati or Hindi keyboard layout too: by the F key's place, whose
+    // letter that layout names (hunt S3-3).
+    await gmailHeader.getByRole('button').focus();
+    await list.evaluate(
+      (mods) =>
+        document.activeElement?.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'ફ', code: 'KeyF', bubbles: true, cancelable: true, ...mods }),
+        ),
+      process.platform === 'darwin' ? { metaKey: true } : { ctrlKey: true },
+    );
+    await expect(list.getByTestId('access-search')).toBeFocused();
     // One status, then all again; the search.
     await list.getByTestId('access-show-requested').click();
     await expect.poll(() => shown(list)).toEqual(['d.placeholder@example.com']);

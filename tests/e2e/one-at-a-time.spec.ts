@@ -95,7 +95,8 @@ async function up(win: Page): Promise<{ blackout: boolean; wallpaper: boolean; b
  * The covers and the video, both ways, through these buttons (Pro Mode's or Simple Mode's): Black-out and the
  * Wallpaper take the playing video off the screen, and do not bring it back as they come off; the video's row put up
  * takes them off; a slide stays under a cover and comes back as it was. LIVE's line, its time bar and the bar of clears
- * never show the video beside a cover. Each cover replaces the other, and Oops takes the cover off to show its slide.
+ * never show the video beside a cover. Each cover replaces the other, and Oops takes the cover off to show its slide;
+ * a cover a mistaken Next took off, Oops puts back.
  */
 async function bothWays(
   win: Page,
@@ -172,6 +173,23 @@ async function bothWays(
   await expect(wallpaper).toBeVisible();
   await win.keyboard.press('F9');
   await expect(wallpaper).toHaveCount(0);
+  await expect(blackout).toHaveCount(0);
+  await expect(slide).toContainText('Placeholder words one');
+
+  // Under Black-out, Next by mistake takes it off and the hall sees the next slide; Oops puts Black-out back, the slide
+  // that was under it under it again (alpha.24 bug hunt S2-2: the hall saw that slide instead of black).
+  await covers.blackout.click();
+  await expect(blackout).toBeVisible();
+  await win.keyboard.press('PageDown');
+  await expect(blackout).toHaveCount(0);
+  await expect(slide).toContainText('Placeholder words two');
+  await win.keyboard.press('F9');
+  await expect(blackout).toBeVisible();
+  await expect(covers.blackout).toHaveText(/is on/u);
+  expect(await up(win)).toMatchObject({ blackout: true, wallpaper: false });
+  await expect.poll(async () => (await snapshot(win)).layers.slide?.slideIndex).toBe(0);
+  // Off again: the slide from before the mistake.
+  await covers.blackout.click();
   await expect(blackout).toHaveCount(0);
   await expect(slide).toContainText('Placeholder words one');
 }

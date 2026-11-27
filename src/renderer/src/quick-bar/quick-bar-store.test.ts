@@ -130,7 +130,8 @@ describe('the quick bar in Pro Mode’s window', () => {
     ];
     await pressQuick(0);
     expect(sent).toEqual([{ type: 'playItem', playlistId: 'pl1', itemId: 'it2' }]);
-    // A slide up: it comes off, and the picture goes up.
+    // A slide up: it comes off and the picture goes up in ONE change (alpha.24 bug hunt S3-1: two changes showed the
+    // slide leaving over the old background, and took two presses of Oops to take back).
     sent.length = 0;
     const state = initialEngineState();
     useEngine.setState({
@@ -138,10 +139,10 @@ describe('the quick bar in Pro Mode’s window', () => {
     });
     await pressQuick(1);
     expect(sent).toEqual([
-      { type: 'clearLayer', layer: 'slide' },
       {
         type: 'setBackground',
         background: { kind: 'media', mediaId: 'm1', media: 'image', fit: 'fit', loop: false },
+        slideOff: true,
       },
     ]);
     sent.length = 0;

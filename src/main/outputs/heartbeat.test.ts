@@ -151,6 +151,56 @@ describe('the outputs’ heartbeat', () => {
     expect(stuck[0]?.reason).toContain(`painted revision ${frozen} of ${rev}`);
   });
 
+  // alpha.24 bug hunt S2-3: live captions (and a level dragged) are revisions Main's listeners never hear of, so the
+  // revision after the last one painted was never in the heartbeat's list, and a page that stopped painting while
+  // captions ran was never judged behind.
+  it('an output that stops painting while live captions run is stuck once a report comes 3 s after a show change', () => {
+    run(20_000, { hall: () => rev });
+    const frozen = rev;
+    // A caption, never told to the heartbeat: the page stops painting before it.
+    rev++;
+    run(1000, { hall: () => frozen });
+    // Next (a show change), then a caption every second.
+    rev++;
+    beat.changed(rev);
+    const changedAt = now;
+    for (let i = 0; i < 10 && stuck.length === 0; i++) {
+      rev++;
+      run(1000, { hall: () => frozen });
+    }
+    expect(stuck).toHaveLength(1);
+    // Judged at the first report 3 s after the show change, as without captions.
+    expect(stuck[0]?.at).toBe(changedAt + BEHIND_MS);
+    expect(stuck[0]?.reason).toMatch(
+      new RegExp(`^painted revision ${String(frozen)} of \\d+, 3 s after the change$`, 'u'),
+    );
+  });
+
+  it('a healthy output is never judged stuck while live captions run fast: 10 a second through 10 minutes of show changes', () => {
+    let painted = rev;
+    for (let s = 0; s < 600; s++) {
+      // Ten captions a second; each report names the one before the last (the last came just now, not painted yet).
+      rev += 10;
+      painted = rev - 1;
+      // A show change every 5 s, after the captions: painted only by the next report, a second later.
+      if (s % 5 === 0) {
+        rev++;
+        beat.changed(rev);
+      }
+      run(1000, { hall: () => painted });
+    }
+    expect(stuck).toEqual([]);
+  });
+
+  it('a page reporting before its first frame (-1) while the show changes is judged by its silence only, as before', () => {
+    for (let i = 0; i < 30; i++) {
+      rev++;
+      beat.changed(rev);
+      run(2000, { hall: () => -1 });
+    }
+    expect(stuck).toEqual([]);
+  });
+
   it('an output that is not visible or not showing is never judged; nor is one just opened', () => {
     judged = [];
     run(60_000);

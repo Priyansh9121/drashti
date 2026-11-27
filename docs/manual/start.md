@@ -1,6 +1,6 @@
 # Start here
 
-Drashti puts slides, pictures, videos and sound on the hall's screens. This manual goes through every part of its window, one chapter each, and tells each feature the same way: what it is, when you would use it, and how, in short steps. On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows the menu bar is hidden: press Alt to show it.
+Drashti puts slides, pictures, videos and sound on the hall's screens. This manual goes through every part of its window, one chapter each, and tells each feature the same way: what it is, when you would use it, and how, in short steps. On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows the menu bar is hidden: tap **Alt** to show it.
 
 ## The window at a glance
 
@@ -64,7 +64,7 @@ Drashti puts slides, pictures, videos and sound on the hall's screens. This manu
 
 ## The status bar
 
-**What it is.** The line along the very bottom. It says how many screens are showing, where the sound goes, what is coming in, any warning, and Drashti's version. **Audience off**, **Stage off**, **Audio muted** or **Video muted** show there while they are so.
+**What it is.** The line along the very bottom. It says how many screens are showing, where the sound goes, what is coming in, any warning, and Drashti's version. **Audience off**, **Stage off**, **Audio muted** or **Video muted** show there while they are so. With no internet, after about 2 minutes **No access list** shows there, short, in place of the version; rest the mouse on it (or let a screen reader read it) for the whole line, **Can’t reach the access list: Drashti keeps working for … more.** **Help** there shows every **?** and the keys on the buttons (**Help and when something goes wrong › What is this?**).
 
 **When you would use it.** Whenever you want to know at a glance that all is well.
 
@@ -79,7 +79,7 @@ Drashti puts slides, pictures, videos and sound on the hall's screens. This manu
 
 ## Using this manual
 
-**What it is.** This manual, inside Drashti. It needs no internet. Each **?** on a panel's heading first shows its short help in that panel. **Open the manual** there opens this manual at that panel's chapter and feature.
+**What it is.** This manual, inside Drashti. It needs no internet. With **Help** on in the status bar, each **?** on a panel's heading first shows its short help in that panel. **Open the manual** there opens this manual at that panel's chapter and feature.
 
 **When you would use it.** Whenever you are not sure how something works.
 

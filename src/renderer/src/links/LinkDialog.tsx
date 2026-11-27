@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { formatBytes } from '../../../shared/format';
 import type { LinkQuality, LinkView } from '../../../shared/links';
 import {
+  aboveTheUsual,
   checkLink,
-  DEFAULT_LINK_MAX_HEIGHT,
   heightLabel,
   linkKind,
   linkQualities,
@@ -54,6 +54,9 @@ function LinkWindow({ audio }: { audio: boolean }) {
   const quality = qualities?.options.some((option) => option.value === qualityPick)
     ? qualityPick
     : (qualities?.initial ?? null);
+  // Above the 1080p it begins with, by the short side of the picture (hunt S3-2: an upright 1080 × 1920 is not).
+  const above =
+    current && view.look?.video && quality !== null ? aboveTheUsual(view.look.video, quality) : false;
   useEffect(() => {
     if (!text.trim() || submitting) return;
     const timer = setTimeout(() => {
@@ -164,7 +167,7 @@ function LinkWindow({ audio }: { audio: boolean }) {
             hint={
               audio
                 ? 'Best keeps all of the video’s sound; a lower one makes a smaller file.'
-                : quality > DEFAULT_LINK_MAX_HEIGHT
+                : above
                   ? 'Above 1080p: a bigger file, harder to play smoothly, for little the hall can see.'
                   : 'To begin with, the best up to 1080p.'
             }
@@ -263,7 +266,9 @@ function linkProgress(view: LinkView): string | null {
         ? ` ${String(Math.round((100 * progress.done) / progress.total))}%`
         : '';
       // A YouTube download says its quality too (alpha.24): "Downloading from YouTube 42%, 720p".
-      const quality = view.kind === 'youtube' && view.choice ? `, ${qualityWords(view.choice)}` : '';
+      // An upright video's as its Quality names it (hunt S3-2: 1080 × 1920 is 1080p).
+      const quality =
+        view.kind === 'youtube' && view.choice ? `, ${qualityWords(view.choice, view.look?.video)}` : '';
       return `Downloading from ${view.kind === 'youtube' ? 'YouTube' : 'Dropbox'}${percent}${quality}`;
     }
     case 'unpacking':

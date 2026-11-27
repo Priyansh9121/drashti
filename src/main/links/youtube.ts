@@ -1,6 +1,7 @@
 import {
   YOUTUBE_ID,
   qualityWords,
+  sideOf,
   type LinkCaptionTrack,
   type VideoDetails,
   type YouTubeChoice,
@@ -314,6 +315,7 @@ export function youtubeProblem(errors: string): YoutubeProblem {
 }
 
 interface Format {
+  width?: unknown;
   height?: unknown;
   vcodec?: unknown;
   acodec?: unknown;
@@ -373,16 +375,27 @@ export function parseDetails(
   const bestSound = (aac.length > 0 ? aac : sound)
     .map((f) => bytesOf(f, duration))
     .reduce<number | null>((best, b) => (b !== null && (best === null || b > best) ? b : best), null);
-  const heights = [...new Set(video.map((f) => num(f.height) ?? 0))].sort((a, b) => b - a);
-  const detailsHeights = heights.map((height) => {
-    const at = video.filter((f) => num(f.height) === height);
-    // H.264 where the video offers it at that height (as -S vcodec:h264 prefers), else the biggest.
-    const h264 = at.filter((f) => text(f.vcodec).startsWith('avc1'));
-    const pick = (h264.length > 0 ? h264 : at)
-      .map((f) => bytesOf(f, duration))
-      .reduce<number | null>((best, b) => (b !== null && (best === null || b > best) ? b : best), null);
-    return { height, bytes: pick === null ? null : pick + (bestSound ?? 0) };
-  });
+  const heights = [...new Set(video.map((f) => num(f.height) ?? 0))];
+  const detailsHeights = heights
+    .map((height) => {
+      const at = video.filter((f) => num(f.height) === height);
+      // H.264 where the video offers it at that height (as -S vcodec:h264 prefers), else the biggest.
+      const h264 = at.filter((f) => text(f.vcodec).startsWith('avc1'));
+      const pick = (h264.length > 0 ? h264 : at)
+        .map((f) => bytesOf(f, duration))
+        .reduce<number | null>((best, b) => (b !== null && (best === null || b > best) ? b : best), null);
+      // An upright picture (a phone's, a Short: hunt S3-2) is named by its short side, its width: 1080 × 1920 is
+      // YouTube's own 1080p. A landscape or square one by its height, as before; and so is a height where any
+      // format's width is not given (it could be either).
+      const side = Math.max(0, ...at.map((f) => Math.min(num(f.width) ?? height, height)));
+      return {
+        height,
+        ...(side > 0 && side < height ? { side } : {}),
+        bytes: pick === null ? null : pick + (bestSound ?? 0),
+      };
+    })
+    // Best first: by the short side, then the height (a landscape video's: tallest first, as before).
+    .sort((a, b) => sideOf(b) - sideOf(a) || b.height - a.height);
   const title = text(info['title']).trim() || 'YouTube video';
   return {
     ok: true,
@@ -400,6 +413,9 @@ export function parseDetails(
   };
 }
 
-/** A choice in words, for the log: "MP4, 1080p", "MP3" or "MP3 at 128 kbps". */
-export const choiceWords = (choice: YouTubeChoice): string =>
-  choice.type === 'mp3' ? qualityWords(choice) : `MP4, ${qualityWords(choice)}`;
+/**
+ * A choice in words, for the log: "MP4, 1080p", "MP3" or "MP3 at 128 kbps"; with the video, an upright one's as its
+ * Quality names it (hunt S3-2: 1080 × 1920 is "MP4, 1080p").
+ */
+export const choiceWords = (choice: YouTubeChoice, video?: VideoDetails): string =>
+  choice.type === 'mp3' ? qualityWords(choice) : `MP4, ${qualityWords(choice, video)}`;

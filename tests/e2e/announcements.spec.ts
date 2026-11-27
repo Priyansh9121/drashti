@@ -239,8 +239,23 @@ test('an announcement comes off by itself when its time is up; Simple Mode refus
     const [first] = (await q.list()).waiting;
     expect((await q.approve(first?.id ?? '', 'ticker')).ok).toBe(true);
     await expect(main.getByTestId('ticker')).toContainText('for five minutes');
+    // The operator changes the screens while it runs (a message up): a step for Oops, with the ticker in it.
+    await dispatch(win, {
+      type: 'showMessage',
+      message: { id: 'placeholder-note', text: 'Placeholder note' },
+    });
+    await expect(main.locator('[data-layer="messages"]')).toContainText('Placeholder note');
     await expect(main.getByTestId('ticker')).toHaveCount(0, { timeout: 20_000 });
     expect((await q.list()).earlier[0]).toMatchObject({ id: first?.id, status: 'ended' });
+    // Oops takes the message back and never brings back the ended announcement (alpha.24 bug hunt S2-1: it came back
+    // for good, until Clear ticker), drawn on the screen.
+    const oops = (await dispatch(win, { type: 'oops' })) as { ok: boolean; changed?: boolean; rev?: number };
+    expect(oops).toMatchObject({ ok: true, changed: true });
+    await expect
+      .poll(async () => Number(await main.getByTestId('output-root').getAttribute('data-painted-rev')))
+      .toBeGreaterThanOrEqual(oops.rev ?? Number.POSITIVE_INFINITY);
+    await expect(main.locator('[data-layer="messages"]')).toHaveCount(0);
+    await expect(main.getByTestId('ticker')).toHaveCount(0);
     await p.reload();
     await expect(p.getByTestId('announce-sent').first()).toContainText('Shown');
 

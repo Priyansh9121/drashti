@@ -196,8 +196,12 @@ export interface VideoDetails {
   captions?: LinkCaptionTrack[];
   /** In seconds, when YouTube says. */
   duration: number | null;
-  /** The heights it offers, tallest first, each with about how big its MP4 would be (null: not said). */
-  heights: { height: number; bytes: number | null }[];
+  /**
+   * The heights it offers, best first, each with about how big its MP4 would be (null: not said). An upright video's
+   * (a phone's, a Short: alpha.24, hunt S3-2) also says the short side of its picture, its width (`side`: 1080 for
+   * 1080 × 1920, YouTube's own 1080p), by which it is named, begun with and judged; a download asks for its height.
+   */
+  heights: { height: number; side?: number; bytes: number | null }[];
   /** About how big its MP3 would be (the best sound). */
   soundBytes: number | null;
 }
@@ -253,9 +257,11 @@ const mp3Bytes = (kbps: number, duration: number | null): number | null =>
 
 /**
  * The window's Quality choices for a checked YouTube video (alpha.24), and the one chosen to begin with. An MP4: every
- * height the video offers, tallest first, each with about how big its file is, the best up to 1080p to begin with (as
- * a Download with no choice takes; the smallest when every one is taller). None when the video lists no heights: no
- * choice is shown, and a Download says what it says today. An MP3: the best sound to begin with, then each bitrate.
+ * height the video offers, best first, each with about how big its file is, the best up to 1080p to begin with (as
+ * a Download with no choice takes; the smallest when every one is taller). Each is named by the short side of its
+ * picture (hunt S3-2: an upright 1080 × 1920 is "1080p"), its value the height a download asks for. None when the
+ * video lists no heights: no choice is shown, and a Download says what it says today. An MP3: the best sound to begin
+ * with, then each bitrate.
  */
 export function linkQualities(
   video: VideoDetails,
@@ -275,7 +281,7 @@ export function linkQualities(
     };
   const options = video.heights.map((h) => ({
     value: h.height,
-    label: heightLabel(h.height),
+    label: heightLabel(sideOf(h)),
     bytes: h.bytes,
   }));
   return {
@@ -324,22 +330,39 @@ export function choiceBytes(video: VideoDetails, choice: YouTubeChoice): number 
   return video.heights.find((h) => h.height === choice.height)?.bytes ?? null;
 }
 
-/** A choice in the status bar's words: "720p", "2160p (4K)", "MP3" or "MP3 at 128 kbps". */
-export const qualityWords = (choice: YouTubeChoice): string =>
-  choice.type === 'mp3'
-    ? choice.kbps
-      ? `MP3 at ${String(choice.kbps)} kbps`
-      : 'MP3'
-    : heightLabel(choice.height ?? 0);
+/**
+ * A choice in the status bar's words: "720p", "2160p (4K)", "MP3" or "MP3 at 128 kbps". With the video, an upright
+ * one's height by the short side of its picture, as its Quality names it (1920 is "1080p" for 1080 × 1920).
+ */
+export const qualityWords = (choice: YouTubeChoice, video?: VideoDetails): string => {
+  if (choice.type === 'mp3') return choice.kbps ? `MP3 at ${String(choice.kbps)} kbps` : 'MP3';
+  const offered = video?.heights.find((h) => h.height === choice.height);
+  return heightLabel(offered ? sideOf(offered) : (choice.height ?? 0));
+};
+
+/**
+ * The short side of a quality's picture (alpha.24, hunt S3-2), by which it is named, begun with and judged against
+ * 1080p: its height, or an upright video's width (1080 for YouTube's 1080 × 1920); its height when yt-dlp gave no
+ * width.
+ */
+export const sideOf = (h: { height: number; side?: number }): number => h.side ?? h.height;
+
+/** Is this MP4 Quality above the 1080p a Download begins with, by the short side of its picture (alpha.24)? */
+export function aboveTheUsual(video: VideoDetails, height: number): boolean {
+  const offered = video.heights.find((h) => h.height === height);
+  return (offered ? sideOf(offered) : height) > DEFAULT_LINK_MAX_HEIGHT;
+}
 
 /**
  * The height an MP4 download asks for: the one picked, while the video offers it and the setting allows
- * it; else the tallest the setting allows (the video's heights are tallest first); none when every one is
- * above the setting.
+ * it; else the best the setting allows (the video's heights are best first); none when every one is
+ * above the setting. The setting is judged by the short side of the picture (alpha.24, hunt S3-2): an
+ * upright 1080 × 1920 is 1080p.
  */
 export function chosenHeight(video: VideoDetails, maxHeight: number, picked: number | null): number | null {
-  if (picked !== null && picked <= maxHeight && video.heights.some((h) => h.height === picked)) return picked;
-  return video.heights.find((h) => h.height <= maxHeight)?.height ?? null;
+  if (picked !== null && video.heights.some((h) => h.height === picked && sideOf(h) <= maxHeight))
+    return picked;
+  return video.heights.find((h) => sideOf(h) <= maxHeight)?.height ?? null;
 }
 
 /** Why a quality above the setting cannot be picked, and where it is changed. */

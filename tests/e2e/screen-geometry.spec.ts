@@ -810,6 +810,27 @@ test('Screens: Adjust the picture… moves a corner by its numbers, the keys and
   await dialog.getByTestId('adjust-preview').click({ position: { x: 4, y: 4 } });
   await win.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
   await expect.poll(async () => (await savedGeometry(win, screenId))?.corners[2]).toEqual({ x: 0, y: 0 });
+  // With a Gujarati or Hindi keyboard layout too, by the Z key's place, whose letter that layout names (hunt S3-3):
+  // Shift with it redoes the drag, and it alone undoes it again.
+  const layoutZ = (key: string, shiftKey: boolean) =>
+    win.evaluate(
+      ({ key: k, shiftKey: shift, mods }) =>
+        document.querySelector('[data-testid="adjust-preview"]')?.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: k,
+            code: 'KeyZ',
+            shiftKey: shift,
+            bubbles: true,
+            cancelable: true,
+            ...mods,
+          }),
+        ),
+      { key, shiftKey, mods: process.platform === 'darwin' ? { metaKey: true } : { ctrlKey: true } },
+    );
+  await layoutZ('ઍ', true);
+  await expect.poll(async () => ((await savedGeometry(win, screenId))?.corners[2].x ?? 0) < 0).toBe(true);
+  await layoutZ('ઝ', false);
+  await expect.poll(async () => (await savedGeometry(win, screenId))?.corners[2]).toEqual({ x: 0, y: 0 });
   // Reset: nothing set, the screen as before.
   await dialog.getByTestId('adjust-reset').click();
   await expect.poll(() => savedGeometry(win, screenId)).toBeNull();

@@ -11,6 +11,7 @@ import {
   outputPage,
   setUpScreen,
 } from './helpers';
+import { helpOn } from './help';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow, WELCOME } from './placeholder-show';
 
 /*
@@ -186,6 +187,52 @@ test('Pro Mode: the keyboard goes through the window as it is laid out, its focu
   console.log(`Tab order by region: ${order.join(' > ')}`);
   const expected = ['header', 'Playlists', 'Slides', 'Live', 'Show controls', 'Status'];
   expect(order.filter((r) => expected.includes(r))).toEqual(expected);
+  // The status bar's Help switch (alpha.24) is a stop there, Help off or on.
+  expect(
+    stops.filter((s) => s.testid === 'help-toggle').map((s) => s.region),
+    'Help, a stop in the status bar',
+  ).toEqual(['Status']);
+  await app.close();
+});
+
+test('Pro Mode with Help on: every ? is a stop, its focus seen, in sight and in its landmark, the regions in order, and Help a stop in the status bar', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await setUp(win);
+  await win.reload();
+  await operatorReady(win);
+  // Help on (alpha.24: off at a first start), so every ? is drawn and in the keyboard's way, as in alpha.23.
+  await helpOn(win);
+  const shown = await win.locator('[data-what-is-this]:visible').count();
+  expect(shown, 'the ? in sight with Help on').toBeGreaterThan(0);
+  const stops = await tabRound(win);
+  expect(stops.length).toBeGreaterThan(30);
+  expect(
+    stops.filter((s) => !s.ring).map((s) => `${s.region}: ${s.name}`),
+    'stops without a focus ring',
+  ).toEqual([]);
+  expect(
+    stops.filter((s) => !s.inView).map((s) => `${s.region}: ${s.name}`),
+    'stops out of sight',
+  ).toEqual([]);
+  expect(
+    stops.filter((s) => s.region === 'none' && s.role !== 'separator').map((s) => s.name),
+    'stops outside any landmark',
+  ).toEqual([]);
+  // Every ? in sight is a stop, once.
+  expect(stops.filter((s) => s.name.startsWith('What is this?')).length, 'a stop for every ? in sight').toBe(
+    shown,
+  );
+  const order = regionOrder(stops);
+  console.log(`Tab order by region, Help on: ${order.join(' > ')}`);
+  const expected = ['header', 'Playlists', 'Slides', 'Live', 'Show controls', 'Status'];
+  expect(order.filter((r) => expected.includes(r))).toEqual(expected);
+  expect(
+    stops.filter((s) => s.testid === 'help-toggle').map((s) => s.region),
+    'Help, a stop in the status bar',
+  ).toEqual(['Status']);
   await app.close();
 });
 
@@ -195,6 +242,32 @@ test('Pro Mode: with a notice up, no focused control is hidden by it: a see-thro
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
   await setUp(win);
+  // A notice, as the main process sends one (after saving diagnostics, a restore, a command that failed).
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const w of BrowserWindow.getAllWindows())
+      if (w.webContents.getURL().includes('index.html'))
+        w.webContents.send('app:notice', {
+          text: 'Placeholder notice that stays while the keyboard goes round',
+        });
+  });
+  await expect(win.getByTestId('operator-notice')).toBeVisible();
+  const stops = await tabRound(win);
+  expect(stops.length).toBeGreaterThan(30);
+  expect(
+    stops.filter((s) => s.covered).map((s) => `${s.region}: ${s.name}`),
+    'stops covered by something drawn over them',
+  ).toEqual([]);
+  await app.close();
+});
+
+test('Pro Mode with Help on: with a notice up, no focused control (every ? too) is hidden by it: a see-through one may lie over it (WCAG 2.4.11; Sessions 31–36, A9; the owner, 11 Nov 2026)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await setUp(win);
+  // Help on (alpha.24: off at a first start): every ? is a stop the notice may lie over.
+  await helpOn(win);
   // A notice, as the main process sends one (after saving diagnostics, a restore, a command that failed).
   await app.evaluate(({ BrowserWindow }) => {
     for (const w of BrowserWindow.getAllWindows())

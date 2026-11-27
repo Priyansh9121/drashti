@@ -4,6 +4,7 @@ import {
   NO_CONTACT_COME_BACK_TEXT,
   NO_CONTACT_STOP_TEXT,
   NO_CONTACT_STOP_TITLE,
+  OFFLINE_SHORT_TEXT,
   offlineLeftText,
   offlineLine,
 } from './access';
@@ -18,7 +19,7 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-describe('the line under the top bar', () => {
+describe('the line in the status bar (under the top bar before alpha.24)', () => {
   it('says the owner’s own example: 14 days 6 hours', () => {
     expect(offlineLine(14 * DAY + 6 * HOUR + 59 * MINUTE)).toBe(
       'Can’t reach the access list: Drashti keeps working for 14 days 6 hours more.',
@@ -43,6 +44,16 @@ describe('the line under the top bar', () => {
       [-5_000, 'less than a minute'],
     ];
     for (const [ms, words] of forms) expect(offlineLeftText(ms), String(ms)).toBe(words);
+  });
+
+  it('in sight, a short form that fits the version’s room, never cut; the whole line in its tooltip and read out (alpha.24)', () => {
+    // Lead 2's decision inside the owner's QA24-ACCESS-STRIP A (27 Nov 2026): the version's room ("Drashti 1.0.0-alpha.24",
+    // about 123 px at 1024 wide) shows only "Can’t reach th…" of the whole line.
+    expect(OFFLINE_SHORT_TEXT).toBe('No access list');
+    expect(OFFLINE_SHORT_TEXT.length).toBeLessThanOrEqual(14);
+    // What the whole line is about, which stays the owner's own words.
+    expect(offlineLine(DAY)).toContain('access list');
+    expect(OFFLINE_SHORT_TEXT).not.toContain('…');
   });
 });
 

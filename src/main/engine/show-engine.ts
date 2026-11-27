@@ -92,7 +92,15 @@ import {
 import { NO_PLAYLISTS, type PlayItem, type PlaylistSource } from './playlist-source';
 import { keepMoves, keepRepeat, learnedFiles, pointsAside, resolvePlaying, videoFilesFor } from './playing';
 import { type Playing, type PlayingRef, playingNow, playingOf } from '../../shared/engine/playing';
-import { type CannotPlayTook, cannotPlayOff, noPictureOff, oneAtATime, putsUp } from './one-at-a-time';
+import {
+  type CannotPlayTook,
+  cannotPlayOff,
+  coversBack,
+  noPictureOff,
+  oneAtATime,
+  putsUp,
+} from './one-at-a-time';
+import { type Covers, coversOf, seenIn } from '../../shared/engine/covers';
 import {
   clipLeftMs,
   type DeckEntry,
@@ -230,6 +238,8 @@ interface OopsStep {
   layers: Layers;
   /** A Repeat Slides playlist going round then: it goes round again. */
   repeat: RepeatRun | null;
+  /** Black-out and the Wallpaper just before and just after the change (alpha.24 bug hunt S2-2, coversBack). */
+  covers: { before: Covers; after: Covers };
 }
 
 /**
@@ -534,10 +544,11 @@ export class ShowEngine {
   readonly session = randomUUID();
   private readonly listeners = new Set<(state: EngineState) => void>();
   /**
-   * What Clear all took down (from), while the layers are still what it left (to), and the Repeat Slides
-   * that was going round then (Put it back sets it going again).
+   * What Clear all took down (from), while the layers are still what it left (to), the Repeat Slides
+   * that was going round then (Put it back sets it going again), and the covers then (alpha.24 bug hunt
+   * S2-2: one on then and still on stays on).
    */
-  private cleared: { from: Layers; to: Layers; repeat: RepeatRun | null } | null = null;
+  private cleared: { from: Layers; to: Layers; repeat: RepeatRun | null; covers: Covers } | null = null;
   /** The Nexts Back can undo, latest last. */
   private steps: Step[] = [];
   /** What Oops puts back (Session 55), latest last: before each of the operator's last OOPS_STEPS changes. */
@@ -1512,11 +1523,13 @@ export class ShowEngine {
   /**
    * An announcement's time is up (or the operator took it off): off the
    * screens, as a message or in the ticker, and out of what Put it back
-   * would bring back.
+   * and Oops would bring back (alpha.24 bug hunt S2-1: Oops brought it back,
+   * and nothing took it down again but Clear ticker).
    */
   takeDown(id: string): CommandResult {
     return this.atOnce(() => {
       if (this.cleared) this.cleared = { ...this.cleared, from: withoutItem(this.cleared.from, id) };
+      this.oopsSteps = this.oopsSteps.map((step) => ({ ...step, layers: withoutItem(step.layers, id) }));
       return this.apply([
         { type: 'message/hide', messageId: id },
         { type: 'ticker/hide', itemId: id, at: this.now() },
@@ -3345,6 +3358,8 @@ export class ShowEngine {
           actions: [
             { type: 'show/put', live: step.live, layers: this.withLengths(step.layers) },
             { type: 'repeat/set', repeat: step.repeat },
+            // Black-out or the Wallpaper as it was (alpha.24 bug hunt S2-2): a wrong row's click under one took it off.
+            ...coversBack(step.covers.before, step.covers.after, coversOf(this.state), seenIn(step.layers)),
           ],
         };
       }
@@ -3362,6 +3377,8 @@ export class ShowEngine {
             { type: 'show/put', live: this.state.live, layers: this.withLengths(cleared.from) },
             // Repeat Slides that was going round goes round again.
             ...(cleared.repeat ? [{ type: 'repeat/set' as const, repeat: cleared.repeat }] : []),
+            // A cover on at Clear all and still on stays on, the layers back under it (alpha.24 bug hunt S2-2, as Oops).
+            ...coversBack(cleared.covers, cleared.covers, coversOf(this.state), seenIn(cleared.from)),
           ],
         };
       }
@@ -3378,7 +3395,13 @@ export class ShowEngine {
       case 'setBackground':
         return {
           ok: true,
-          actions: [{ type: 'background/set', background: this.backgroundLayer(command.background) }],
+          actions: [
+            // In the slide's place, in one change (alpha.24 bug hunt S3-1), as showMedia puts a picture's row up.
+            ...(command.slideOff === true
+              ? [{ type: 'layer/clear' as const, layer: 'slide' as const, at: this.now() }]
+              : []),
+            { type: 'background/set', background: this.backgroundLayer(command.background) },
+          ],
         };
       case 'playAudio':
         return {
@@ -3645,7 +3668,7 @@ export class ShowEngine {
     }
     if (cause === 'clearAll') {
       if (next.layers !== prev.layers)
-        this.cleared = { from: prev.layers, to: next.layers, repeat: prev.repeat };
+        this.cleared = { from: prev.layers, to: next.layers, repeat: prev.repeat, covers: coversOf(prev) };
     } else if (this.cleared && next.layers !== this.cleared.to) {
       this.cleared = null;
     }
@@ -3660,6 +3683,7 @@ export class ShowEngine {
         live: prev.live,
         layers: prev.layers,
         repeat: prev.repeat,
+        covers: { before: coversOf(prev), after: coversOf(next) },
         ...(translationChanged ? { translationHidden: prev.translationHidden ?? false } : {}),
       });
       if (this.oopsSteps.length > OOPS_STEPS) this.oopsSteps.shift();
@@ -3700,8 +3724,10 @@ export class ShowEngine {
     // LIVE shows one thing at a time (Session 56, one-at-a-time.ts): a video the operator puts up takes the Wallpaper and
     // Black-out off, and so does a slide or a picture (the lead's open question: never the time bar's moves, which are
     // bookkeeping); a cover going on, or a video the engine would bring up by itself under one, stops what plays.
-    // Before all that follows from the layers (what comes next, the time bars, the sound, Oops).
-    const putUp = operator && !this.bookkeeping && putsUp(actions, next);
+    // Before all that follows from the layers (what comes next, the time bars, the sound, Oops). Oops and Put it back set
+    // the covers themselves, as they were (alpha.24 bug hunt S2-2, coversBack): what they put back is no put up of its own.
+    const restores = cause === 'oops' || cause === 'putBack';
+    const putUp = operator && !this.bookkeeping && !restores && putsUp(actions, next);
     next = oneAtATime(prev, next, { operator, putUp }, this.now()).reduce(reduce, next);
     const edited = this.options.prepareVideoEdits?.(
       prev,
@@ -3742,13 +3768,11 @@ export class ShowEngine {
       if (target?.mediaId !== zoomed.mediaId || target.showing !== zoomed.showing)
         next = reduce(next, { type: 'zoom/set', liveZoom: null });
     }
-    if (
-      cause === 'clearAll' ||
-      cause === 'clearLayer' ||
-      (next.blackout && !prev.blackout) ||
-      (next.wallpaper && !prev.wallpaper) ||
-      next.stopped
-    ) {
+    // A cover put back by Oops or Put it back is no cover going on: what was cued under it stays held for Go
+    // (QA24-OOPS-COVERS, the oopsfix review's SHOULD-1). A video starting or crossfading goes by the checks below.
+    const coverWentOn =
+      ((next.blackout && !prev.blackout) || (next.wallpaper && !prev.wallpaper)) && !restores;
+    if (cause === 'clearAll' || cause === 'clearLayer' || coverWentOn || next.stopped) {
       if (next.videoCue) next = reduce(next, { type: 'videoCue/set', cue: null });
       if (next.videoCrossfade) next = reduce(next, { type: 'videoCrossfade/set', fade: null });
       if (next.videoStart) next = reduce(next, { type: 'videoStart/set', start: null });

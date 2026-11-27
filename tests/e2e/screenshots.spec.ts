@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { BUILT_IN } from '../../src/shared/appearance/appearances';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../src/shared/lower-thirds';
 import type { PageGlobals } from './helpers';
+import { helpOn } from './help';
 import { device, networkOn, NETWORK_ENV, pairByQr, pairingCode, TABLET } from './devices';
 import {
   chooseMenuItem,
@@ -277,6 +278,7 @@ test('the operator window and its panels', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1920, height: 1080 });
+  await helpOn(win);
   await running(win);
   // The live column from its top (starting the timer and showing the message scrolled it): the previews.
   const live = win.getByRole('complementary', { name: 'Live' });
@@ -2660,7 +2662,8 @@ test('access by Gmail, live: the bar saying when access ends, the bar with no in
       ok: true,
     });
     await expect(win.getByTestId('access-ends-notice')).toHaveCount(0, { timeout: 30_000 });
-    // No answer from the list (as with no internet): the line under the top bar, while the show goes on.
+    // No answer from the list (as with no internet): the line in the status bar, in place of the version (alpha.24),
+    // while the show goes on.
     stopAnswering(list);
     await expect(win.getByTestId('access-offline-notice')).toBeVisible({ timeout: 45_000 });
     await shot(win, 'access-offline');

@@ -250,6 +250,47 @@ test('YouTube: Quality offers what the video has, with sizes, the usual to begin
   await app.close();
 });
 
+test('YouTube: an upright video (a phone’s, a Short) is named by its short side: its 1080p (1080 × 1920) to begin with, never called above 1080p; the one chosen downloads at its own height (hunt S3-2)', async () => {
+  test.setTimeout(300_000);
+  const { app, win, log } = await open({
+    heights: [256, 426, 640, 854, 1280, 1920, 3840],
+    portrait: true,
+    steps: 30,
+    stepMs: 100,
+  });
+  const field = win.getByTestId('link-paste');
+  await pasteLink(win, LINK, false);
+  await expect(win.getByTestId('link-name')).toHaveValue('Placeholder video');
+  const quality = field.getByRole('combobox', { name: 'Quality' });
+  // 1080 × 1920 is its 1080p, the best up to 1080p; 2160 × 3840 its 4K.
+  await expect(quality).toHaveValue('1920');
+  await expect(quality.locator('option')).toHaveText([
+    /^2160p \(4K\), about [\d.]+ MB$/u,
+    /^1080p, about [\d.]+ MB$/u,
+    /^720p, about [\d.]+ MB$/u,
+    /^480p, about [\d.]+ MB$/u,
+    /^360p, about [\d.]+ MB$/u,
+    /^240p, about [\d.]+ MB$/u,
+    /^144p, about [\d.]+ MB$/u,
+  ]);
+  await expect(field.getByText('To begin with, the best up to 1080p.')).toBeVisible();
+  // Its 4K is above 1080p; its 1080p is not.
+  await quality.selectOption('3840');
+  await expect(field.getByText(/^Above 1080p: a bigger file/u)).toBeVisible();
+  await quality.selectOption('1920');
+  await expect(field.getByText('To begin with, the best up to 1080p.')).toBeVisible();
+  await expect(field.getByText(/^Above 1080p/u)).toHaveCount(0);
+  // Download: yt-dlp is asked for its real height, and the status bar says 1080p.
+  await win.getByTestId('link-download').click();
+  const status = win.getByTestId('link-status');
+  await expect(status).toContainText('Downloading from YouTube');
+  await expect(status).toContainText(', 1080p');
+  await linkFinished(win);
+  expect((await view(win)).choice).toEqual({ type: 'mp4', height: 1920 });
+  expect(readFileSync(log, 'utf8')).toMatch(/^done mp4 1920$/mu);
+  await app.close();
+});
+
 test('YouTube: when yt-dlp fails, plain words with what to do next, never its own', async () => {
   test.setTimeout(120_000);
   const { app, win } = await open({

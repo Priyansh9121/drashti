@@ -162,6 +162,11 @@ export interface MenuActions {
   /** Help > Guides… (Sessions 31–36, both modes): the guides inside Drashti. */
   guides: () => void;
   /**
+   * Help › Show Help (alpha.24, helpmenu; both modes): the status bar's Help switch, ticked while it is on (help-menu.ts).
+   * Left out (or null): no such item.
+   */
+  help?: { on: boolean; toggle: () => void } | null;
+  /**
    * The Tools menu (Session 60, x36; the owner's "A, More tools + menu"; Pro Mode): Show a Window…, Add a Video Input…,
    * Picture in Picture… and QR code…, then the Lower Thirds studio, the MIDI controller and OSC, each opening its
    * window in the operator window. Left out (or null): no Tools menu.
@@ -509,6 +514,18 @@ export function installMenu(actions: MenuActions): void {
       { id: 'manual', label: 'Drashti Manual…', click: actions.manual },
       // The guides inside Drashti, in both modes (Simple Mode is given the operator's and presenter's only).
       { id: 'guides', label: 'Guides…', click: actions.guides },
+      // The status bar's Help switch (alpha.24, helpmenu), ticked while it is on; no key of its own, as the switch.
+      ...(actions.help
+        ? [
+            {
+              id: 'help-switch',
+              label: 'Show Help',
+              type: 'checkbox',
+              checked: actions.help.on,
+              click: actions.help.toggle,
+            } as MenuItemConstructorOptions,
+          ]
+        : []),
       { type: 'separator' },
       // The keys sheet, Pro Mode's (Simple Mode's buttons show their keys). No accelerator: ? is the page's key,
       // and a menu's would get round the guards for fields and dialogs.

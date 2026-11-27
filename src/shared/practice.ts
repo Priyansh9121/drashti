@@ -1,3 +1,4 @@
+import { type Covers, coversOf, coversPutBack } from './engine/covers';
 import type { EngineState } from './engine/state';
 import { initialEngineState } from './engine/state';
 import type { RenderSlide, TextElement } from './model';
@@ -84,6 +85,11 @@ export interface Practice {
   wallpaper: boolean;
   /** What Clear all took down, while Put it back can bring it back. */
   cleared: number | null;
+  /**
+   * The covers at Clear all (QA24-OOPS-COVERS): Put it back leaves on one on then and still on, as a show does
+   * (engine/covers.ts). Null with nothing to put back.
+   */
+  clearedCovers: Covers | null;
   /** Counts every change, as the engine's rev does, so pictures know to draw again. */
   rev: number;
 }
@@ -93,6 +99,7 @@ export const PRACTICE_START: Practice = {
   blackout: false,
   wallpaper: false,
   cleared: null,
+  clearedCovers: null,
   rev: 0,
 };
 
@@ -110,7 +117,8 @@ export type PracticeAction =
 /** One step of the practice show, as the real show takes it (a little simpler: one presentation). */
 export function practiceStep(p: Practice, action: PracticeAction, count = LINES.length): Practice {
   const next = (change: Partial<Practice>): Practice => ({ ...p, ...change, rev: p.rev + 1 });
-  const show = (index: number) => next({ index, cleared: null, blackout: false, wallpaper: false });
+  const show = (index: number) =>
+    next({ index, cleared: null, clearedCovers: null, blackout: false, wallpaper: false });
   if (typeof action === 'object') {
     if (action.goTo < 0 || action.goTo >= count) return p;
     return show(action.goTo);
@@ -124,9 +132,17 @@ export function practiceStep(p: Practice, action: PracticeAction, count = LINES.
       return p.index !== null && p.index > 0 ? show(p.index - 1) : p;
     case 'clearAll':
     case 'clearSlide':
-      return p.index === null ? p : next({ index: null, cleared: action === 'clearAll' ? p.index : null });
-    case 'putBack':
-      return p.cleared === null ? p : show(p.cleared);
+      if (p.index === null) return p;
+      return action === 'clearAll'
+        ? next({ index: null, cleared: p.index, clearedCovers: coversOf(p) })
+        : next({ index: null, cleared: null, clearedCovers: null });
+    case 'putBack': {
+      // The slide back, the covers as a show's Put it back leaves them (QA24-OOPS-COVERS): one on at Clear all and still
+      // on stays on, the slide under it; any other comes off, so the slide is seen.
+      if (p.cleared === null) return p;
+      const at = p.clearedCovers ?? coversOf(p);
+      return { ...show(p.cleared), ...coversPutBack(at, at, coversOf(p), true) };
+    }
     // One cover at a time, as in a show (Session 57, one-at-a-time.ts): the one put on takes the other off.
     case 'toggleBlackout':
       return next(p.blackout ? { blackout: false } : { blackout: true, wallpaper: false });

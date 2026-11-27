@@ -180,7 +180,11 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
    */
   z.object({ type: z.literal('setWallpaper'), on: z.boolean() }),
   z.object({ type: z.literal('toggleWallpaper') }),
-  z.object({ type: z.literal('setBackground'), background }),
+  /**
+   * The live background. `slideOff`: the slide comes off in the same change, as a picture's or a video's playlist row
+   * puts it up (alpha.24 bug hunt S3-1: the quick bar's picture and video pins; one Oops takes it back).
+   */
+  z.object({ type: z.literal('setBackground'), background, slideOff: z.literal(true).optional() }),
   /** A video input from this computer's list up as the live background (Session 50), the slide staying over it. */
   z.object({ type: z.literal('showInput'), inputId: id }),
   /**

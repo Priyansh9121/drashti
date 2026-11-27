@@ -183,10 +183,19 @@ export function offlineLeftText(ms: number): string {
 
 /**
  * While the list has not answered for about 2 minutes (no internet): how long Drashti keeps working, in the owner's
- * own words (Session 55, 29 Oct 2026: "Drashti keeps working for 14 days 6 hours more"). One line under the top bar.
+ * own words (Session 55, 29 Oct 2026: "Drashti keeps working for 14 days 6 hours more"). One line in the status bar, in
+ * place of the version (alpha.24; under the top bar before).
  */
 export const offlineLine = (ms: number): string =>
   `Can’t reach the access list: Drashti keeps working for ${offlineLeftText(ms)} more.`;
+
+/**
+ * The line's words in sight in the status bar (alpha.24, lead 2's decision inside the owner's QA24-ACCESS-STRIP A,
+ * 27 Nov 2026): the line takes the version's room there (about 123 px at 1024 wide), which holds only "Can’t reach th…"
+ * of the whole line, so the eye gets these few words, whole, with the warning icon. The whole line (offlineLine), the
+ * owner's own words with how long is left, is its tooltip and what a screen reader reads.
+ */
+export const OFFLINE_SHORT_TEXT = 'No access list';
 
 /** What the lock screen says for each reason Drashti is not let in. */
 export const LOCK_REASON_TEXT: Record<AccessReason, string> = {

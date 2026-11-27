@@ -308,6 +308,12 @@ export interface DrashtiBridge {
     onShowGuides(listener: () => void): () => void;
     /** Help › Drashti Manual… was chosen (x37, Session 60), in either mode. */
     onShowManual(listener: () => void): () => void;
+    /**
+     * Help › Show Help (alpha.24, helpmenu; operator window, either mode): the status bar's Help switch as it stands, for
+     * the item's tick; and the item chosen, with the switch to turn on or off.
+     */
+    help(on: boolean): Promise<null>;
+    onHelpChosen(listener: (on: boolean) => void): () => void;
     /** Help › Report a Problem… was chosen (x49), in either mode. */
     onShowReport(listener: () => void): () => void;
     /** An item of the Tools menu was chosen (Session 60, x36; Pro Mode): which. */

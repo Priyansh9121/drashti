@@ -1,6 +1,7 @@
 import { type Playing, playingNow } from '../../shared/engine/playing';
 import type { EngineState, VideoSeeks } from '../../shared/engine/state';
 import { type PlaybackSeek, playbackAtMs, playbackSpanMs } from '../../shared/media';
+import { type Covers, coversPutBack, seenIn } from '../../shared/engine/covers';
 import type { EngineAction } from './actions';
 
 /*
@@ -14,6 +15,9 @@ import type { EngineAction } from './actions';
  * - A video going up by the operator's own change (a command: a row's click, Next, Back, Media, a slide's background
  *   video or a video on the slide, a video input on the audience, Oops, Put it back, Play on its time bar) takes both
  *   covers off, so what was put up is seen.
+ * - Oops and Put it back put the screens back as they were before the change they take back, the covers too (alpha.24
+ *   bug hunt S2-2; QA24-OOPS-COVERS, coversBack): a cover that change took off comes back, one on all along stays, one
+ *   put on since stays while nothing seen comes back, any other comes off.
  * - Wallpaper and Black-out each take the other off in the same change. An older save with both recovers Black-out.
  * - A cover going on (or a video the engine would bring up by itself under one: a slide moving on by itself, restart
  *   recovery of a file that held both) stops what plays: the background's video or video input comes off, as clearing
@@ -102,16 +106,25 @@ const PUTS_UP: ReadonlySet<EngineAction['type']> = new Set([
 /**
  * Whether a change puts something up on the audience's picture (Session 56, the lead's open question to the owner,
  * slides and pictures): a slide (a click on the slide already up too, Next, Back, a deck's click, a timer shown alone),
- * a picture, a colour or another app's window as the background, or what Back, Oops and Put it back bring back; and
- * something is up there after it. Only the operator's own changes count (show-engine.ts: never the time bar's moves, a
- * jump to a marker or what the engine does by itself), and never what is heard or laid over the picture (a sound, a
- * message, a lower third, the ticker, the picture-in-picture box).
+ * a picture, a colour or another app's window as the background, or what Back brings back; and something is up there
+ * after it (Oops and Put it back set the covers themselves: coversBack). Only the operator's own changes count
+ * (show-engine.ts: never the time bar's moves, a jump to a marker or what the engine does by itself), and never what is
+ * heard or laid over the picture (a sound, a message, a lower third, the ticker, the picture-in-picture box).
  */
 export function putsUp(actions: readonly EngineAction[], next: EngineState): boolean {
-  return (
-    (next.layers.slide !== null || next.layers.background !== null) &&
-    actions.some((a) => PUTS_UP.has(a.type))
-  );
+  return seenIn(next.layers) && actions.some((a) => PUTS_UP.has(a.type));
+}
+
+/**
+ * The covers as Oops and Put it back leave them, as actions (alpha.24 bug hunt S2-2; QA24-OOPS-COVERS): the rule is
+ * shared/engine/covers.ts's coversPutBack, the practice show's too.
+ */
+export function coversBack(before: Covers, after: Covers, now: Covers, seen: boolean): EngineAction[] {
+  const covers = coversPutBack(before, after, now, seen);
+  return [
+    { type: 'blackout/set', on: covers.blackout },
+    { type: 'wallpaper/set', on: covers.wallpaper },
+  ];
 }
 
 /** Both covers off. */

@@ -4,13 +4,13 @@
 
 ## The Help menu
 
-**What it is.** **Drashti Manual…** (this manual), **Guides…** (the operator's, the presenter's, the admin's and the setup day's guides), **Keyboard Shortcuts…**, **Report a Problem…**, on the access-list owner's computer **Automatic Error Reports…** (the admin's guide, section 30), **Save Diagnostics** (the log of today, yesterday, the last 7 days or one day), **Caption and Translation Models…** (the admin's offline models for captions and translation, Pro Mode) and **Check for Updates…**.
+**What it is.** **Drashti Manual…** (this manual), **Guides…** (the operator's, the presenter's, the admin's and the setup day's guides), **Show Help** (the status bar's **Help**, below, ticked while it is on), **Keyboard Shortcuts…**, **Report a Problem…**, on the access-list owner's computer **Automatic Error Reports…** (the admin's guide, section 30), **Save Diagnostics** (the log of today, yesterday, the last 7 days or one day), **Caption and Translation Models…** (the admin's offline models for captions and translation, Pro Mode) and **Check for Updates…**.
 
 **When you would use it.** Whenever you need help, or after a problem.
 
 **How:**
 
-1. Choose **Help** in the menu bar (on Windows, press Alt first to show the menu bar).
+1. Choose **Help** in the menu bar (on Windows, tap **Alt** first to show the menu bar: held, it shows the buttons' keys instead).
 2. Choose what you need.
 3. Press **Esc** to close a window opened from it.
 
@@ -18,15 +18,16 @@
 
 ## What is this?
 
-**What it is.** The small **?** on a panel's heading (and beside **Next** and **Back**, the show controls, **Stream**, **Phones** and the status bar). It says in two or three sentences what the panel is for, in the panel's own space. **Open the manual** opens this manual at that panel's chapter.
+**What it is.** **Help**, in the status bar along the bottom, shows the small **?** on each panel's heading (and beside **Next** and **Back**, the show controls, **Stream**, **Phones** and the status bar) and the keys on the buttons. Drashti starts with it off, so the window is calm, and remembers it on this computer. A **?** says in two or three sentences what the panel is for, in the panel's own space; **Open the manual** opens this manual at that panel's chapter. Without Help, hold **Alt** (**Option ⌥** on a Mac) to see the keys while you hold it; let go of it, then press the key (a key pressed with it still held does nothing).
 
-**When you would use it.** When you are not sure what a panel does.
+**When you would use it.** When you are not sure what a panel does, or which key a button has.
 
 **How:**
 
-1. Press the **?** on the panel's heading.
-2. Read its sentences under the heading.
+1. Press **Help** in the status bar (in a narrow window, its round **?**), or choose **Help**, then **Show Help** in the menu bar. It stays pressed, and **Show Help** ticked, while it is on.
+2. Press the **?** on the panel's heading, and read its sentences under the heading.
 3. Press **Open the manual** to read more, or **Got it** to close them.
+4. Press **Help** again (or choose **Show Help** again) to put every **?** and key away.
 
 ![What is this? opened on the Messages panel](../screenshots/what-is-this.png)
 

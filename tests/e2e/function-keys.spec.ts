@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
 import type { PageGlobals } from './helpers';
+import { helpOn } from './help';
 import {
   chooseMenuItem,
   holdStill,
@@ -176,6 +177,7 @@ test('Simple Mode’s buttons name F12 for the Wallpaper (its key line went in S
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await helpOn(win);
   expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.app.singleKeys())).toBe(true);
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
   await expect(win.getByTestId('simple-mode')).toBeVisible();
