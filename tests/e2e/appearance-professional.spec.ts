@@ -221,11 +221,11 @@ for (const { a, source } of CONTRAST_LOOKS) {
       await win.setViewportSize({ width: 1024, height: 645 });
       await win.emulateMedia({ reducedMotion: 'reduce' });
       await operatorReady(win);
+      await chooseMenuItem(app, `appearance-${source ? 'follow' : a.id}`);
       if (source)
         await app.evaluate(({ nativeTheme }, value) => {
           nativeTheme.themeSource = value;
         }, source);
-      await chooseMenuItem(app, `appearance-${source ? 'follow' : a.id}`);
       await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
       await expect(win.locator('html')).toHaveAttribute('data-window-look', source ? 'depth' : 'flat');
       // Three genuine library results: a title, slide text and a kirtan detail, plus an unrelated selection.
