@@ -139,13 +139,27 @@ describe('the primary button’s kind, kept in use', () => {
     // Its background moved a pixel within its box (background-position 0 1px, a24-streamwarm) was drawn as a repeated
     // picture: CI's Mac made two kinds of its own at the keeper's first step, 20 s after the window opened (the gradient
     // drawn into a picture first, then that picture under the rounded corners), as the Stream panel's test traced.
-    const still = keeperMove(false);
-    const moved = keeperMove(true);
+    const still = keeperMove(false, 1);
+    const moved = keeperMove(true, 1);
     expect(still).toEqual({});
     expect(moved).toEqual({ transform: 'translateY(1px)' });
     for (const step of [still, moved])
       expect(Object.keys(step).some((k) => k.startsWith('background'))).toBe(false);
     expect(keeper()).not.toContain('background-position');
+  });
+
+  it('moves it one device pixel at any screen scale, so its edge never reaches past the cover', () => {
+    // The review of streamwarm 793ac30a4: a whole CSS pixel down put the button's bottom edge on the cover's edge, and at
+    // Windows' 125 %, 175 % and 225 % a strip of its border showed below the cover, 20 s in every 40 s (measured).
+    for (const ratio of [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 3]) {
+      expect(keeperMove(false, ratio), `${String(ratio)}: at rest`).toEqual({});
+      expect(keeperMove(true, ratio), `${String(ratio)}: moved`).toEqual({
+        transform: `translateY(${String(1 / ratio)}px)`,
+      });
+    }
+    // A ratio not known (none, or nonsense) moves it a CSS pixel, as at 1.
+    expect(keeperMove(true, 0)).toEqual({ transform: 'translateY(1px)' });
+    expect(keeperMove(true, Number.NaN)).toEqual({ transform: 'translateY(1px)' });
   });
 
   it('draws it again often enough to stay in the GPU’s cache', () => {
