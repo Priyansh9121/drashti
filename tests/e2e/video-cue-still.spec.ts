@@ -583,6 +583,11 @@ for (const mode of ['pro', 'simple'] as const)
       const timerId = await makeTimer(win);
       await slidesUp(win);
       if (mode === 'simple') {
+        // PiP must be chosen in Pro Mode before Simple Mode may show or hide it (as in simple-features.spec.ts).
+        const enabled = await win.evaluate(() =>
+          (globalThis as PageGlobals).drashti.app.setSimpleFeature('picture-in-picture', true),
+        );
+        expect(enabled.ok).toBe(true);
         await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
         await expect(win.getByTestId('simple-mode')).toBeVisible();
       }
@@ -652,8 +657,15 @@ test('Pro Mode at 1024 × 645 and 1410 × 900: a cued video waiting while a vide
       const before = await settledStill(win, selector, `${where}, a cue waiting`);
       expect(before.length, `${where}: the picture, Back, Next, Oops, Go and Cancel are there`).toBe(6);
       rows.push(await geometry(win, `${where}: a cue waiting, a video playing`));
+      const waiting = (await snapshot(win)).videoCue?.id;
+      expect(waiting, 'the manual cue is waiting').toBeTruthy();
       expect(await startWatching(win, selector)).toBe(before.length);
-      expect((await dispatch(win, { type: 'clearLayer', layer: 'background' })).ok).toBe(true);
+      // Replacing the playing background with a colour removes its bar and keeps the manual cue. clearLayer
+      // deliberately cancels every video cue (show-engine.ts), so it cannot exercise a waiting cue's position.
+      expect(
+        (await dispatch(win, { type: 'setBackground', background: { kind: 'color', color: '#205020' } })).ok,
+      ).toBe(true);
+      expect((await snapshot(win)).videoCue?.id, 'the same manual cue is still waiting').toBe(waiting);
       await expect(win.getByTestId('time-bars')).toHaveCount(0);
       await letTimePass(win, 800, 'frames after the time bar went');
       rows.push(await geometry(win, `${where}: the video taken off`));
