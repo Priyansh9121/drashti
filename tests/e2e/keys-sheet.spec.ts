@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { KEY_GROUPS, KEYMAP } from '../../src/shared/keymap';
+import { KEY_GROUPS, keyGroups, KEYMAP } from '../../src/shared/keymap';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
@@ -17,15 +17,15 @@ import {
 import { logLines } from './log-lines';
 
 /*
- * The keys sheet (Session 25): Help > Keyboard Shortcuts…, or ? when no field has the focus, in Pro
- * Mode only. It lists every key in KEYMAP, grouped by what the operator is doing, as this computer
- * writes them, and says they follow what the operators already press (Session 50).
+ * The keys sheet (Session 25): Help > Keyboard Shortcuts…, or ? when no field has the focus. It lists every key in
+ * KEYMAP, grouped by what the operator is doing, as this computer writes them, and says they follow what the operators
+ * already press (Session 50). Simple Mode's (a25 item 3, alpha.24) lists the keys that act there.
  */
 
 const menuHas = (app: Awaited<ReturnType<typeof launchApp>>['app'], id: string) =>
   app.evaluate(({ Menu }, itemId) => Menu.getApplicationMenu()?.getMenuItemById(itemId) != null, id);
 
-test('the keys sheet opens from the Help menu and with ?, lists every key, and is Pro Mode’s only', async () => {
+test('the keys sheet opens from the Help menu and with ?, lists every key, and Simple Mode has its own, of its keys only', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
@@ -74,13 +74,29 @@ test('the keys sheet opens from the Help menu and with ?, lists every key, and i
   await expect(sheet).toHaveCount(0);
   await search.fill('');
 
-  // Simple Mode keeps its key line: no menu item, and ? does nothing.
+  // Simple Mode has a sheet of its own (a25 item 3, in alpha.24 by the owner's 48-item list; until then it had none: no
+  // menu item, and ? did nothing): Help › Keyboard Shortcuts… and ? open it, with only the keys that act in Simple Mode
+  // (no Search, Screens or quick bar), and no switch for the single-letter keys (Pro Mode's setting).
   await chooseMenuItem(app, 'switch-mode');
   await expect(win.getByTestId('simple-mode')).toBeVisible();
-  expect(await menuHas(app, 'keyboard-shortcuts')).toBe(false);
+  expect(await menuHas(app, 'keyboard-shortcuts')).toBe(true);
+  await chooseMenuItem(app, 'keyboard-shortcuts');
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByTestId('keys-simple')).toContainText('Simple Mode');
+  await expect(sheet.getByTestId('keys-group')).toHaveCount(keyGroups(true).length);
+  await expect(sheet.getByTestId('keys-single')).toHaveCount(0);
+  for (const label of ['Next slide', 'Clear all', 'Black-out', 'Wallpaper', 'Audience on', 'Undo'])
+    await expect(sheet).toContainText(label);
+  for (const label of ['Search', 'The quick bar’s pins', 'Audience on or off'])
+    await expect(sheet).not.toContainText(label);
+  await expectNoSeriousA11yIssues(win, 'Simple Mode’s keys sheet');
+  await win.keyboard.press('Escape');
+  await expect(sheet).toHaveCount(0);
   await win.evaluate(() => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   });
+  await win.keyboard.press('Shift+Slash');
+  await expect(sheet).toBeVisible();
   await win.keyboard.press('Shift+Slash');
   await expect(sheet).toHaveCount(0);
   await app.close();

@@ -20,7 +20,10 @@ const PAGE: GoMomentClock = {
 
 /** The operator preview's wait for its cued picture's start at Go (QA23-CUELIVE-1). */
 export interface AfterStart {
-  /** Runs `run` once this page's cued picture has set its rate at Go (at once if it has); returns its cancel. */
+  /**
+   * Runs `run` once this page's cued picture has given the sign waited for (render/cue-started.ts: its rate set at Go,
+   * or its first moving frame shown after it), at once if it has; returns its cancel.
+   */
   whenStarted(run: () => void): () => void;
   /** Where it never starts (it failed, say): the work runs this long after Go at the latest. */
   fallbackMs: number;
