@@ -1041,14 +1041,14 @@ test('a Lively fold at the column’s end: the column scrolls back at once and n
 });
 
 /**
- * At the press that folds Show a Window: its insides' first button's colours, and, a frame later, the colours of that
- * button in the copy left behind (null when no copy is drawn). The copy's closed shadow root is kept by wrapping
- * attachShadow in this page from now on.
+ * At the press that folds Show a Window: its insides' first button's look (its fill, words, edge and corner) and the
+ * section's bottom corners, and, a frame later, the same of the copy left behind (null when no copy is drawn). The copy's
+ * closed shadow root is kept by wrapping attachShadow in this page from now on.
  */
-const copyColours = (win: Page) =>
+const copyLook = (win: Page) =>
   win.evaluate(
     () =>
-      new Promise<{ live: string; copy: string | null }>((resolve) => {
+      new Promise<{ live: string; copy: string | null; row: string; corners: string | null }>((resolve) => {
         const w = window as unknown as { shadows?: ShadowRoot[] };
         if (!w.shadows) {
           w.shadows = [];
@@ -1062,12 +1062,20 @@ const copyColours = (win: Page) =>
             return root;
           };
         }
-        const colours = (el: Element | null | undefined) =>
-          el ? `${getComputedStyle(el).backgroundColor} ${getComputedStyle(el).color}` : null;
-        // Read now: once the press has folded it, the button is gone from the page and has no colours of its own.
-        const live = colours(
-          document.querySelector('[data-testid="section-show-a-window"] [id$="-body"] [data-variant]'),
-        );
+        const look = (el: Element | null | undefined) => {
+          if (!el) return null;
+          const st = getComputedStyle(el);
+          return `${st.backgroundColor} ${st.color} ${st.borderTopColor} ${st.borderTopLeftRadius}`;
+        };
+        const corners = (el: Element | null | undefined) => {
+          if (!el) return null;
+          const st = getComputedStyle(el);
+          return `${st.borderBottomLeftRadius} ${st.borderBottomRightRadius}`;
+        };
+        // Read now: once the press has folded it, the button is gone from the page and has no look of its own.
+        const section = document.querySelector('[data-testid="section-show-a-window"]');
+        const live = look(section?.querySelector('[id$="-body"] [data-variant]'));
+        const row = corners(section);
         const before = w.shadows.length;
         window.addEventListener(
           'click',
@@ -1076,7 +1084,9 @@ const copyColours = (win: Page) =>
               const root = (w.shadows ?? []).slice(before).at(-1);
               resolve({
                 live: live ?? 'none',
-                copy: colours(root?.querySelector('[data-variant]')),
+                copy: look(root?.querySelector('[data-variant]')),
+                row: row ?? 'none',
+                corners: corners(root?.querySelector('[data-leaving]')),
               });
             });
           },
@@ -1086,11 +1096,12 @@ const copyColours = (win: Page) =>
   );
 
 /*
- * Looks chosen by name, White and the light, coloured Sandalwood. Follow the computer is left out: once uilook merges it
- * draws in Depth, whose styling a leaving copy does not take (accepted for alpha.24); its round comes back with lead
- * 2's item 3 for alpha.25 (the fold's copy drawing in the window's whole look).
+ * Follow the computer as it starts, drawn in B · Depth (light on CI's runners), then White and the light, coloured
+ * Sandalwood, chosen by name and drawn flat. In Depth the copy takes the window's look too (lead 2's item 3, alpha.24):
+ * the filled pills its buttons are, and the rounded row's corners. In every look the copy's button has the live one's
+ * fill, words, edge and corner, and the copy the bottom corners of the row it folds out of.
  */
-test('a fold’s copy draws in the window’s appearance: White and Sandalwood, chosen by name, Calm and Lively (alpha.24, lead 2’s hands-on pass of uilook, problem 1)', async () => {
+test('a fold’s copy draws in the window’s appearance and look: Follow the computer (Depth), White and Sandalwood, Calm and Lively (alpha.24, lead 2’s hands-on pass of uilook, problem 1; lead 2’s item 3)', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
@@ -1098,24 +1109,35 @@ test('a fold’s copy draws in the window’s appearance: White and Sandalwood, 
   await operatorReady(win);
   await expect(win.locator('html')).toHaveAttribute('data-opened', '');
   const noChip = await chipless(win);
-  for (const look of ['white', 'sandalwood'] as const) {
-    await chooseMenuItem(app, `appearance-${look}`);
-    await expect(win.locator('html')).toHaveAttribute('data-appearance', look);
-    await expect(win.locator('html')).toHaveAttribute('data-base', 'light');
+  for (const look of ['follow', 'white', 'sandalwood'] as const) {
+    if (look === 'follow') await expect(win.locator('html')).toHaveAttribute('data-window-look', 'depth');
+    else {
+      await chooseMenuItem(app, `appearance-${look}`);
+      await expect(win.locator('html')).toHaveAttribute('data-appearance', look);
+      await expect(win.locator('html')).toHaveAttribute('data-base', 'light');
+      await expect(win.locator('html')).toHaveAttribute('data-window-look', 'flat');
+    }
     for (const motion of ['calm', 'lively'] as const) {
       await interfaceMotion(win, motion);
       await letTimePass(win, 900, 'the show has not changed for a moment, as a fold waits for');
       await pressFold(win);
       await expect(win.getByTestId(SECTION)).toBeVisible();
       const drawn = (await standing(win)) && !(await willScrollBack(win)) && !noChip;
-      const seen = copyColours(win);
+      const seen = copyLook(win);
       await win.getByTestId(`group-${SECTION}-toggle`).click();
-      const { live, copy } = await seen;
+      const { live, copy, row, corners } = await seen;
       await settled(win);
-      console.log(`${look}, ${motion}: the button ${live}, its copy ${copy ?? 'not drawn'}`);
-      // Drawn only with a chip where nothing holds it (ui/fold.ts); then in the window's own colours.
-      if (drawn) expect(copy, `${look}, ${motion}`).toBe(live);
-      else expect(copy, `${look}, ${motion}`).toBeNull();
+      console.log(
+        `${look}, ${motion}: the button ${live}, its copy ${copy ?? 'not drawn'}; the row's corners ${row}, the copy's ${corners ?? 'not drawn'}`,
+      );
+      // Drawn only with a chip where nothing holds it (ui/fold.ts); then in the window's own appearance and look.
+      if (drawn) {
+        expect(copy, `${look}, ${motion}`).toBe(live);
+        expect(corners, `${look}, ${motion}: the corners`).toBe(row);
+      } else {
+        expect(copy, `${look}, ${motion}`).toBeNull();
+        expect(corners, `${look}, ${motion}: the corners`).toBeNull();
+      }
     }
   }
   await app.close();

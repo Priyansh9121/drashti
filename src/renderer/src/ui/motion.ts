@@ -315,14 +315,189 @@ export function hostless(selector: string): string {
   return kept.length > 0 ? kept.join(', ') : ':not(*)';
 }
 
-/** Every style rule of these, however deep in layers and groups, with its :host parts taken out. */
-function dropHost(rules: CSSRuleList): void {
+/*
+ * A copy draws in the window's look too (alpha.24, lead 2's item 3; the re-reviews of uimotion 198f182cb MUST-1 (b) and
+ * a34c0d0cb NOTE-4). A look's rules key on <html> (B · Depth: `:root[data-window-look='depth']`, styles/look-depth.css)
+ * and on what the thing copied sat in (a column's `[data-zone]`, LIVE's sections `[data-testid='live-rest'] > div > *`),
+ * and a shadow root's rules see neither: in Depth a fold's copy drew flat buttons, 8 px with an edge, and square corners
+ * on its rounded row (lead 2's hands-on pass of uilook, row 28). So the copy's host carries what the looks key on in
+ * <html> and the copy's rules take <html>'s part as the host's (inCopy); the copy is drawn in a frame of the node's
+ * ancestors that draws nothing (frameLike); and a fold's copy takes its row's corners (sharedCorners).
+ */
+
+/**
+ * What the window's looks key on in <html>'s own attributes, which a copy's host carries: B · Depth's look and its base,
+ * and the buttons' keys hidden while Help is off (help/help.css: opacity alone; the release lead's review of copylook
+ * ee108ee50, SHOULD-1: a leaving dialog showed its Save key). Never the interface motion's (data-interface-motion,
+ * data-chip, data-opened, data-band-sweep), so no rule that moves anything comes alive in a copy.
+ */
+export const LOOK_KEYS: readonly string[] = ['data-window-look', 'data-base', 'data-keys-hidden'];
+
+/**
+ * What a copy's frame never carries of the ancestors it stands for: their ids, classes and styles (it draws nothing),
+ * and every attribute an arrival keys on (src/renderer/src/ui/copy-look.test.ts), so nothing starts moving in a copy.
+ */
+export const FRAME_DROPS: readonly string[] = [
+  'id',
+  'class',
+  'style',
+  'data-motion',
+  'data-lively',
+  'data-fold',
+  'data-lighting',
+];
+
+/** The attribute a copy and its frame carry a test id as (and the copy's rules name): nothing querying test ids finds them. */
+const COPY_TESTID = 'data-copy-testid';
+/** A copy's frame: drawing nothing, its pseudo-elements neither (the copy's sheet says so). */
+const FRAME = 'data-leaving-frame';
+const HTML_NS = 'http://www.w3.org/1999/xhtml';
+
+/** Where the run of attribute selectors from `from` ends (`[a][b="c"]`), quotes and escapes kept whole. */
+function attributesEnd(text: string, from: number): number {
+  let at = from;
+  while (text[at] === '[') {
+    let quote = '';
+    let i = at + 1;
+    for (; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === '\\') i += 1;
+      else if (quote !== '') {
+        if (ch === quote) quote = '';
+      } else if (ch === '"' || ch === "'") quote = ch;
+      else if (ch === ']') break;
+    }
+    if (i >= text.length) return at;
+    at = i + 1;
+  }
+  return at;
+}
+
+/**
+ * <html>'s part of each selector as the copy's host's (`:root[data-base="light"] .x` → `:host([data-base="light"]) .x`),
+ * where it starts a selector and is attributes the looks key on alone; any other (the interface motion's, a `:not()`, a
+ * pseudo-class, one inside brackets) is left as it is, and matches nothing in a copy, as before.
+ */
+function rootAsHost(selector: string): string {
+  let out = '';
+  let depth = 0;
+  let quote = '';
+  for (let i = 0; i < selector.length; i++) {
+    const ch = selector[i] ?? '';
+    if (ch === '\\') {
+      out += ch + (selector[i + 1] ?? '');
+      i += 1;
+      continue;
+    }
+    if (quote !== '') {
+      if (ch === quote) quote = '';
+      out += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === '(' || ch === '[') depth += 1;
+    else if (ch === ')' || ch === ']') depth -= 1;
+    else if (depth === 0 && selector.startsWith(':root', i) && /^$|[\s,>+~]/u.test(selector[i - 1] ?? '')) {
+      const end = attributesEnd(selector, i + 5);
+      const compound = selector.slice(i + 5, end);
+      const keys = [...compound.matchAll(/\[\s*([\w-]+)/gu)].map((m) => m[1] ?? '');
+      if (
+        compound !== '' &&
+        !/[\w:.#-]/u.test(selector[end] ?? '') &&
+        keys.every((k) => LOOK_KEYS.includes(k))
+      ) {
+        out += `:host(${compound})`;
+        i = end - 1;
+        continue;
+      }
+    }
+    out += ch;
+  }
+  return out;
+}
+
+/** A test id named by a selector, never one inside an escaped class name. */
+const TESTID = /(?<!\\)\[(\s*)data-testid(?=[\s\]=~|^$*])/gu;
+
+/**
+ * A page rule's selector as a copy's shadow root takes it: no :host parts (hostless); <html>'s part, where a look keys on
+ * it, as the host's (rootAsHost); and its test ids as the copy and its frame carry them.
+ */
+export function inCopy(selector: string): string {
+  return rootAsHost(hostless(selector)).replace(TESTID, `[$1${COPY_TESTID}`);
+}
+
+/** A copy's four corners. */
+export interface Corners {
+  topLeft: string;
+  topRight: string;
+  bottomRight: string;
+  bottomLeft: string;
+}
+
+/** The corners of `frame` (its radii) that `box` shares, within a pixel; '' where it does not. */
+export function sharedCorners(
+  box: { top: number; right: number; bottom: number; left: number },
+  frame: { top: number; right: number; bottom: number; left: number },
+  radii: Corners,
+): Corners {
+  const near = (a: number, b: number) => Math.abs(a - b) <= 1;
+  const top = near(box.top, frame.top);
+  const bottom = near(box.bottom, frame.bottom);
+  const left = near(box.left, frame.left);
+  const right = near(box.right, frame.right);
+  return {
+    topLeft: top && left ? radii.topLeft : '',
+    topRight: top && right ? radii.topRight : '',
+    bottomRight: bottom && right ? radii.bottomRight : '',
+    bottomLeft: bottom && left ? radii.bottomLeft : '',
+  };
+}
+
+/**
+ * A fold's copy is drawn on the background of what painted it around the node (ui/fold.ts, backgroundOf): where the
+ * node's box meets that one's corners, it takes their radii (Depth's rounded rows); none when the node painted it.
+ */
+function cornersFor(node: Element, box: DOMRect, background: string): Corners | null {
+  for (let at: Element | null = node; at && at !== document.body; at = at.parentElement) {
+    const st = getComputedStyle(at);
+    if (st.backgroundColor !== background) continue;
+    if (at === node) return null;
+    return sharedCorners(box, at.getBoundingClientRect(), {
+      topLeft: st.borderTopLeftRadius,
+      topRight: st.borderTopRightRadius,
+      bottomRight: st.borderBottomRightRadius,
+      bottomLeft: st.borderBottomLeftRadius,
+    });
+  }
+  return null;
+}
+
+/**
+ * One of the node's ancestors as part of a copy's frame: its tag and attributes (a test id as the copy's rules name it),
+ * so a look's rules about it reach the copy inside; drawing nothing (display: contents), moving nothing.
+ */
+function frameLike(el: Element): HTMLElement {
+  const tag = el.namespaceURI === HTML_NS && !el.localName.includes('-') ? el.localName : 'div';
+  const frame = document.createElement(tag);
+  for (const { name, value } of el.attributes)
+    if (!FRAME_DROPS.includes(name) && !name.startsWith('on'))
+      frame.setAttribute(name === 'data-testid' ? COPY_TESTID : name, value);
+  frame.setAttribute(FRAME, '');
+  frame.style.setProperty('display', 'contents', 'important');
+  frame.style.setProperty('animation', 'none', 'important');
+  frame.style.setProperty('transition', 'none', 'important');
+  return frame;
+}
+
+/** Every style rule of these, however deep in layers and groups, as a copy's shadow root takes it (inCopy). */
+function forCopy(rules: CSSRuleList): void {
   for (const rule of rules) {
     if (rule instanceof CSSStyleRule) {
-      const kept = hostless(rule.selectorText);
+      const kept = inCopy(rule.selectorText);
       if (kept !== rule.selectorText) rule.selectorText = kept;
     }
-    if ('cssRules' in rule) dropHost((rule as CSSGroupingRule).cssRules);
+    if ('cssRules' in rule) forCopy((rule as CSSGroupingRule).cssRules);
   }
 }
 
@@ -340,8 +515,13 @@ function pageStyles(): CSSStyleSheet[] {
     }
     sheet = new CSSStyleSheet();
     sheet.replaceSync(text.join('\n'));
-    // The copy draws in the window's own appearance, never the default one's (hostless).
-    dropHost(sheet.cssRules);
+    // The copy draws in the window's own appearance, never the default one's (hostless), and in its look (inCopy).
+    forCopy(sheet.cssRules);
+    // A copy's frame draws nothing, nor its pseudo-elements (Depth's ring of the ground over a column's corners is one).
+    sheet.insertRule(
+      `[${FRAME}]::before, [${FRAME}]::after { content: none !important; }`,
+      sheet.cssRules.length,
+    );
     const found = new Set<string>();
     tokensIn(sheet.cssRules, found);
     tokens = [...found];
@@ -365,6 +545,12 @@ export function leave(node: Element | null, kind: Leaving, place?: LeavingPlace)
   const layer = Number.parseInt(seen.zIndex, 10);
   host.style.cssText = `position:fixed;inset:0;pointer-events:none;z-index:${String(place ? FOLD_LAYER : Number.isNaN(layer) ? 70 : layer)}`;
   if (place) host.style.clipPath = place.clip;
+  // The window's look (lead 2's item 3): what the looks key on in <html>, so the copy's rules that take <html>'s part as
+  // the host's match as the page's match.
+  for (const key of LOOK_KEYS) {
+    const value = document.documentElement.getAttribute(key);
+    if (value !== null) host.setAttribute(key, value);
+  }
   // Where it was, the tokens it drew with: a colourful look's column has colours of its own ([data-zone], app.css),
   // which the host under <body> would not inherit (the Mac run of 9db112236: Sandalwood's copy took the window's panel
   // colour, not the right column's).
@@ -387,7 +573,13 @@ export function leave(node: Element | null, kind: Leaving, place?: LeavingPlace)
   });
   for (const el of [copy, ...copy.querySelectorAll('*')]) {
     el.removeAttribute('id');
-    el.removeAttribute('data-testid');
+    // Its test id as the copy's rules name it (inCopy): a look's rules about it reach it, and no query of the page's
+    // test ids finds it.
+    const testId = el.getAttribute('data-testid');
+    if (testId !== null) {
+      el.removeAttribute('data-testid');
+      el.setAttribute(COPY_TESTID, testId);
+    }
     el.removeAttribute('data-motion');
   }
   // A picture of it, never a player: a copied video or sound never loads or plays, and a page in it never loads.
@@ -412,8 +604,28 @@ export function leave(node: Element | null, kind: Leaving, place?: LeavingPlace)
     lineHeight: seen.lineHeight,
     ...(place ? { backgroundColor: place.background, overflow: 'hidden' } : {}),
   });
+  // A fold's copy: the corners of the row it folds out of, where they meet (Depth's rows are rounded).
+  const corners = place ? cornersFor(node, box, place.background) : null;
+  if (corners) {
+    if (corners.topLeft !== '') copy.style.borderTopLeftRadius = corners.topLeft;
+    if (corners.topRight !== '') copy.style.borderTopRightRadius = corners.topRight;
+    if (corners.bottomRight !== '') copy.style.borderBottomRightRadius = corners.bottomRight;
+    if (corners.bottomLeft !== '') copy.style.borderBottomLeftRadius = corners.bottomLeft;
+  }
   copy.dataset['leaving'] = kind;
-  shadow.append(copy);
+  // Drawn inside a frame of the node's ancestors up to <body> (frameLike): a look's rules about the column, the zone and
+  // the row it sat in reach it there as they reach it in the page.
+  let outer: Element = copy;
+  for (
+    let at = node.parentElement;
+    at && at !== document.body && at !== document.documentElement;
+    at = at.parentElement
+  ) {
+    const frame = frameLike(at);
+    frame.append(outer);
+    outer = frame;
+  }
+  shadow.append(outer);
   document.body.append(host);
   for (const { to, top, left } of scrolled) {
     to.scrollTop = top;

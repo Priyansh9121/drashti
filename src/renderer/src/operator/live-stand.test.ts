@@ -14,11 +14,11 @@ describe('blockAsItStands', () => {
     expect(blockAsItStands({ block: 380, scrollbar: 0, picture: { width: 348, height: 196 } })).toBe(380);
   });
 
-  it('adds back what a scrollbar beside it took from its picture, at the picture’s own shape', () => {
-    // An 11 px scrollbar: the 16:9 picture 337 wide is 6.2 px shorter than at 348, rounded up.
-    expect(blockAsItStands({ block: 360, scrollbar: 11, picture: { width: 337, height: 190 } })).toBe(367);
-    // A 4:3 picture: three quarters of the scrollbar's width.
-    expect(blockAsItStands({ block: 300, scrollbar: 16, picture: { width: 240, height: 180 } })).toBe(312);
+  it('adds back what a scrollbar beside it took from its picture, at the picture’s own shape, and a pixel to spare', () => {
+    // An 11 px scrollbar: the 16:9 picture 337 wide is 6.2 px shorter than at 348, rounded up, and a pixel.
+    expect(blockAsItStands({ block: 360, scrollbar: 11, picture: { width: 337, height: 190 } })).toBe(368);
+    // A 4:3 picture: three quarters of the scrollbar's width, and a pixel.
+    expect(blockAsItStands({ block: 300, scrollbar: 16, picture: { width: 240, height: 180 } })).toBe(313);
   });
 
   it('so the choice never flips: 504 px of column, 140 px wanted under the block', () => {
@@ -37,5 +37,54 @@ describe('blockAsItStands', () => {
   it('takes no picture (none drawn yet) as nothing to add back', () => {
     expect(blockAsItStands({ block: 200, scrollbar: 11, picture: null })).toBe(200);
     expect(blockAsItStands({ block: 200, scrollbar: 11, picture: { width: 0, height: 0 } })).toBe(200);
+  });
+});
+
+/*
+ * The review of uilook 6e6d4fea2, SHOULD-2: the estimate mixes rounded heights and widths (the block's and the picture's
+ * offsetHeight, the picture's offsetWidth), so where what the scrollbar takes is a few hundredths over a whole number
+ * the ceil can come out 1 px under what standing gives back, and in that 1 px band of window heights the choice would
+ * flip again. A sweep, a pixel at a time: pictures of every usual shape, widths a column gives, scrollbars that take
+ * room, the block's other parts at fractional heights, laid out as Chromium rounds them.
+ */
+describe('blockAsItStands, swept a pixel at a time', () => {
+  const round = (x: number) => Math.floor(x + 0.5);
+  const SHAPES = [
+    [1920, 1080],
+    [1366, 768],
+    [1280, 800],
+    [1024, 768],
+    [1280, 1024],
+    [1000, 563],
+  ] as const;
+
+  it('never stands again from scrolling at a height where standing would not stand (the choice never flips)', () => {
+    const flips: string[] = [];
+    for (const [w, h] of SHAPES)
+      for (let width = 300; width < 400; width += 0.5)
+        for (const bar of [11, 15, 16, 17])
+          for (let rest = 150; rest < 151; rest += 0.05) {
+            // Standing: the block and its picture as laid out, no scrollbar beside them.
+            const standing = round(rest + (width * h) / w);
+            // Scrolling: the scrollbar narrows the picture, and the block is shorter by as much as it took.
+            const narrow = width - bar;
+            const block = round(rest + (narrow * h) / w);
+            const judged = blockAsItStands({
+              block,
+              scrollbar: bar,
+              picture: { width: round(narrow), height: round((narrow * h) / w) },
+            });
+            // Each column height, a pixel at a time, round where the two meet: standing says scroll, so scrolling
+            // must say scroll too, or it would stand, not fit, and scroll again, round and round.
+            for (let column = standing + 100; column < standing + 180; column++) {
+              const standsNow = column - standing >= 140;
+              const standsFromScrolling = column - judged >= 140;
+              if (!standsNow && standsFromScrolling)
+                flips.push(
+                  `${String(w)}:${String(h)} ${String(width)} px, ${String(bar)} px bar, column ${String(column)}`,
+                );
+            }
+          }
+    expect(flips.slice(0, 5)).toEqual([]);
   });
 });

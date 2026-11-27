@@ -712,8 +712,15 @@ export async function openSection(page: Page, section: LiveSection): Promise<voi
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   // Its chevron settled (alpha.24): where Chromium draws with a graphics chip it turns over --dur-open (ui/motion.css),
   // and a spec that measures the section next must read its boxes still, never mid-turn (live-column-widths.spec.ts on
-  // CI's Mac, run 45894668186: a 14 px chevron a few degrees round is 14.7 px wide).
-  await expect.poll(() => toggle.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
+  // CI's Mac, run 45894668186: a 14 px chevron a few degrees round is 14.7 px wide). Only what ends: an animation that
+  // repeats for ever (a spinner, a pulsing dot in a heading) is never waited for, as a11y.ts's settled() does (the
+  // re-review of uilook 6e6d4fea2, NOTE-R3).
+  const turning = () =>
+    toggle.evaluate((el) => {
+      const ends = (a: Animation) => a.effect?.getComputedTiming().iterations !== Infinity;
+      return el.getAnimations({ subtree: true }).filter(ends).length;
+    });
+  await expect.poll(turning).toBe(0);
 }
 
 /** Unfold every section under LIVE (Pro Mode's), top to bottom. */
