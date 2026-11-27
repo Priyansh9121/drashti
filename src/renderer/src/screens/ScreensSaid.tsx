@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import { SET_UP_STAGE } from '../../../shared/screen-switches';
+import { useScreenSwitches } from '../operator/screen-switches-store';
 import type { ScreensSaid } from '../../../shared/screens';
 import { saidShort } from '../../../shared/screens';
 import { Button } from '../ui/Button';
@@ -23,9 +24,16 @@ import { Tooltip } from '../ui/Tooltip';
  * Next, Oops and every column, moved some 50 px down as it came. In the status bar it takes its room only from the
  * bar's passing news, so nothing in the window or the bar moves as it comes or goes, and it is never over a control.
  * Its words in sight are a few, whole (saidShort), so that it and the access line ("No access list") both show at
- * 1024 × 645; it never gives way (the bar's other words do first: a missing screen matters more during a show). The
+ * 1024 × 645; it never shrinks (the bar's other words do first: a missing screen matters more during a show). The
  * whole line is its tooltip (over its words, or with its buttons focused) and what a screen reader reads, politely, as
  * it comes (its place is a status region, there always).
+ *
+ * After the release lead's review (27 Nov 2026): Stage's line says Stage is on with no Stage screen, so it closes as
+ * Stage goes off (it had stayed, beside Stage off saying the opposite, and at 1024 × 645 with Audience off too the bar
+ * ran some 30 px past the window's edge). And with Audience off, whose item takes the most room in the bar, the line's
+ * words give way in a window under 1280 px wide (its icon and buttons stay; the whole line is still its tooltip and
+ * read out), so the bar's items fit in every mix of Audience, Stage, the line and the access line (the sweep in
+ * screens-said-still.spec.ts).
  */
 
 interface SaidView {
@@ -65,10 +73,17 @@ function close(id: number): void {
 export function ScreensSaidNotice({ onChange }: { onChange: ((displayId: number) => void) | null }) {
   const said = useScreensSaid((s) => s.said);
   const closedId = useScreensSaid((s) => s.closedId);
+  // Stage off, once the main process has said which are on.
+  const stageOff = useScreenSwitches((s) => s.known && !s.switches.stage);
   useEffect(() => {
     connectScreensSaid();
   }, []);
-  const shown = said && said.id > closedId ? said : null;
+  // Stage's line no longer true with Stage off: not shown, and closed (so a reload does not bring it back).
+  const untrue = said?.kind === 'no-stage' && stageOff;
+  const shown = said && said.id > closedId && !untrue ? said : null;
+  useEffect(() => {
+    if (said && untrue && said.id > closedId) close(said.id);
+  }, [said, untrue, closedId]);
   return (
     // With nothing said it takes no room (its gap is the line's own margin).
     <div role="status" className="flex shrink-0 items-center" data-testid="screens-said-place">
@@ -82,6 +97,8 @@ const ICONS = { 'no-stage': MonitorOff, set: Monitor, mirroring: Info } as const
 
 function SaidLine({ said, onChange }: { said: ScreensSaid; onChange: ((displayId: number) => void) | null }) {
   const first = said.displayIds[0];
+  // Audience off (its item the bar's widest): below 1280 px wide the words give way to the icon and buttons.
+  const audienceOff = useScreenSwitches((s) => s.known && !s.switches.audience);
   // No Stage screen in the bar's warning look, as Stage off's beside it; a display set up or mirroring as news.
   const warning = said.kind === 'no-stage';
   const IconShape = ICONS[said.kind];
@@ -102,7 +119,11 @@ function SaidLine({ said, onChange }: { said: ScreensSaid; onChange: ((displayId
       >
         <IconShape size={13} aria-hidden="true" className={cx('shrink-0', !warning && 'text-accent')} />
         {/* In sight, the short words; read out, the whole line. */}
-        <span aria-hidden="true" data-testid="screens-said-short">
+        <span
+          aria-hidden="true"
+          className={cx(audienceOff && 'max-[1280px]:hidden')}
+          data-testid="screens-said-short"
+        >
           {saidShort(said)}
         </span>
         <span className="sr-only" data-testid="screens-said-text">
