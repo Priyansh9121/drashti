@@ -293,7 +293,16 @@ test('preparing a complex generated source leaves Main responsive to live comman
  * process: 44-270 ms on CI's Mac), not the preparation's reading. The window is now made only once the live commands
  * have paused; the preparation still reads every page.
  */
-type WindowGlobals = typeof globalThis & { __drashtiReadingWindowsMade?: number[] };
+interface MadeWindow {
+  at: number;
+  title: string;
+  /** The page it loaded, once it has ('' until then). */
+  url: string;
+}
+type WindowGlobals = typeof globalThis & { __drashtiWindowsMade?: MadeWindow[] };
+/** A hidden PDF reading window (pictures-window.ts: its title, or the pdf page it loads), or one not loaded yet. */
+const reading = (w: MadeWindow) =>
+  w.title === 'Drashti pictures' || /\/pdf\.html(?:[?#]|$)/u.test(w.url) || w.url === '';
 
 test('a source preparation makes its PDF reading window only once live commands pause, then prepares every page', async () => {
   test.setTimeout(240_000);
@@ -317,12 +326,22 @@ test('a source preparation makes its PDF reading window only once live commands 
       const shown = await d.engine.dispatch({ type: 'goLive', presentationId: made.id, slideIndex: 0 });
       if (!shown.ok) throw new Error('The generated live command fixture could not go live.');
     });
-    // Each hidden PDF reading window Main makes from now on, by Main's clock (the import's are made and gone).
+    // Each window Main makes from now on, by Main's clock, with its title and the page it loads (the import's reading
+    // windows are made and gone by now).
     await app.evaluate(({ app: electronApp }) => {
-      const made: number[] = [];
-      (globalThis as WindowGlobals).__drashtiReadingWindowsMade = made;
+      const made: MadeWindow[] = [];
+      (globalThis as WindowGlobals).__drashtiWindowsMade = made;
       electronApp.on('browser-window-created', (_event, created) => {
-        if (created.getTitle() === 'Drashti pictures') made.push(performance.now());
+        const entry: MadeWindow = { at: performance.now(), title: '', url: '' };
+        made.push(entry);
+        try {
+          entry.title = created.getTitle();
+        } catch {
+          entry.title = '(no title)';
+        }
+        created.webContents.once('did-navigate', (_navigated, url) => {
+          entry.url = url;
+        });
       });
     });
     await win.evaluate((id) => {
@@ -347,9 +366,9 @@ test('a source preparation makes its PDF reading window only once live commands 
       expect(done.ok, `live command ${String(i + 1)}`).toBe(true);
     }
     const lastCommandAt = await app.evaluate(() => performance.now());
-    const during = await app.evaluate(
-      () => (globalThis as WindowGlobals).__drashtiReadingWindowsMade?.length ?? -1,
-    );
+    const during = (
+      await app.evaluate(() => (globalThis as WindowGlobals).__drashtiWindowsMade ?? [])
+    ).filter(reading).length;
     expect(during, 'PDF reading windows made while the live commands came').toBe(0);
     // Then the preparation goes on as before: every page, with its own words.
     const prepared = await win.evaluate(async () => {
@@ -369,9 +388,10 @@ test('a source preparation makes its PDF reading window only once live commands 
         ),
       ),
     ).toBe(true);
-    const made = await app.evaluate(() => (globalThis as WindowGlobals).__drashtiReadingWindowsMade ?? []);
+    const windows = await app.evaluate(() => (globalThis as WindowGlobals).__drashtiWindowsMade ?? []);
+    const made = windows.filter(reading).map((w) => w.at);
     await test.info().attach('preparation-reading-window', {
-      body: JSON.stringify({ lastCommandAt, made }),
+      body: JSON.stringify({ lastCommandAt, made, windows }),
       contentType: 'application/json',
     });
     expect(made, 'the reading window, made once').toHaveLength(1);
