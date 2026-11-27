@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /*
@@ -12,11 +12,24 @@ import { describe, expect, it } from 'vitest';
  */
 
 const renderer = join(__dirname, '..', 'renderer', 'src');
-const SHEETS: Record<string, string> = {
-  'styles/app.css': readFileSync(join(renderer, 'styles', 'app.css'), 'utf8'),
-  'ui/motion.css': readFileSync(join(renderer, 'ui', 'motion.css'), 'utf8'),
-  'styles/look-depth.css': readFileSync(join(renderer, 'styles', 'look-depth.css'), 'utf8'),
-};
+/** Every .css file under `dir`. */
+function cssFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) return cssFiles(path);
+    return name.endsWith('.css') ? [path] : [];
+  });
+}
+/**
+ * Every style sheet of the renderers (src/renderer/src), by its path there: what any window's <html> may key on (the
+ * release lead's review of copylook ee108ee50, SHOULD-1: help/help.css's data-keys-hidden was missed by a named list).
+ */
+const SHEETS: Record<string, string> = Object.fromEntries(
+  cssFiles(renderer).map((path) => [
+    relative(renderer, path).split('\\').join('/'),
+    readFileSync(path, 'utf8'),
+  ]),
+);
 const motionTs = readFileSync(join(renderer, 'ui', 'motion.ts'), 'utf8');
 
 /** One of motion.ts's lists of attribute names (`export const NAME: readonly string[] = [ … ]`), as written there. */

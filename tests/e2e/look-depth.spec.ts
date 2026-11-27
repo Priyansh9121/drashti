@@ -2,7 +2,16 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { Appearance } from '../../src/shared/appearance/appearances';
 import { BLACK, WHITE } from '../../src/shared/appearance/appearances';
-import { chooseMenuItem, launchApp, OWN_APPEARANCE, operatorPage, operatorReady } from './helpers';
+import {
+  chooseMenuItem,
+  closeLibrary,
+  launchApp,
+  openLibrary,
+  OWN_APPEARANCE,
+  operatorPage,
+  operatorReady,
+  type PageGlobals,
+} from './helpers';
 
 /*
  * B · Depth (alpha.24, the owner's QA24-UI-4; src/renderer/src/styles/look-depth.css): while the window follows the
@@ -167,9 +176,11 @@ function newWaysToDraw(win: Page) {
 }
 
 /**
- * What draws over a column's rounded corners: at each corner, a pixel and a half in, everything the column holds there
- * (above it, under the point) with a background of its own. The ring of the ground lies under what the column holds
- * (the re-review of 6e6d4fea2, SHOULD-1), so anything there with a background would show the corner square.
+ * What draws over a column's rounded corners: at three points outside each corner's arc, everything the column holds
+ * there (above it, under the point) with a background of its own. The ring of the ground lies under what the column
+ * holds (the re-review of 6e6d4fea2, SHOULD-1), so anything there with a background would show the corner square. Not
+ * seen (accepted, the review of copylook ee108ee50, SHOULD-2): what takes no pointer (elementsFromPoint skips it), and
+ * LIVE's rows, 4 px in, cut by the column's foot as what is under LIVE scrolls (about 3 x 8 px of a corner).
  */
 function overCorners(win: Page) {
   return win.evaluate(() => {
@@ -179,14 +190,23 @@ function overCorners(win: Page) {
       if (!(column instanceof HTMLElement)) continue;
       const box = column.getBoundingClientRect();
       const st = getComputedStyle(column);
-      const left = box.left + Number.parseFloat(st.borderLeftWidth) + 1.5;
-      const right = box.right - Number.parseFloat(st.borderRightWidth) - 1.5;
-      for (const [x, y] of [
-        [left, box.top + 1.5],
-        [right, box.top + 1.5],
-        [left, box.bottom - 1.5],
-        [right, box.bottom - 1.5],
-      ] as const) {
+      const left = box.left + Number.parseFloat(st.borderLeftWidth);
+      const right = box.right - Number.parseFloat(st.borderRightWidth);
+      // Three points outside the arc at each corner, in from its edges (the release lead's review of copylook
+      // ee108ee50, SHOULD-2): what is inset a few pixels and reaches an edge covers part of the corner too.
+      const points = [
+        [left, box.top, 1, 1],
+        [right, box.top, -1, 1],
+        [left, box.bottom, 1, -1],
+        [right, box.bottom, -1, -1],
+      ].flatMap(([x = 0, y = 0, dx = 0, dy = 0]) =>
+        [
+          [1.5, 1.5],
+          [4.5, 1],
+          [1, 4.5],
+        ].map(([ax = 0, ay = 0]) => [x + dx * ax, y + dy * ay] as const),
+      );
+      for (const [x, y] of points) {
         for (const el of document.elementsFromPoint(x, y)) {
           if (el === column) break;
           if (!column.contains(el)) continue;
@@ -299,3 +319,52 @@ test('B · Depth while the window follows the computer, in Pro Mode and Simple M
   await expect(win.locator('html')).toHaveAttribute('data-window-look', 'depth');
   await app.close();
 });
+
+/*
+ * The release lead's review of copylook ee108ee50, MUST-1: what lies at the left column's foot while it is up, the
+ * Library sheet (over the playlists, down to the column's foot) and an Undo line (the column's foot), has a background
+ * of its own over the ring under it. In Depth their bottom corners are the panel's.
+ */
+test('B · Depth: the left column’s corners stay round with the Library open and with an Undo line up, light and dark', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp(OWN_APPEARANCE);
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  // A playlist with a presentation in it, open: its row is what an Undo line brings back.
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const [a] = await d.library.listPresentations();
+    const made = await d.playlists.create('Placeholder corners', null, false);
+    if (!made.ok) throw new Error(made.message);
+    await d.playlists.addItems(made.ids[0] ?? '', null, [
+      { kind: 'presentation', presentationId: a?.id ?? '' },
+    ]);
+  });
+  await win
+    .getByTestId('playlist-node')
+    .filter({ hasText: /^Placeholder corners/u })
+    .click();
+  const items = win.getByTestId('playlist-item');
+  await expect(items).toHaveCount(1);
+  for (const [source, a] of [
+    ['light', WHITE],
+    ['dark', BLACK],
+  ] as const) {
+    await turnComputer(app, source);
+    await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
+    await expect(win.locator('html')).toHaveAttribute('data-window-look', 'depth');
+    await openLibrary(win);
+    expect(await overCorners(win), `${a.name}: the Library open`).toEqual([]);
+    await closeLibrary(win);
+    // An Undo line: the playlist's row deleted, its Undo at the column's foot.
+    await items.first().click();
+    await win.keyboard.press('Delete');
+    await expect(win.getByTestId('undo-removal')).toBeVisible();
+    expect(await overCorners(win), `${a.name}: an Undo line up`).toEqual([]);
+    await win.getByTestId('undo-removal').getByRole('button', { name: /Undo/u }).click();
+    await expect(items).toHaveCount(1);
+  }
+  await app.close();
+});
+
