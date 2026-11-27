@@ -41,7 +41,7 @@ import { OwnAppearanceForm, type OwnStart } from './OwnAppearanceForm';
  */
 
 /** Follow the computer's picture: Black, and White beside it. */
-function FollowPreview() {
+export function FollowPreview() {
   return (
     <div className="grid grid-cols-2 gap-1.5" aria-hidden="true">
       <AppearancePreview appearance={BLACK} />
