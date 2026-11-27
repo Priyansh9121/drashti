@@ -39,7 +39,7 @@ The links work: the first release was published on 9 Oct 2026 (by hand, from the
 
 **Large pictures after updating to alpha.22.** Start Drashti once before the sabha, with nothing on the screens and no stream or recording running. It prepares the older library's large pictures for the connected screens. The originals stay as they were; while an older picture is still being prepared, Drashti uses its original. New large pictures finish this preparation before their import says ready. If a larger projector is added later, give Drashti another quiet moment before the sabha.
 
-The status bar stays in one row. In a narrow window its screens summary shows the count with a screen or warning icon, and Sound shows its icon and levels; where the levels differ, Audio comes before Video (for example, 0/100%). Rest the mouse on either for the whole sentence; a screen reader reads the whole sentence too. Their slots keep the same width as warnings come and go.
+The status bar stays in one row. In a narrow window its screens summary shows the count with a screen or warning icon, and Sound shows its icon and levels; where the levels differ, Audio comes before Video (for example, 0/100%). Rest the mouse on either for the whole sentence; a screen reader reads the whole sentence too. Their slots keep the same width as warnings come and go. The calendar keeps a small icon in the same place in a narrow window; its full date and festivals remain in its tooltip and screen-reader words.
 
 ## Guides
 

@@ -16,6 +16,13 @@ footer[aria-label='Status'] .status-sound {
   width: 176px;
 }
 @media (width < 1536px) {
+  /* Hold the worst combined-state budget before a calendar or warning arrives (release lead, 28 Nov 09:58). */
+  footer[aria-label='Status'] .status-calendar {
+    width: 24px;
+    justify-content: center;
+    column-gap: 0;
+    padding-inline: 0;
+  }
   footer[aria-label='Status'] .status-summary,
   footer[aria-label='Status'] .status-sound {
     column-gap: 4px;
