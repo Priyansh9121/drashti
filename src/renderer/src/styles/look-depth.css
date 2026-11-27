@@ -148,14 +148,17 @@
   /*
    * The panels' rounded corners, with no rounded clip (the release lead's review, S1: a rounded clip over a column's
    * scrolling parts may cost a layer drawn afresh at every frame): each column stays square and clips square, and a
-   * no-blur ring of the ground's own colour lies over its four corners, above whatever reaches them.
+   * no-blur ring of the ground's own colour lies over its four corners, under everything the column holds (the
+   * re-review of 6e6d4fea2, SHOULD-1: over it, the ring would be a layer of its own wherever something composited lies
+   * under it, a playing video, a glide, a scroller). Each column is its own stacking context (isolate, above), so the
+   * ring is drawn over the column's own background and light, and all the column holds over the ring.
    */
   :root[data-window-look='depth']
-    :is([data-testid='column-left'], [data-testid='column-middle'], [data-testid='column-right'])::after {
+    :is([data-testid='column-left'], [data-testid='column-middle'], [data-testid='column-right'])::before {
     content: '';
     position: absolute;
     inset: 0;
-    z-index: 100;
+    z-index: -1;
     border-radius: var(--radius-panel);
     box-shadow: 0 0 0 var(--radius-panel) var(--depth-ground);
     pointer-events: none;
