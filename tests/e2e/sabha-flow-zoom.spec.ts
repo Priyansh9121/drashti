@@ -203,6 +203,50 @@ test('PDF typed zoom, safe keys, anchored zoom and captured mouse movement at CI
   }
 });
 
+test('Enter or Escape in the Zoom box gives the keyboard back to the show: the next → or Space moves the show on (bughunt S3-3)', async () => {
+  const { scan } = await writeFlows({ scan: SCAN });
+  const { app } = await launchApp();
+  try {
+    const { win, input, region } = await chooseScan(app, scan);
+    // What is live, as each Next changes it: the slide, of which presentation, put up when (here the first Next puts
+    // up the middle's presentation, as Next does after a slide put up from elsewhere; the next ones step through it).
+    const live = async () => {
+      const slide = (await show(win)).state.layers.slide;
+      return slide ? `${slide.presentationId}#${String(slide.slideIndex)}@${String(slide.shownAt)}` : null;
+    };
+    const first = await live();
+    expect(first).not.toBeNull();
+    // Enter: the zoom typed is taken, and the PDF's region has the keyboard, so the show's keys move the show.
+    await input.fill('150');
+    await input.press('Enter');
+    await expect(input).toHaveValue('150%');
+    await expect(region).toHaveAccessibleName(/150%/u);
+    await expect(region).toBeFocused();
+    await win.keyboard.press('ArrowRight');
+    await expect.poll(live).not.toBe(first);
+    const second = await live();
+    // Escape: the zoom typed is dropped (never taken as the box loses the keyboard), and the show has the keys again.
+    await input.fill('300');
+    await input.press('Escape');
+    await expect(input).toHaveValue('150%');
+    await expect(region).toBeFocused();
+    await expect(region).toHaveAccessibleName(/150%/u);
+    await win.keyboard.press('Space');
+    await expect.poll(live).not.toBe(second);
+    const third = await live();
+    // A zoom that cannot be: said, the zoom kept, and the keyboard back with the show all the same.
+    await input.fill('abc');
+    await input.press('Enter');
+    await expect(win.getByTestId('sabha-flow').getByRole('alert')).toHaveText('Type a zoom from 25% to 400%');
+    await expect(input).toHaveValue('150%');
+    await expect(region).toBeFocused();
+    await win.keyboard.press('ArrowRight');
+    await expect.poll(live).not.toBe(third);
+  } finally {
+    await app.close();
+  }
+});
+
 test('⌘1 and ⌘2 (Ctrl+1 and Ctrl+2) typed in the Zoom box are the window’s, as in every field: taken, nothing typed, Audience and Stage stay on (S2-6)', async () => {
   const { scan } = await writeFlows({ scan: SCAN });
   const { app } = await launchApp();

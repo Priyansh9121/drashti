@@ -1037,6 +1037,87 @@ test('a Lively fold at the column’s end: the column scrolls back at once and n
   await app.close();
 });
 
+/**
+ * At the press that folds Show a Window: its insides' first button's colours, and, a frame later, the colours of that
+ * button in the copy left behind (null when no copy is drawn). The copy's closed shadow root is kept by wrapping
+ * attachShadow in this page from now on.
+ */
+const copyColours = (win: Page) =>
+  win.evaluate(
+    () =>
+      new Promise<{ live: string; copy: string | null }>((resolve) => {
+        const w = window as unknown as { shadows?: ShadowRoot[] };
+        if (!w.shadows) {
+          w.shadows = [];
+          const attach = Object.getOwnPropertyDescriptor(Element.prototype, 'attachShadow')?.value as (
+            this: Element,
+            init: ShadowRootInit,
+          ) => ShadowRoot;
+          Element.prototype.attachShadow = function (this: Element, init: ShadowRootInit) {
+            const root = attach.call(this, init);
+            w.shadows?.push(root);
+            return root;
+          };
+        }
+        const colours = (el: Element | null | undefined) =>
+          el ? `${getComputedStyle(el).backgroundColor} ${getComputedStyle(el).color}` : null;
+        // Read now: once the press has folded it, the button is gone from the page and has no colours of its own.
+        const live = colours(
+          document.querySelector('[data-testid="section-show-a-window"] [id$="-body"] [data-variant]'),
+        );
+        const before = w.shadows.length;
+        window.addEventListener(
+          'click',
+          () => {
+            requestAnimationFrame(() => {
+              const root = (w.shadows ?? []).slice(before).at(-1);
+              resolve({
+                live: live ?? 'none',
+                copy: colours(root?.querySelector('[data-variant]')),
+              });
+            });
+          },
+          { capture: true, once: true },
+        );
+      }),
+  );
+
+/*
+ * Looks chosen by name, White and the light, coloured Sandalwood. Follow the computer is left out: once uilook merges it
+ * draws in Depth, whose styling a leaving copy does not take (accepted for alpha.24); its round comes back with lead
+ * 2's item 3 for alpha.25 (the fold's copy drawing in the window's whole look).
+ */
+test('a fold’s copy draws in the window’s appearance: White and Sandalwood, chosen by name, Calm and Lively (alpha.24, lead 2’s hands-on pass of uilook, problem 1)', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await expect(win.locator('html')).toHaveAttribute('data-opened', '');
+  const noChip = await chipless(win);
+  for (const look of ['white', 'sandalwood'] as const) {
+    await chooseMenuItem(app, `appearance-${look}`);
+    await expect(win.locator('html')).toHaveAttribute('data-appearance', look);
+    await expect(win.locator('html')).toHaveAttribute('data-base', 'light');
+    for (const motion of ['calm', 'lively'] as const) {
+      await interfaceMotion(win, motion);
+      await letTimePass(win, 900, 'the show has not changed for a moment, as a fold waits for');
+      await pressFold(win);
+      await expect(win.getByTestId(SECTION)).toBeVisible();
+      const drawn = (await standing(win)) && !(await willScrollBack(win)) && !noChip;
+      const seen = copyColours(win);
+      await win.getByTestId(`group-${SECTION}-toggle`).click();
+      const { live, copy } = await seen;
+      await settled(win);
+      console.log(`${look}, ${motion}: the button ${live}, its copy ${copy ?? 'not drawn'}`);
+      // Drawn only with a chip where nothing holds it (ui/fold.ts); then in the window's own colours.
+      if (drawn) expect(copy, `${look}, ${motion}`).toBe(live);
+      else expect(copy, `${look}, ${motion}`).toBeNull();
+    }
+  }
+  await app.close();
+});
+
 test('without a graphics chip a fold moves nothing, in Calm or Lively (alpha.24; the show changing: ui/fold.test.ts)', async () => {
   test.setTimeout(120_000);
   // Without a chip (as CI's Windows always is): Calm and Lively alike.

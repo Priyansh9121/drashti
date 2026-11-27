@@ -43,6 +43,8 @@ export function SkipButtons({
             icon={s.icon}
             label={s.label}
             disabled={shown !== 'ready'}
+            // A show control (alpha.24, QA24-UIMOTION-SKIP): what the hall hears moves at once; it never moves.
+            instant
             data-testid={`skip-${s.jump}`}
             onClick={() => void dispatch({ type: 'skip', layer, jump: s.jump })}
           />
@@ -52,6 +54,8 @@ export function SkipButtons({
             size="sm"
             icon={s.icon}
             disabled={shown !== 'ready'}
+            // A show control (alpha.24, QA24-UIMOTION-SKIP): what the hall hears moves at once; it never moves.
+            instant
             data-testid={`skip-${s.jump}`}
             onClick={() => void dispatch({ type: 'skip', layer, jump: s.jump })}
           >

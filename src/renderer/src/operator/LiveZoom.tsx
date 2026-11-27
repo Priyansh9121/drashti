@@ -238,6 +238,8 @@ export function LiveZoomControls() {
         icon={ZoomOut}
         label="Zoom out"
         size="sm"
+        // A show control (alpha.24, the bug hunt's S3-1): the screens' picture changes at once and never moves.
+        instant
         data-testid="live-zoom-out"
         disabled={now.zoom <= ZOOM.min}
         onClick={() => by(1 / 1.25)}
@@ -249,6 +251,7 @@ export function LiveZoomControls() {
         icon={ZoomIn}
         label="Zoom in"
         size="sm"
+        instant
         data-testid="live-zoom-in"
         disabled={now.zoom >= ZOOM.max}
         onClick={() => by(1.25)}
@@ -257,6 +260,7 @@ export function LiveZoomControls() {
         icon={RotateCcw}
         label="Back to the picture as it is kept"
         size="sm"
+        instant
         data-testid="live-zoom-reset"
         disabled={!zoomedLive}
         onClick={() => {

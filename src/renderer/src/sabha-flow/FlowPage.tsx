@@ -116,6 +116,8 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
     point?: { x: number; y: number };
   } | null>(null);
   const drag = useRef<{ id: number; x: number; y: number; left: number; top: number } | null>(null);
+  // The Zoom box handing the keyboard to the pages (Enter or Escape done): its blur then takes nothing more.
+  const handingOver = useRef(false);
   // Whether a drag can move the pages now, read from the box as laid out.
   const measureMovable = useCallback(() => {
     const el = box.current;
@@ -167,6 +169,13 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
       setError(true);
       setDraft(`${String(Math.round(currentZoom.current * 100))}%`);
     } else changeZoom(next);
+  };
+  // After Enter or Escape the pages have the keyboard, so the show's keys move the show again (bughunt S3-3: left in
+  // the box, the next arrow or Space was typed there and the slide did not move).
+  const keysToThePages = () => {
+    handingOver.current = true;
+    box.current?.focus({ preventScroll: true });
+    handingOver.current = false;
   };
   // Cmd or Ctrl with the wheel (a trackpad's pinch comes so too) zooms; a plain wheel scrolls. React's wheel listener
   // cannot keep the window from zooming the whole page, so this one is the element's own, not passive.
@@ -227,19 +236,24 @@ export function FlowPage({ flow }: { flow: SabhaFlow }) {
             setDraft(e.target.value);
             setError(false);
           }}
-          onBlur={applyDraft}
+          onBlur={() => {
+            if (!handingOver.current) applyDraft();
+          }}
           // Only its own two keys stop here, as in every field (PlaylistFind): the window lets a field's other keys go
-          // by (isTyping) but still takes ⌘1 and ⌘2, which the Mac's View menu would act on (S2-6).
+          // by (isTyping) but still takes ⌘1 and ⌘2, which the Mac's View menu would act on (S2-6). Either of the two
+          // then gives the keyboard to the pages (bughunt S3-3).
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
               e.stopPropagation();
               applyDraft();
+              keysToThePages();
             } else if (e.key === 'Escape') {
               e.preventDefault();
               e.stopPropagation();
               setDraft(percent);
               setError(false);
+              keysToThePages();
             }
           }}
         />

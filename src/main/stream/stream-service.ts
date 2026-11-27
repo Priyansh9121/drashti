@@ -1440,6 +1440,17 @@ export class StreamService {
     return this.soundRecording.quitting();
   }
 
+  /**
+   * The quit did not go ahead (bughunt S3-2: a source that would not stop in time): as before it, Record and Record
+   * sound work, and the stream's page opens (or closes) as what needs it says, which it could not do meanwhile.
+   */
+  cancelQuitting(): void {
+    if (!this.closing) return;
+    this.closing = false;
+    this.soundRecording.cancelQuitting();
+    this.updateProgram();
+  }
+
   /** Close everything (Drashti is quitting on purpose: the stream ends, and is not resumed). */
   close(): void {
     this.closing = true;
