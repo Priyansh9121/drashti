@@ -282,6 +282,54 @@ describe('LIVE shows one thing at a time (Session 56): a video going up takes th
       expect(covers(engine.current)).toEqual(covered);
     });
 
+  // QA24-OOPS-COVERS (the owner: "Restore covers"), the oopsfix review's SHOULD-1: Black-out put back by Oops counted as
+  // a cover going on, and dropped a video cued under it ("No video is cued" at Go).
+  it('Oops that puts Black-out back keeps a video cued under it, held for Go', () => {
+    const { engine, cover } = setup();
+    engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 });
+    cover();
+    expect(engine.dispatch({ type: 'cueVideo', mediaId: 'clip' })).toMatchObject({ ok: true });
+    const cued = engine.current.videoCue?.id;
+    expect(cued).toEqual(expect.any(String));
+    // A wrong row's click takes Black-out off and leaves the cue held.
+    engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 2 });
+    expect(covers(engine.current)).toEqual(OFF);
+    expect(engine.current.videoCue?.id).toBe(cued);
+    // Oops: Black-out back, and the cue still held.
+    engine.dispatch({ type: 'oops' });
+    expect(covers(engine.current)).toEqual(BLACKOUT);
+    expect(engine.current.videoCue?.id).toBe(cued);
+    expect(backgroundVideo(engine.current)).toBeNull();
+  });
+
+  // QA24-OOPS-COVERS, the review's SHOULD-2: a hall cover never comes off with nothing to see.
+  it('a cover put on since the change stays on when Oops or Put it back brings back nothing to see', () => {
+    const { engine } = setup();
+    // A message over nothing up, then Black-out: Oops takes the message back, and the hall stays black.
+    engine.dispatch({ type: 'showMessage', message: { id: 'm1', text: 'Placeholder message' } });
+    engine.dispatch({ type: 'setBlackout', on: true });
+    engine.dispatch({ type: 'oops' });
+    expect(engine.current.layers.messages).toEqual([]);
+    expect(covers(engine.current)).toEqual(BLACKOUT);
+    // Clear all of a message alone, the Wallpaper on since, Put it back: the message back, the Wallpaper still on.
+    engine.dispatch({ type: 'setBlackout', on: false });
+    engine.dispatch({ type: 'showMessage', message: { id: 'm2', text: 'Placeholder message two' } });
+    engine.dispatch({ type: 'clearAll' });
+    engine.dispatch({ type: 'setWallpaper', on: true });
+    expect(engine.dispatch({ type: 'putBack' })).toMatchObject({ ok: true, changed: true });
+    expect(engine.current.layers.messages.map((m) => m.id)).toEqual(['m2']);
+    expect(covers(engine.current)).toEqual(WALLPAPER);
+    // Black-out taken off by a click with only a message up, the Wallpaper on since, Oops: Black-out back, alone (one
+    // cover at a time), over the message alone.
+    engine.dispatch({ type: 'setBlackout', on: true });
+    engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 });
+    expect(covers(engine.current)).toEqual(OFF);
+    engine.dispatch({ type: 'setWallpaper', on: true });
+    engine.dispatch({ type: 'oops' });
+    expect(engine.current.layers.slide).toBeNull();
+    expect(covers(engine.current)).toEqual(BLACKOUT);
+  });
+
   it('Oops leaves off a cover the operator took off since the change it takes back, and takes off one put on since', () => {
     const { engine, cover } = setup();
     engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 });
