@@ -275,13 +275,23 @@ test('the Announcements button’s colours change at once, never eased, Calm or 
     ['audience', 'Audience'],
     ['stage', 'Stage'],
   ] as const) {
-    await win.getByTestId(`switch-${which}`).hover();
-    const tip = win.getByRole('tooltip');
-    await expect(tip).toBeVisible();
-    await expect(tip).toContainText(new RegExp(`^${name}: turn off `, 'u'));
-    // Away to the bar's name, which has no tooltip.
-    await win.locator('[data-header] h1').hover();
-    await expect(tip).toHaveCount(0);
+    const button = win.getByTestId(`switch-${which}`);
+    // A new library starts with Stage off. Set and check each state explicitly, for both switches.
+    for (const on of [true, false]) {
+      const result = await win.evaluate(
+        ({ which, on }) => (globalThis as PageGlobals).drashti.screenSwitches.turn(which, on),
+        { which, on },
+      );
+      expect(result.ok, `${name}: set ${on ? 'on' : 'off'}`).toBe(true);
+      await expect(button).toHaveAttribute('aria-checked', String(on));
+      await button.hover();
+      const tip = win.getByRole('tooltip');
+      await expect(tip).toBeVisible();
+      await expect(tip).toContainText(new RegExp(`^${name}: turn ${on ? 'off' : 'on'} `, 'u'));
+      // Away to the bar's name, which has no tooltip.
+      await win.locator('[data-header] h1').hover();
+      await expect(tip).toHaveCount(0);
+    }
   }
   await app.close();
 });
