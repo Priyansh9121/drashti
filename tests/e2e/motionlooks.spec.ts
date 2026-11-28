@@ -4,6 +4,7 @@ import { expectNoSeriousA11yIssues, settled } from './a11y';
 import {
   chooseMenuItem,
   launchApp,
+  openLibrary,
   operatorPage,
   operatorReady,
   outputPage,
@@ -154,6 +155,16 @@ for (const kind of ['calm', 'lively'] as const) {
         { kind: 'cut', durationMs: 0 },
       );
       await win.bringToFront();
+      // Next follows the slide grid's selection; direct engine goLive does not select the new deck.
+      const library = await openLibrary(win);
+      const presentation = library
+        .getByTestId('presentation-row')
+        .filter({ hasText: 'Placeholder motion safety' });
+      await presentation.click();
+      await expect(presentation).toHaveAttribute('aria-current', 'true');
+      await expect(win.getByTestId('slide-grid')).toHaveAttribute('data-presentation-id', id);
+      await win.getByTestId('library-close').click();
+      await expect(library).toHaveCount(0);
       for (const size of SIZES) {
         await sizeOperatorWindow(app, win, size);
         await goLive(win, id, 0);
@@ -191,11 +202,13 @@ for (const kind of ['calm', 'lively'] as const) {
           ).toBe(0);
         }
         const start = await engine(win);
+        expect(start.state.live).toMatchObject({ presentationId: id, slideIndex: 0 });
         const box = await win.getByTestId('show-next').boundingBox();
         if (!box) throw new Error('Next has no pointer target');
         // Native pointer input while the effect is active, without locator animation waiting or synthetic clicks.
         await win.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
         await expect.poll(async () => (await engine(win)).state.live.slideIndex).toBe(1);
+        expect((await engine(win)).state.live.presentationId).toBe(id);
         expect((await engine(win)).rev).toBe(start.rev + 1);
         await expect(output.getByTestId('scene')).toContainText('Placeholder two');
         await expect
