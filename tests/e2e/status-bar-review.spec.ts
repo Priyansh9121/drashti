@@ -409,6 +409,11 @@ for (const mode of ['pro', 'simple'] as const)
     }
   });
 
+async function statusMode(win: Page, mode: 'pro' | 'simple') {
+  await win.evaluate((mode) => (globalThis as PageGlobals).drashti.app.setMode(mode), mode);
+  await expect(win.getByTestId('simple-mode')).toHaveCount(mode === 'simple' ? 1 : 0);
+}
+
 /** Production calendar import: fixtures are placeholder words only, including the schema's longest valid festivals. */
 async function loadStatusCalendar(win: Page, userData: string, day: CalendarDay, tag: string) {
   const file = join(userData, `placeholder-status-${tag}.json`);
@@ -462,8 +467,7 @@ for (const mode of ['pro', 'simple'] as const)
         await d.audio.setOutput({ id: 'placeholder-mixer', label: 'Placeholder Mixer' });
       });
       await expect(win.getByTestId('sound-warning')).toBeVisible();
-      if (mode === 'simple')
-        await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+      if (mode === 'simple') await statusMode(win, 'simple');
       const before = await settledSteady(win);
       const cases: SoundLevels[] = [
         { audio: { level: 1, muted: true }, video: { level: 1, muted: true } },
@@ -518,8 +522,7 @@ for (const mode of ['pro', 'simple'] as const)
         });
         await expect(win.getByTestId('sound-warning')).toBeVisible();
         await expect(win.getByTestId('sound-muted-status')).toHaveText('Audio and Video muted');
-        if (mode === 'simple')
-          await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+        if (mode === 'simple') await statusMode(win, 'simple');
         const neighbours = async () =>
           (await steady(win)).filter((line) => !line.startsWith('[data-testid="today-calendar"]'));
         const afterHelp = () =>
@@ -548,15 +551,14 @@ for (const mode of ['pro', 'simple'] as const)
           },
         ].entries()) {
           // Imports are a Pro action; put Simple back before measuring its footer.
-          if (mode === 'simple')
-            await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
+          if (mode === 'simple') await statusMode(win, 'pro');
           await loadStatusCalendar(win, userData, day, `wide-${index}`);
-          if (mode === 'simple')
-            await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+          if (mode === 'simple') await statusMode(win, 'simple');
           const words = `${samvatLine(day, 'en')}${festivalsLine(day, 'en') ? ` · ${festivalsLine(day, 'en')}` : ''}`;
           const calendar = win.getByTestId('today-calendar');
           await expect(calendar).toHaveAccessibleName(words);
           expect.soft(await calendar.getAttribute('title')).toContain(words);
+          if (mode === 'simple') await expect.poll(neighbours).toEqual(before);
           expect.soft(await neighbours()).toEqual(before);
           expect.soft(await afterHelp()).toEqual(controls);
           if (index === 1 || size.width < 1536)
@@ -567,8 +569,7 @@ for (const mode of ['pro', 'simple'] as const)
               .toBeGreaterThan(24);
           await fits(win, `${mode} ${size.width}: calendar ${index}`);
         }
-        if (mode === 'simple')
-          await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
+        if (mode === 'simple') await statusMode(win, 'pro');
         await win.evaluate(async () => {
           const d = (globalThis as PageGlobals).drashti;
           for (const calendar of (await d.calendar.view()).calendars) {
@@ -577,8 +578,8 @@ for (const mode of ['pro', 'simple'] as const)
           }
         });
         await expect(win.getByTestId('today-calendar')).toHaveCount(0);
-        if (mode === 'simple')
-          await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+        if (mode === 'simple') await statusMode(win, 'simple');
+        if (mode === 'simple') await expect.poll(neighbours).toEqual(before);
         expect.soft(await neighbours()).toEqual(before);
         expect.soft(await afterHelp()).toEqual(controls);
         await fits(win, `${mode} ${size.width}: calendar removed`);
