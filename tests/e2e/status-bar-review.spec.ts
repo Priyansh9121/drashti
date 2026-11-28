@@ -72,6 +72,23 @@ async function settledSteady(win: Page): Promise<string[]> {
   return last;
 }
 
+/** The unrelated top notice changes the column height; its ResizeObserver must restore LIVE after Dismiss.
+ * Windows' non-overlay scrollbar otherwise leaves a one-frame 10 px narrower picture in this footer fixture.
+ * Require the SAME exact baseline for every footer/show control; a real movement never satisfies this fence.
+ */
+async function dismissStoppedNotice(win: Page, before: string[]) {
+  const notice = win.getByTestId('screen-stopped-notice');
+  if (await notice.count()) await notice.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(notice).toHaveCount(0);
+  await expect
+    .poll(() => steady(win), {
+      message:
+        'the independent stopped-screen notice has closed and LIVE has returned to its original bounds',
+      intervals: [50, 100, 250],
+    })
+    .toEqual(before);
+}
+
 async function fits(win: Page, where: string) {
   expect
     .soft(
@@ -258,11 +275,7 @@ for (const mode of ['pro', 'simple'] as const)
                       ? '1 display not connected'
                       : '2 screens showing';
                 await expect(win.getByTestId('screens-summary')).toContainText(words);
-                if (fault.state === 'stopped') {
-                  const notice = win.getByTestId('screen-stopped-notice');
-                  if (await notice.count()) await notice.getByRole('button', { name: 'Dismiss' }).click();
-                  await expect(notice).toHaveCount(0);
-                }
+                if (fault.state === 'stopped') await dismissStoppedNotice(win, before);
                 const where = `${mode} ${size.width}, missing ${missing}, muted ${muted}, Audience ${audience}, Stage ${stage}, ${words}`;
                 expect.soft(await steady(win), where).toEqual(before);
                 await fits(win, where);
@@ -351,10 +364,7 @@ for (const mode of ['pro', 'simple'] as const)
             .toMatch(new RegExp(words));
           // The separate, existing top-of-window stopped-screen notice is outside this footer regression.
           // Close it as an operator may, leaving the stopped state and every position/fit assertion intact.
-          if (fault.state === 'stopped') {
-            await win.getByTestId('screen-stopped-notice').getByRole('button', { name: 'Dismiss' }).click();
-            await expect(win.getByTestId('screen-stopped-notice')).toHaveCount(0);
-          }
+          if (fault.state === 'stopped') await dismissStoppedNotice(win, before);
           const where = `${mode} ${size.width}, ${words}`;
           expect.soft(await steady(win), where).toEqual(before);
           await fits(win, where);
