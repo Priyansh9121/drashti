@@ -89,6 +89,7 @@ class Page {
   activeElement = this.body;
   readonly listeners = new Map<string, ((e: object) => void)[]>();
   readonly frames: FrameRequestCallback[] = [];
+  readonly mutations: object[] = [];
   observer: { callback: (records: object[]) => void; options: MutationObserverInit } | null = null;
   node(tag: string, attrs: Record<string, string> = {}, parent = this.body): Element {
     const el = new Element(tag.toUpperCase());
@@ -116,9 +117,14 @@ class Page {
       !observer.options.attributeFilter?.includes(record.attributeName ?? '')
     )
       return;
-    observer.callback([record]);
+    this.mutations.push(record);
+  }
+  flushMutations(): void {
+    const records = this.mutations.splice(0);
+    if (records.length > 0) this.observer?.callback(records);
   }
   frame(): void {
+    this.flushMutations();
     const callbacks = this.frames.splice(0);
     for (const callback of callbacks) callback(0);
   }
@@ -188,6 +194,47 @@ describe('the operator focus keeper', () => {
     clear.setAttribute('disabled', '');
     page.settle();
     expect(page.activeElement).toBe(foot);
+  });
+
+  it('recovers a still-active disabled clear at the mutation checkpoint without waiting for a frame', () => {
+    const group = page.node('div', { role: 'group', 'aria-label': 'Clear one layer' });
+    const clear = page.node('button', { 'data-show-control': '' }, group);
+    keeper.installFocusKeeper();
+    clear.focus();
+    clear.setAttribute('disabled', '');
+    // On the Mac the disabled button can still be active. No animation frame has run yet.
+    expect(page.activeElement).toBe(clear);
+    page.flushMutations();
+    expect(page.activeElement).toBe(group);
+    expect(group.hasAttribute('data-focus-kept')).toBe(true);
+    expect(page.activeElement.hasAttribute('data-show-control')).toBe(false);
+  });
+
+  it('leaves usable local focus alone when a disabled control is observed after the handler finishes', () => {
+    const region = page.node('main');
+    const action = page.node('button', {}, region);
+    const row = page.node('button', {}, region);
+    keeper.installFocusKeeper();
+    action.focus();
+    action.setAttribute('disabled', '');
+    row.focus();
+    page.flushMutations();
+    page.settle();
+    expect(page.activeElement).toBe(row);
+    expect(region.hasAttribute('data-focus-kept')).toBe(false);
+  });
+
+  it('does not recover a control re-enabled before the mutation checkpoint', () => {
+    const group = page.node('div', { role: 'group', 'aria-label': 'Clear one layer' });
+    const clear = page.node('button', { 'data-show-control': '' }, group);
+    keeper.installFocusKeeper();
+    clear.focus();
+    clear.setAttribute('disabled', '');
+    clear.removeAttribute('disabled');
+    page.flushMutations();
+    page.settle();
+    expect(page.activeElement).toBe(clear);
+    expect(group.hasAttribute('data-focus-kept')).toBe(false);
   });
 
   it('leaves a component or an operator the focus they chose during the two frames', () => {

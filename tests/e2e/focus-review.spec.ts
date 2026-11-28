@@ -189,3 +189,46 @@ for (const media of [
       await app.close();
     }
   });
+
+// Disabled-control recovery must not depend on the operator renderer receiving its next paint.
+test('Enter on a lit clear keeps its group focused even while animation frames are withheld', async () => {
+  const { app } = await launchApp();
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await sizeOperatorWindow(app, win, CI_WINDOW);
+    await win.evaluate(async () => {
+      const d = (globalThis as PageGlobals).drashti;
+      const first = (await d.library.listPresentations())[0];
+      if (!first) throw new Error('No placeholder presentation');
+      await d.engine.dispatch({ type: 'goLive', presentationId: first.id, slideIndex: 0 });
+    });
+    const clear = win.getByRole('button', { name: 'Clear slide (on screen)' });
+    await clear.focus();
+    const resume = await win.evaluateHandle(() => {
+      const request = window.requestAnimationFrame;
+      window.requestAnimationFrame = () => 0;
+      return () => {
+        window.requestAnimationFrame = request;
+      };
+    });
+    try {
+      await win.keyboard.press('Enter');
+      await expect(win.getByRole('button', { name: 'Clear slide', exact: true })).toBeDisabled();
+      const group = win.getByRole('group', { name: 'Clear one layer', exact: true });
+      await expect(group).toBeFocused();
+      await expect(group).toHaveAttribute('data-focus-kept', '');
+      expect(
+        await win.evaluate(() => document.activeElement?.matches('[data-show-control], input, textarea, select')),
+      ).toBe(false);
+      const before = await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
+      await win.keyboard.press('Enter');
+      expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot())).toEqual(before);
+    } finally {
+      await resume.evaluate((restore) => restore());
+      await resume.dispose();
+    }
+  } finally {
+    await app.close();
+  }
+});
