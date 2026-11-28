@@ -2,6 +2,23 @@ import { REPORT_PRIVATE_ATTR } from '../../../shared/report-private';
 import { leave, motionOff, type Leaving } from './motion';
 
 const copied = new WeakSet<Element>();
+const appeared = new WeakSet<Element>();
+
+/** Decide once when a tooltip is placed or a chat card mounts, not when its always-mounted owner renders. */
+export function arriveTransient(node: Element | null, kind: 'pop' | 'notice', enabled = true): void {
+  if (!(node instanceof HTMLElement) || !node.isConnected || appeared.has(node)) return;
+  appeared.add(node);
+  if (
+    !enabled ||
+    !document.body.classList.contains('operator') ||
+    !document.documentElement.hasAttribute('data-opened') ||
+    motionOff() ||
+    node.closest('[data-show-control]') ||
+    node.querySelector('[data-show-control]')
+  )
+    return;
+  node.dataset['motion'] = kind;
+}
 
 /** Shared UI can be imported before a body exists, including server-rendered Help. */
 export function interfaceBody(): HTMLElement | null | undefined {
@@ -24,15 +41,31 @@ export function leaveTransient(node: Element | null, kind: Leaving): void {
   copied.add(node);
   const privatePart = node.closest(`[${REPORT_PRIVATE_ATTR}]`) !== null;
   const previous = document.body.lastElementChild;
-  // Closing during an entrance must not turn its partly visible copy opaque for a frame.
-  const opacity = node.style.opacity;
-  const priority = node.style.getPropertyPriority('opacity');
-  node.style.setProperty('opacity', getComputedStyle(node).opacity);
+  // The real frame never translates. Freeze its visual children's current appearance in the copy,
+  // so closing partway through an entrance cannot flash opaque or jump the words to their end.
+  const saved = [
+    { node, properties: ['opacity'] as const },
+    ...[...node.querySelectorAll<HTMLElement>('.motionui-visual, :scope > p, :scope > svg')].map((part) => ({
+      node: part,
+      properties: ['opacity', 'transform'] as const,
+    })),
+  ].flatMap(({ node: part, properties }) => {
+    const seen = getComputedStyle(part);
+    return properties.map((property) => ({
+      node: part,
+      property,
+      value: part.style[property],
+      priority: part.style.getPropertyPriority(property),
+      seen: seen[property],
+    }));
+  });
+  for (const part of saved) part.node.style.setProperty(part.property, part.seen);
   try {
     leave(node, kind);
   } finally {
-    if (opacity === '') node.style.removeProperty('opacity');
-    else node.style.setProperty('opacity', opacity, priority);
+    for (const part of saved)
+      if (part.value === '') part.node.style.removeProperty(part.property);
+      else part.node.style.setProperty(part.property, part.value, part.priority);
   }
   const host = document.body.lastElementChild;
   if (

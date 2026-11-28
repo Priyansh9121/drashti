@@ -206,13 +206,15 @@ test('dialogs, sheets, menus and notices arrive with their tokens, and leave uns
   expect(await animationOf('[data-motion="sheet"]')).toBe('surface-in 0.18s');
   await win.keyboard.press('Escape');
 
-  // A menu pops from where it opened over 160 ms; "What is this?" too.
+  // Only visual contents arrive over 160 ms; the menu/help action rectangles are there at once.
   await win.getByTestId('presentation-list').getByRole('button').first().click({ button: 'right' });
   await expect(win.getByRole('menu')).toBeVisible();
-  expect(await animationOf('[role="menu"]')).toBe('surface-in 0.16s');
+  expect(await animationOf('[role="menu"]')).toBe('none 0s');
+  expect(await animationOf('[role="menu"] .motionui-visual')).toBe('surface-in 0.16s');
   await win.keyboard.press('Escape');
   await win.getByTestId('what-is-this-live').click();
-  expect(await animationOf('[data-testid="what-is-this"]')).toBe('surface-in 0.16s');
+  expect(await animationOf('[data-testid="what-is-this"]')).toBe('none 0s');
+  expect(await animationOf('[data-testid="what-is-this"] > p')).toBe('surface-in 0.16s');
 
   // A notice settles over 160 ms (one the main process sends, as after saving diagnostics).
   await app.evaluate(({ BrowserWindow }) => {
@@ -221,7 +223,8 @@ test('dialogs, sheets, menus and notices arrive with their tokens, and leave uns
         w.webContents.send('app:notice', { text: 'Placeholder notice' });
   });
   await expect(win.getByTestId('operator-notice')).toBeVisible();
-  expect(await animationOf('[data-testid="operator-notice"]')).toBe('surface-in 0.16s');
+  expect(await animationOf('[data-testid="operator-notice"]')).toBe('none 0s');
+  expect(await animationOf('[data-testid="operator-notice"] > p')).toBe('surface-in 0.16s');
   await app.close();
 });
 

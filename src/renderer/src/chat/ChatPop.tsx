@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { create } from 'zustand';
 import { CHAT_OPERATOR_ID } from '../../../shared/chat';
@@ -6,7 +6,7 @@ import { REPORT_PRIVATE_ATTR } from '../../../shared/report-private';
 import { usePopPlace } from '../operator/pop-place';
 import { toolHereNow } from '../simple/simple-features-store';
 import { duration, motionOff } from '../ui/motion';
-import { leaveTransient } from '../ui/transient-motion';
+import { arriveTransient, leaveTransient } from '../ui/transient-motion';
 import {
   arrivals,
   CHAT_POP_FADE_TOKEN,
@@ -41,6 +41,10 @@ export interface ChatPopViewProps {
 export function ChatPopView({ pop, leaving, still, onOpen, onDismiss }: ChatPopViewProps) {
   const ref = useRef<HTMLDivElement>(null);
   const words = pop ? popWords(pop) : null;
+  const shown = pop !== null;
+  useLayoutEffect(() => {
+    if (shown) arriveTransient(ref.current, 'notice', !still);
+  }, [shown, still]);
   const close = (then: () => void) => {
     if (!leaving && !still) leaveTransient(ref.current, 'notice');
     then();
@@ -69,14 +73,16 @@ export function ChatPopView({ pop, leaving, still, onOpen, onDismiss }: ChatPopV
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => close(onOpen)}
           >
-            <span className="block truncate font-semibold">{words.from}</span>
-            <span
-              data-testid="chat-pop-text"
-              className="line-clamp-2 whitespace-pre-line [overflow-wrap:anywhere]"
-            >
-              {words.text}
+            <span className="motionui-visual pointer-events-none block">
+              <span className="block truncate font-semibold">{words.from}</span>
+              <span
+                data-testid="chat-pop-text"
+                className="line-clamp-2 whitespace-pre-line [overflow-wrap:anywhere]"
+              >
+                {words.text}
+              </span>
+              {words.more && <span className="block text-xs text-muted">{words.more}</span>}
             </span>
-            {words.more && <span className="block text-xs text-muted">{words.more}</span>}
           </button>
           <button
             type="button"
@@ -87,7 +93,7 @@ export function ChatPopView({ pop, leaving, still, onOpen, onDismiss }: ChatPopV
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => close(onDismiss)}
           >
-            ×
+            <span className="motionui-visual pointer-events-none inline-block">×</span>
           </button>
         </div>
       )}

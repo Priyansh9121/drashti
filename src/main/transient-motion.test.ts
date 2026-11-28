@@ -86,13 +86,17 @@ describe('operator transient motion budgets', () => {
   });
 });
 
-
 describe('live transient geometry and settled startup', () => {
   it('puts small-surface translation on visual children or the pointer-free tooltip, never live frames', () => {
-    const rules = [...css().replace(/\/\*[\s\S]*?\*\//gu, '').matchAll(/([^{}@;]+)\{([^{}]*)\}/gu)];
-    const small = rules.filter(([_, selector, body]) =>
-      /data-motion=['"](?:pop|notice)|motionui-chat-pop|motionui-tooltip/u.test(selector ?? '') &&
-      /animation:\s*surface-in/u.test(body ?? ''),
+    const rules = [
+      ...css()
+        .replace(/\/\*[\s\S]*?\*\//gu, '')
+        .matchAll(/([^{}@;]+)\{([^{}]*)\}/gu),
+    ];
+    const small = rules.filter(
+      ([_, selector, body]) =>
+        /data-motion=['"](?:pop|notice)|motionui-chat-pop|motionui-tooltip/u.test(selector ?? '') &&
+        /animation:\s*surface-in/u.test(body ?? ''),
     );
     expect(small.length).toBeGreaterThan(0);
     for (const [, selector] of small) {

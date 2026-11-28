@@ -163,7 +163,6 @@ describe('the existing exit system is used only for safe operator surfaces', () 
   });
 });
 
-
 describe('transient entrance eligibility is retained for each actual surface', () => {
   it('marks a fresh operator surface only after opening has settled', async () => {
     const { arriveTransient, node } = await page();
@@ -208,16 +207,17 @@ describe('transient entrance eligibility is retained for each actual surface', (
   });
 });
 
-
 it('snapshots visual children too when a stationary card closes partway through its entrance', async () => {
   const { leaveTransient, surface, node } = await page();
   const visual = new Surface() as unknown as HTMLElement;
   visual.style.opacity = '0.8';
   visual.style.transform = 'rotate(0deg)';
   surface.querySelectorAll.mockReturnValue([visual]);
-  vi.stubGlobal('getComputedStyle', (part: HTMLElement) => part === visual
-    ? { opacity: '0.3', transform: 'matrix(1, 0, 0, 1, 0, -3)' }
-    : { opacity: '1', transform: 'none' });
+  vi.stubGlobal('getComputedStyle', (part: HTMLElement) =>
+    part === visual
+      ? { opacity: '0.3', transform: 'matrix(1, 0, 0, 1, 0, -3)' }
+      : { opacity: '1', transform: 'none' },
+  );
   let seen = {};
   vi.mocked(leave).mockImplementation(() => {
     seen = { opacity: visual.style.opacity, transform: visual.style.transform };

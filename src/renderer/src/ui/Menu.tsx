@@ -208,22 +208,22 @@ export function Menu({
                 entry.onSelect();
               }}
             >
-              <span className="flex w-4 shrink-0 justify-center">
+              <span className="motionui-visual pointer-events-none flex w-4 shrink-0 justify-center">
                 {entry.checked === undefined
                   ? IconShape && <IconShape size={15} aria-hidden="true" />
                   : entry.checked && <Check size={15} aria-hidden="true" />}
               </span>
               {noteId === undefined ? (
-                <span className="flex-1">{entry.label}</span>
+                <span className="motionui-visual pointer-events-none flex-1">{entry.label}</span>
               ) : (
-                <span className="flex min-w-0 flex-1 flex-col">
+                <span className="motionui-visual pointer-events-none flex min-w-0 flex-1 flex-col">
                   <span>{entry.label}</span>
                   <span id={noteId} className="max-w-72 text-xs text-muted" data-testid="menu-note">
                     {entry.note}
                   </span>
                 </span>
               )}
-              {entry.kbd && <Kbd className="text-muted">{entry.kbd}</Kbd>}
+              {entry.kbd && <Kbd className="motionui-visual pointer-events-none text-muted">{entry.kbd}</Kbd>}
             </button>
           </Fragment>
         );

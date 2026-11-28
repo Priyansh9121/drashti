@@ -3,7 +3,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Kbd } from './Kbd';
 import { cx } from './cx';
-import { leaveTransient } from './transient-motion';
+import { arriveTransient, leaveTransient } from './transient-motion';
 
 /*
  * A tooltip: shown on hover (after a moment) and on keyboard focus, hidden by
@@ -84,6 +84,10 @@ export function Tooltip({
     const y = below ? box.bottom + 6 : box.top - own.height - 6;
     setPlace({ x, y, below });
   }, [open, side, content]);
+
+  useLayoutEffect(() => {
+    if (place) arriveTransient(tip.current, 'pop');
+  }, [place]);
 
   const child = describes && open ? cloneElement(children, { 'aria-describedby': id }) : children;
   return (

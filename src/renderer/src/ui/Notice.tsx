@@ -85,10 +85,10 @@ export function Notice({
       <IconShape
         size={compact ? 14 : 16}
         aria-hidden="true"
-        className={cx('mt-0.5 shrink-0', look.iconClass)}
+        className={cx('motionui-visual pointer-events-none mt-0.5 shrink-0', look.iconClass)}
       />
       <div className="min-w-0 flex-1 space-y-1">
-        {title && <p className="font-bold">{title}</p>}
+        {title && <p className="motionui-visual pointer-events-none font-bold">{title}</p>}
         {children && <div className="break-words">{children}</div>}
         {actions && <div className="flex flex-wrap items-center gap-1.5 pt-0.5">{actions}</div>}
       </div>
@@ -103,7 +103,7 @@ export function Notice({
           // 24 × 24 at least (WCAG 2.5.8); on the phones' pages 44 (app.css).
           className="-mt-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm hover:bg-black/20"
         >
-          <X size={14} aria-hidden="true" />
+          <X size={14} aria-hidden="true" className="motionui-visual pointer-events-none" />
         </button>
       )}
     </div>
