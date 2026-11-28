@@ -19,16 +19,23 @@ export class RateLimiter {
     if (!Number.isInteger(count) || count < 1 || count > this.burst) return false;
     const t = this.now();
     const b = this.buckets.get(key) ?? { tokens: this.burst, at: t };
-    b.tokens = Math.min(this.burst, b.tokens + ((t - b.at) / 1000) * this.rate);
+    b.tokens = Math.min(this.burst, b.tokens + (Math.max(0, t - b.at) / 1000) * this.rate);
     b.at = t;
     const ok = b.tokens >= count;
     if (ok) b.tokens -= count;
     this.buckets.set(key, b);
     // Forget keys that have been quiet (full buckets) so the map cannot grow without end.
     if (this.buckets.size > 1000) {
-      for (const [k, v] of this.buckets) if (v.tokens >= this.burst) this.buckets.delete(k);
+      for (const [k, v] of this.buckets) {
+        const refilled = v.tokens + (Math.max(0, t - v.at) / 1000) * this.rate;
+        if (refilled >= this.burst) this.buckets.delete(k);
+      }
     }
     return ok;
+  }
+  /** Only for a discarded connection UUID, never an address/device that can reconnect. */
+  forget(key: string): void {
+    this.buckets.delete(key);
   }
 }
 

@@ -1,3 +1,4 @@
+import { nodeMessage } from '../network/feed-message';
 import type { NodeVideoCueReport } from '../../shared/nodes';
 import { nodeVideoCueSchema } from '../../shared/nodes-schema';
 import { controllerRequestSchema, type ControllerRequest } from '../../shared/controller-actions';
@@ -716,15 +717,19 @@ export class LinkServer {
         ws.terminate();
         return;
       }
-      let message: FromNode;
+      let message: unknown;
       try {
         const bytes = Array.isArray(data)
           ? Buffer.concat(data)
           : Buffer.isBuffer(data)
             ? data
             : Buffer.from(data);
-        message = JSON.parse(bytes.toString('utf8')) as FromNode;
+        message = JSON.parse(bytes.toString('utf8'));
       } catch {
+        ws.terminate();
+        return;
+      }
+      if (!nodeMessage(message)) {
         ws.terminate();
         return;
       }
@@ -735,6 +740,7 @@ export class LinkServer {
     });
     ws.on('close', () => {
       clearTimeout(hello);
+      this.feedMessages.forget(key);
       this.clients.delete(client);
       const node = client.node;
       client.node = null;
