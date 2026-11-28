@@ -458,10 +458,23 @@ body.web {
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Every focusable thing shows where the keyboard is. */
+  /* Every focusable thing shows where the keyboard is. Brought into a scroller's sight by the keyboard, its whole ring
+     comes with it (alpha.25 item 11: LIVE's scroller cut the ring's last 3-4 px at its foot). */
   :focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
+    scroll-margin-block: 6px;
+  }
+
+  /* LIVE can have no room beyond its scroller's edge. Keep the whole ring inside the control there, even at the
+     end of the scroll, without moving its box or a show control. */
+  [data-testid='live-scroll'] :focus-visible {
+    outline-offset: -2px;
+  }
+
+  /* Inside a primary/live fill, its word colour stays legible where the surface's accent ring may not. */
+  [data-testid='live-scroll'] :is([data-variant='primary'], [data-variant='live']):focus-visible {
+    outline-color: currentColor;
   }
 
   ::selection {
@@ -476,6 +489,13 @@ body.web {
   kbd {
     font-family: inherit;
   }
+}
+
+/* Kept places need the full inset ring, including dialogs with focus:outline-none. Unlayered so a normal focus
+   utility cannot suppress it; header colours below still apply, and forced colours keep the system's adjustment. */
+[data-focus-kept]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
 }
 
 /*
@@ -652,7 +672,8 @@ body.web {
   color: var(--color-on-header-muted);
   border-color: var(--color-header-field);
 }
-[data-header] :focus-visible {
+[data-header] :focus-visible,
+[data-header][data-focus-kept]:focus-visible {
   outline-color: var(--color-header-ring);
 }
 [data-header] [data-header-states] :focus-visible {
