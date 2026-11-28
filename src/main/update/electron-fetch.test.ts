@@ -22,7 +22,7 @@ interface Reply {
 }
 
 /** Electron 44 emits redirect instead of a response, then cancels when it was not followed synchronously. */
-function transport(replies: Record<string, Reply>) {
+function transport(replies: Record<string, Reply>, earlyClose = false) {
   const requests: { options: ClientRequestConstructorOptions; request: EventEmitter; aborted: boolean }[] =
     [];
   const fetch = vi.fn<UpdateFetch>().mockRejectedValue(new Error('Redirect was cancelled'));
@@ -40,6 +40,8 @@ function transport(replies: Record<string, Reply>) {
         req.emit('close');
       },
       end: () => {
+        // Electron 44 auto-destroys the finished request Writable before its network response.
+        if (earlyClose) req.emit('close');
         queueMicrotask(() => {
           const reply = replies[options.url ?? ''];
           if (!reply) throw new Error('Unexpected test destination');
@@ -137,3 +139,31 @@ it.each([204, 205, 304])(
     expect(t.requests[0]?.aborted).toBe(true);
   },
 );
+
+it('U01 Windows: an early request Writable close does not cancel approved redirects or their response', async () => {
+  const t = transport(
+    {
+      [root]: { status: 302, location: version },
+      [version]: { status: 302, location: asset },
+      [asset]: { status: 200, body: Buffer.from('late network response') },
+    },
+    true,
+  );
+  const response = await checkedUpdateFetch(electronUpdateFetch(t.net), root, options());
+  expect(await response.text()).toBe('late network response');
+  expect(t.requests.map((r) => r.options.url)).toEqual([root, version, asset]);
+});
+
+it('U01 Windows: request Writable close does not detach cancellation from the later response body', async () => {
+  const stream = new PassThrough();
+  const t = transport({ [root]: { status: 200, stream } }, true);
+  const abort = new AbortController();
+  const response = await checkedUpdateFetch(electronUpdateFetch(t.net), root, {
+    ...options(),
+    signal: abort.signal,
+  });
+  const body = response.text();
+  abort.abort();
+  await expect(body).rejects.toThrow('aborted');
+  expect(t.requests[0]?.aborted).toBe(true);
+});
