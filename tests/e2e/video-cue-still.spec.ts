@@ -832,7 +832,7 @@ const cueFit = (win: Page) =>
   });
 
 interface CueHold {
-  cueStillPending?: { reports: number; release: () => Promise<void> };
+  cueStillPending?: { loads: number; release: () => void };
 }
 
 test('Pro Mode, LIVE at its 300 px minimum: pending, ready and error words and buttons fit whole, and Go and Cancel never move', async () => {
@@ -851,38 +851,35 @@ test('Pro Mode, LIVE at its 300 px minimum: pending, ready and error words and b
       await expect.poll(async () => (await win.getByTestId('column-right').boundingBox())?.width).toBe(300);
       await liveColumnToTop(liveColumn(win));
       await win.evaluate(() => document.fonts.ready.then(() => undefined));
-      // Hold the real hall page's acknowledgement, never a wall-clock delay or a fabricated ready state.
-      await hall.evaluate(() => {
-        const g = globalThis as PageGlobals & CueHold;
-        const bridge = g.drashti;
-        const queued: Parameters<typeof bridge.engine.videoCueReady>[] = [];
+      // Hold the hall's actual source load, so this required page cannot prepare a frame until released.
+      await hall.evaluate((id) => {
+        const source = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+        if (!source?.set) throw new Error('no native media source setter');
+        const queued = new Map<HTMLVideoElement, string>();
         let held = true;
         const pending = {
-          reports: 0,
-          release: async () => {
+          loads: 0,
+          release: () => {
             held = false;
-            for (const args of queued) await bridge.engine.videoCueReady(...args);
+            for (const [video, value] of queued) source.set?.call(video, value);
           },
         };
-        g.cueStillPending = pending;
-        g.drashti = {
-          ...bridge,
-          engine: {
-            ...bridge.engine,
-            videoCueReady: async (...args) => {
-              if (held && args[1] === 'picture') {
-                queued.push(args);
-                pending.reports += 1;
-                return null;
-              }
-              return bridge.engine.videoCueReady(...args);
-            },
+        (globalThis as CueHold).cueStillPending = pending;
+        Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+          ...source,
+          set(this: HTMLMediaElement, value: string) {
+            if (held && this instanceof HTMLVideoElement && this.dataset['mediaId'] === id) {
+              queued.set(this, value);
+              pending.loads += 1;
+              return;
+            }
+            source.set?.call(this, value);
           },
-        };
-      });
+        });
+      }, ids[1] ?? '');
       expect((await dispatch(win, { type: 'cueVideo', mediaId: ids[1] ?? '' })).ok).toBe(true);
       await expect
-        .poll(() => hall.evaluate(() => (globalThis as CueHold).cueStillPending?.reports ?? 0))
+        .poll(() => hall.evaluate(() => (globalThis as CueHold).cueStillPending?.loads ?? 0))
         .toBeGreaterThan(0);
       const cue = (await snapshot(win)).videoCue;
       if (!cue) throw new Error('no pending cue');
@@ -899,10 +896,10 @@ test('Pro Mode, LIVE at its 300 px minimum: pending, ready and error words and b
       const faults = [{ state: 'pending', faults: await cueFit(win) }];
       rows.push(await geometry(win, `${where}: pending`));
       expect(await startWatching(win, selector)).toBe(2);
-      await hall.evaluate(async () => {
+      await hall.evaluate(() => {
         const pending = (globalThis as CueHold).cueStillPending;
         if (!pending) throw new Error('no held hall page');
-        await pending.release();
+        pending.release();
       });
       await cueReady(win);
       await expect(status).toContainText('Cue ready');
