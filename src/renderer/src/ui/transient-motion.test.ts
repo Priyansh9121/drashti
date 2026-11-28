@@ -22,17 +22,21 @@ class Surface {
   dataset: Record<string, string> = {};
   style = {
     opacity: '',
+    transform: '',
     getPropertyPriority: () => '',
     setProperty: (name: string, value: string) => {
       if (name === 'opacity') this.style.opacity = value;
+      if (name === 'transform') this.style.transform = value;
     },
-    removeProperty: () => {
-      this.style.opacity = '';
+    removeProperty: (name: string) => {
+      if (name === 'opacity') this.style.opacity = '';
+      if (name === 'transform') this.style.transform = '';
       return '';
     },
   };
   closest = vi.fn<(selector: string) => Element | null>(() => null);
   querySelector = vi.fn<(selector: string) => Element | null>(() => null);
+  querySelectorAll = vi.fn<() => HTMLElement[]>(() => []);
 }
 
 async function page() {
@@ -202,4 +206,24 @@ describe('transient entrance eligibility is retained for each actual surface', (
     arriveTransient(secondary, 'notice');
     expect(secondary.dataset['motion']).toBeUndefined();
   });
+});
+
+
+it('snapshots visual children too when a stationary card closes partway through its entrance', async () => {
+  const { leaveTransient, surface, node } = await page();
+  const visual = new Surface() as unknown as HTMLElement;
+  visual.style.opacity = '0.8';
+  visual.style.transform = 'rotate(0deg)';
+  surface.querySelectorAll.mockReturnValue([visual]);
+  vi.stubGlobal('getComputedStyle', (part: HTMLElement) => part === visual
+    ? { opacity: '0.3', transform: 'matrix(1, 0, 0, 1, 0, -3)' }
+    : { opacity: '1', transform: 'none' });
+  let seen = {};
+  vi.mocked(leave).mockImplementation(() => {
+    seen = { opacity: visual.style.opacity, transform: visual.style.transform };
+  });
+  leaveTransient(node, 'notice');
+  expect(seen).toEqual({ opacity: '0.3', transform: 'matrix(1, 0, 0, 1, 0, -3)' });
+  expect(visual.style.opacity).toBe('0.8');
+  expect(visual.style.transform).toBe('rotate(0deg)');
 });
