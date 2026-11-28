@@ -20,7 +20,7 @@ describe('the decorative appearance band', () => {
     expect(bandSweeps({ ...NOW, chip: 'unknown' })).toBe(false);
   });
 
-  it('never in Calm or Off, with reduced motion, as the show changes, for the same look, or for the same look', () => {
+  it('never in Calm or Off, with reduced motion, as the show changes, or for the same look', () => {
     expect(bandSweeps({ ...NOW, motion: 'calm' })).toBe(false);
     expect(bandSweeps({ ...NOW, motion: 'off' })).toBe(false);
     expect(bandSweeps({ ...NOW, reduced: true })).toBe(false);

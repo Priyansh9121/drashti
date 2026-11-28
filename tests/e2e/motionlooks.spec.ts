@@ -57,7 +57,8 @@ async function observe(win: Page, hold = false): Promise<void> {
         throw new Error('Document capture is forbidden');
       },
     });
-    const animate = Element.prototype.animate;
+    const animate = Object.getOwnPropertyDescriptor(Element.prototype, 'animate')
+      ?.value as Element['animate'];
     Element.prototype.animate = function (frames, options) {
       const animation = animate.call(this, frames, options);
       if (this.matches('[data-what-is-this]')) {
@@ -230,7 +231,7 @@ test('chip-enabled dark/light appearance changes keep header words at 4.5:1 in e
       for (const look of ['black', 'white', 'black']) {
         // Start before the preload draws; do not wait for animations to finish before reading contrast.
         const samples = win.evaluate(
-          () =>
+          (want) =>
             new Promise<{ ratio: number; opacity: number }[]>((resolve) => {
               const seen: { ratio: number; opacity: number }[] = [];
               const rgb = (text: string) => (text.match(/[\d.]+/gu) ?? []).slice(0, 3).map(Number);
@@ -255,11 +256,13 @@ test('chip-enabled dark/light appearance changes keep header words at 4.5:1 in e
                     opacity *= Number(getComputedStyle(parent).opacity);
                   seen.push({ ratio: (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05), opacity });
                 }
-                if (++frames === 20) resolve(seen);
+                if (document.documentElement.dataset['appearance'] === want) frames += 1;
+                if (frames === 20) resolve(seen);
                 else requestAnimationFrame(sample);
               };
               requestAnimationFrame(sample);
             }),
+          look,
         );
         await chooseMenuItem(app, `appearance-${look}`);
         await expect(win.locator('html')).toHaveAttribute('data-appearance', look);

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-async function page() {
+function page() {
   vi.resetModules();
   const startViewTransition = vi.fn(() => ({
     finished: new Promise<void>(() => undefined),
@@ -24,9 +24,8 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('mode and Help changes leave no deferred UI update', () => {
   it('draws the IPC mode event immediately, deduplicating the same reply without capturing the document', async () => {
-    const p = await page();
+    const p = page();
     let changed: (mode: 'pro' | 'simple') => void = () => undefined;
-    let store: typeof import('../operator/mode-store');
     vi.stubGlobal('window', {
       drashti: {
         app: {
@@ -42,7 +41,7 @@ describe('mode and Help changes leave no deferred UI update', () => {
         },
       },
     });
-    store = await import('../operator/mode-store');
+    const store = await import('../operator/mode-store');
     store.useMode.setState({ mode: 'pro' });
     const notified = vi.fn();
     store.useMode.subscribe(notified);
@@ -54,7 +53,7 @@ describe('mode and Help changes leave no deferred UI update', () => {
   });
 
   it('two rapid Help toggles end off immediately, with no stale callback or captured key hint', async () => {
-    const p = await page();
+    const p = page();
     const storage = { getItem: () => null, setItem: () => undefined };
     vi.stubGlobal('window', { localStorage: storage, sessionStorage: storage });
     const help = await import('../help/help-store');

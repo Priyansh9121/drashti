@@ -7,7 +7,7 @@ function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
     if (statSync(path).isDirectory()) return sources(path);
-    return /\.(?:ts|tsx|css)$/u.test(name) && !/\.test\./u.test(name) ? [path] : [];
+    return /\.(?:ts|tsx|css)$/u.test(name) && !name.includes('.test.') ? [path] : [];
   });
 }
 
