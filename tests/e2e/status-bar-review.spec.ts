@@ -4,6 +4,8 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { EventChannel, EventContract } from '../../src/shared/ipc';
 import { IPC } from '../../src/shared/ipc';
+import { festivalsLine, samvatLine, type CalendarDay } from '../../src/shared/calendar';
+import { silentWords, type SoundLevels } from '../../src/shared/sound';
 import type { ScreenStatus } from '../../src/shared/screens';
 import type { SaveJob } from '../../src/shared/trim';
 import { stopAnswering } from './access';
@@ -406,6 +408,180 @@ for (const mode of ['pro', 'simple'] as const)
       await app.close();
     }
   });
+
+/** Production calendar import: fixtures are placeholder words only, including the schema's longest valid festivals. */
+async function loadStatusCalendar(win: Page, userData: string, day: CalendarDay, tag: string) {
+  const file = join(userData, `placeholder-status-${tag}.json`);
+  writeFileSync(
+    file,
+    JSON.stringify({
+      format: 'drashti-calendar',
+      version: 1,
+      name: `Placeholder ${tag}`,
+      days: [day],
+    }),
+  );
+  await win.evaluate((file) => (globalThis as PageGlobals).drashti.library.importPaths([file]), file);
+  const result = win.getByTestId('import-result');
+  await expect(result).toBeVisible();
+  await result.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(result).toHaveCount(0);
+}
+
+const statusDay = (): CalendarDay => {
+  const now = new Date();
+  return {
+    date: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
+    samvat: 1001,
+    month: { en: 'Month' },
+    paksha: { en: 'Half' },
+    tithi: { en: 'Day' },
+    festivals: [],
+  };
+};
+
+for (const mode of ['pro', 'simple'] as const)
+  test(`MUST-1 continued ${mode}: loaded calendar, mirroring, access room, both screens off and disconnected Sound fit with every two-kind silence state`, async () => {
+    const { app, userData } = await launchApp({
+      DRASHTI_TEST_AUTO_SCREENS: 'pretend',
+      DRASHTI_TEST_MIRRORED_ONTO: 'PLACEHOLDER PJ',
+    });
+    try {
+      const win = await operatorPage(app);
+      await operatorReady(win);
+      await sizeOperatorWindow(app, win, CI_WINDOW);
+      await expect(win.getByTestId('screens-said')).toHaveAttribute('data-kind', 'mirroring');
+      await loadStatusCalendar(win, userData, statusDay(), 'silence');
+      await expect(win.getByTestId('today-calendar')).toBeVisible();
+      await win.evaluate(async () => {
+        const d = (globalThis as PageGlobals).drashti;
+        for (const which of ['audience', 'stage'] as const) {
+          const result = await d.screenSwitches.turn(which, false);
+          if (!result.ok) throw new Error(result.message);
+        }
+        await d.audio.setOutput({ id: 'placeholder-mixer', label: 'Placeholder Mixer' });
+      });
+      await expect(win.getByTestId('sound-warning')).toBeVisible();
+      if (mode === 'simple')
+        await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+      const before = await settledSteady(win);
+      const cases: SoundLevels[] = [
+        { audio: { level: 1, muted: true }, video: { level: 1, muted: true } },
+        { audio: { level: 1, muted: true }, video: { level: 0, muted: false } },
+        { audio: { level: 0, muted: false }, video: { level: 1, muted: true } },
+        { audio: { level: 0, muted: false }, video: { level: 0, muted: false } },
+        { audio: { level: 1, muted: false }, video: { level: 1, muted: false } },
+      ];
+      for (const levels of cases) {
+        await win.evaluate(async (levels) => {
+          const sound = (globalThis as PageGlobals).drashti.sound;
+          for (const kind of ['audio', 'video'] as const) {
+            await sound.setLevel(kind, levels[kind].level);
+            await sound.setMuted(kind, levels[kind].muted);
+          }
+        }, levels);
+        const words = silentWords(levels);
+        await expect(win.getByTestId('sound-muted-status')).toHaveText(words);
+        expect.soft(await steady(win), `${mode}: ${words}`).toEqual(before);
+        await fits(win, `${mode}: ${words}`);
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
+for (const mode of ['pro', 'simple'] as const)
+  for (const size of [
+    { width: 1535, height: 900 },
+    { width: 1536, height: 900 },
+    { width: 1600, height: 900 },
+  ])
+    test(`MUST-4 ${mode} ${size.width}: calendar loading, removal and changed date/festival words never move Help or following controls; long words use a 24 px fallback`, async () => {
+      const { app, userData } = await launchApp({
+        DRASHTI_TEST_AUTO_SCREENS: 'pretend',
+        DRASHTI_TEST_MIRRORED_ONTO: 'PLACEHOLDER PJ',
+      });
+      try {
+        const win = await operatorPage(app);
+        await operatorReady(win);
+        await sizeOperatorWindow(app, win, size);
+        await expect(win.getByTestId('screens-said')).toHaveAttribute('data-kind', 'mirroring');
+        await win.evaluate(async () => {
+          const d = (globalThis as PageGlobals).drashti;
+          for (const which of ['audience', 'stage'] as const) {
+            const result = await d.screenSwitches.turn(which, false);
+            if (!result.ok) throw new Error(result.message);
+          }
+          await d.audio.setOutput({ id: 'placeholder-mixer', label: 'Placeholder Mixer' });
+          await d.sound.setMuted('audio', true);
+          await d.sound.setMuted('video', true);
+        });
+        await expect(win.getByTestId('sound-warning')).toBeVisible();
+        await expect(win.getByTestId('sound-muted-status')).toHaveText('Audio and Video muted');
+        if (mode === 'simple')
+          await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+        const neighbours = async () =>
+          (await steady(win)).filter((line) => !line.startsWith('[data-testid="today-calendar"]'));
+        const afterHelp = () =>
+          bar(win)
+            .locator('button')
+            .evaluateAll((buttons) => {
+              const help = buttons.findIndex((b) => b.getAttribute('data-testid') === 'help-toggle');
+              return buttons.slice(help).map((b) => {
+                const r = b.getBoundingClientRect();
+                return `${b.getAttribute('data-testid') ?? b.textContent}: ${r.x.toFixed(2)},${r.y.toFixed(2)} ${r.width.toFixed(2)}×${r.height.toFixed(2)}`;
+              });
+            });
+        const before = (await settledSteady(win)).filter(
+          (line) => !line.startsWith('[data-testid="today-calendar"]'),
+        );
+        const controls = await afterHelp();
+        for (const [index, day] of [
+          statusDay(),
+          {
+            ...statusDay(),
+            samvat: 1002,
+            tithi: { en: 'Another placeholder day' },
+            festivals: Array.from({ length: 12 }, (_, i) => ({
+              en: `Placeholder ${i} ${'long '.repeat(21)}`,
+            })),
+          },
+        ].entries()) {
+          // Imports are a Pro action; put Simple back before measuring its footer.
+          if (mode === 'simple')
+            await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
+          await loadStatusCalendar(win, userData, day, `wide-${index}`);
+          if (mode === 'simple')
+            await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+          const words = `${samvatLine(day, 'en')}${festivalsLine(day, 'en') ? ` · ${festivalsLine(day, 'en')}` : ''}`;
+          const calendar = win.getByTestId('today-calendar');
+          await expect(calendar).toHaveAccessibleName(words);
+          expect.soft(await calendar.getAttribute('title')).toContain(words);
+          expect.soft(await neighbours()).toEqual(before);
+          expect.soft(await afterHelp()).toEqual(controls);
+          if (index === 1 || size.width < 1536)
+            expect.soft(await calendar.evaluate((el) => el.getBoundingClientRect().width)).toBe(24);
+          await fits(win, `${mode} ${size.width}: calendar ${index}`);
+        }
+        if (mode === 'simple')
+          await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro'));
+        await win.evaluate(async () => {
+          const d = (globalThis as PageGlobals).drashti;
+          for (const calendar of (await d.calendar.view()).calendars) {
+            const result = await d.calendar.remove(calendar.id);
+            if (!result.ok) throw new Error(result.message);
+          }
+        });
+        await expect(win.getByTestId('today-calendar')).toHaveCount(0);
+        if (mode === 'simple')
+          await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+        expect.soft(await neighbours()).toEqual(before);
+        expect.soft(await afterHelp()).toEqual(controls);
+        await fits(win, `${mode} ${size.width}: calendar removed`);
+      } finally {
+        await app.close();
+      }
+    });
 
 async function ring(win: Page, button: Locator, where: string) {
   await button.focus();
