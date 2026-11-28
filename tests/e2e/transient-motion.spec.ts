@@ -242,6 +242,8 @@ test('chat arrives calmly, its exit stays private, and Off or reduced motion lea
     const win = await operatorPage(app);
     await operatorReady(win);
     await sizeOperatorWindow(app, win, CI_WINDOW);
+    // Entrances move only once the window has opened (the startup guard); a slow runner can be later than the chat.
+    await expect(win.locator('html')).toHaveAttribute('data-opened', '');
     const { port } = await networkOn(win);
     const token = await pairToken(win, port, 'remote', 'Placeholder phone');
     expect(
@@ -420,6 +422,7 @@ for (const simple of [false, true]) {
         const win = await operatorPage(app);
         await operatorReady(win);
         await sizeOperatorWindow(app, win, CI_WINDOW);
+        await expect(win.locator('html')).toHaveAttribute('data-opened', '');
         const { port } = await networkOn(win);
         const token = await pairToken(win, port, 'remote', 'Placeholder phone');
         expect(
