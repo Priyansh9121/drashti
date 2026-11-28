@@ -1,4 +1,5 @@
-import { shell, systemPreferences } from 'electron';
+import { systemPreferences } from 'electron';
+import { openSafeExternal } from '../windows/external-url';
 import { type CameraSystem, cameraSystem } from './camera';
 
 /*
@@ -14,7 +15,7 @@ export function electronCamera(
     {
       status: () => systemPreferences.getMediaAccessStatus('camera'),
       ask: () => systemPreferences.askForMediaAccess('camera'),
-      open: (url) => shell.openExternal(url),
+      open: (url) => openSafeExternal(url),
     },
     test,
   );
