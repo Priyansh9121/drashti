@@ -1,11 +1,13 @@
 import type { Dirent } from 'node:fs';
-import { lstat, readdir, stat } from 'node:fs/promises';
-import { basename, dirname, extname, join } from 'node:path';
+import { lstat, readdir, realpath, stat } from 'node:fs/promises';
+import { basename, dirname, extname, join, resolve } from 'node:path';
 import { isSystemFileName } from '../../shared/drop-folder';
 import { captionFileInfo } from '../../shared/video-captions';
 import type { ImportFormat } from '../../shared/import';
 import { IMAGE_EXTENSIONS, SOUND_EXTENSIONS, VIDEO_EXTENSIONS } from '../../shared/media';
 import { PICTURE_EXTENSIONS, pictureSourceOf } from '../../shared/pictures';
+
+import { folderReadPath, OutsideImportFolder } from './folder-containment';
 
 export type MediaKind = 'image' | 'video' | 'audio';
 
@@ -66,14 +68,21 @@ export function formatOf(path: string): ImportFormat {
 
 export interface ScannedFile {
   path: string;
+  /** Canonical chosen folder; absent for an explicit file choice. */
+  folderRoot?: string;
   size: number;
   format: ImportFormat;
 }
 
 export interface ScanResult {
   files: ScannedFile[];
+  /** Main-selected folders and explicit file choices, retained for referenced sources too. */
+  folderRoots: Map<string, string>;
+  explicitFiles: Set<string>;
   /** Paths that were asked for but do not exist (or cannot be read). */
   missing: { path: string; message: string }[];
+  /** Folder entries refused at the containment boundary, named in the import report. */
+  skipped: { path: string; message: string }[];
   /** Lower-case file name -> paths, for every media file found (for relinking by name). */
   mediaByName: Map<string, string[]>;
   /** True when the scan stopped at the file limit. */
@@ -95,18 +104,32 @@ export interface ScanOptions {
 export async function scanPaths(paths: readonly string[], options: ScanOptions = {}): Promise<ScanResult> {
   const maxFiles = options.maxFiles ?? 100_000;
   const maxDepth = options.maxDepth ?? 16;
-  const result: ScanResult = { files: [], missing: [], mediaByName: new Map(), truncated: false };
+  const result: ScanResult = {
+    files: [],
+    folderRoots: new Map(),
+    explicitFiles: new Set(),
+    missing: [],
+    skipped: [],
+    mediaByName: new Map(),
+    truncated: false,
+  };
   const seen = new Set<string>();
 
-  const addFile = (path: string, size: number) => {
-    if (seen.has(path)) return;
+  const addFile = (path: string, size: number, folderRoot?: string) => {
+    if (seen.has(path)) {
+      if (folderRoot === undefined) {
+        const existing = result.files.find((file) => file.path === path);
+        if (existing) delete existing.folderRoot;
+      }
+      return;
+    }
     if (result.files.length >= maxFiles) {
       result.truncated = true;
       return;
     }
     seen.add(path);
     const format = formatOf(path);
-    result.files.push({ path, size, format });
+    result.files.push({ path, size, format, ...(folderRoot === undefined ? {} : { folderRoot }) });
     if (format === 'media') {
       const key = basename(path).toLowerCase();
       const list = result.mediaByName.get(key) ?? [];
@@ -115,7 +138,12 @@ export async function scanPaths(paths: readonly string[], options: ScanOptions =
     }
   };
 
-  const walk = async (dir: string, depth: number, out: { path: string; size: number }[]) => {
+  const walk = async (
+    dir: string,
+    depth: number,
+    out: { path: string; size: number }[],
+    folderRoot: string,
+  ) => {
     if (depth > maxDepth || options.skip?.(dir)) return;
     let entries: Dirent[];
     try {
@@ -131,13 +159,17 @@ export async function scanPaths(paths: readonly string[], options: ScanOptions =
       if (entry.isDirectory()) {
         // A Keynote file saved as a package is a folder: one item, never its pictures inside.
         if (lower.endsWith('.key')) out.push({ path: full, size: 0 });
-        else if (!IGNORED_DIRS.has(lower) && !lower.endsWith('.app')) await walk(full, depth + 1, out);
+        else if (!IGNORED_DIRS.has(lower) && !lower.endsWith('.app'))
+          await walk(full, depth + 1, out, folderRoot);
       } else if (entry.isFile() || entry.isSymbolicLink()) {
         try {
-          const s = await stat(full);
+          const target = await folderReadPath({ path: full, folderRoot });
+          const s = await stat(target);
           if (s.isFile()) out.push({ path: full, size: s.size });
-        } catch {
-          // A broken link: nothing to import.
+        } catch (error) {
+          if (error instanceof OutsideImportFolder)
+            result.skipped.push({ path: full, message: error.message });
+          // A broken link still has nothing to import.
         }
       }
     }
@@ -156,14 +188,17 @@ export async function scanPaths(paths: readonly string[], options: ScanOptions =
       continue;
     }
     if (info.isFile()) {
+      result.explicitFiles.add(resolve(root));
       addFile(root, info.size);
     } else if (info.isDirectory() && root.toLowerCase().endsWith('.key')) {
       addFile(root, 0);
     } else if (info.isDirectory()) {
       const found: { path: string; size: number }[] = [];
-      await walk(root, 0, found);
+      const folderRoot = await realpath(root);
+      result.folderRoots.set(resolve(root), folderRoot);
+      await walk(root, 0, found, folderRoot);
       found.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-      for (const f of found) addFile(f.path, f.size);
+      for (const f of found) addFile(f.path, f.size, folderRoot);
     }
   }
   // A video imports its own caption files in MediaStore. A folder/drop must not report them as unsupported items.
@@ -191,5 +226,6 @@ export async function scanPaths(paths: readonly string[], options: ScanOptions =
     const name = match?.[1];
     return !(name && names.has(name.toLowerCase()) && captionFileInfo(`${name}.mp4`, file.path));
   });
+  result.skipped = result.skipped.filter((file) => !result.explicitFiles.has(resolve(file.path)));
   return result;
 }

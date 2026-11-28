@@ -1,5 +1,7 @@
 import { app, type BrowserWindow } from 'electron';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { assignIpcPage } from '../security/ipc-authority';
 import { packaged, sw } from '../switches';
 
 export type RendererPage =
@@ -81,7 +83,10 @@ export function loadPage(
   if (dev) {
     const url = new URL(`${page}.html`, dev.endsWith('/') ? dev : dev + '/');
     for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
+    assignIpcPage(win.webContents, page, url.toString());
     return win.loadURL(url.toString());
   }
-  return win.loadFile(join(rendererDir(), `${page}.html`), { query });
+  const file = join(rendererDir(), `${page}.html`);
+  assignIpcPage(win.webContents, page, pathToFileURL(file).href);
+  return win.loadFile(file, { query });
 }
