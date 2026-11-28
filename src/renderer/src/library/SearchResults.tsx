@@ -23,7 +23,7 @@ function Marked({ line, query }: { line: string; query: string }) {
         const [word] = searchWords(part);
         const hit = i % 2 === 1 && word !== undefined && wanted.some((w) => word.startsWith(w));
         return hit ? (
-          <mark key={i} className="rounded-sm bg-primary/60 text-fg">
+          <mark key={i} className="rounded-sm bg-primary text-on-primary">
             {part}
           </mark>
         ) : (
