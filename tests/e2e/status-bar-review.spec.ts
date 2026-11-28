@@ -10,7 +10,15 @@ import type { ScreenStatus } from '../../src/shared/screens';
 import type { SaveJob } from '../../src/shared/trim';
 import { stopAnswering } from './access';
 import { fitFaults } from './fit';
-import { dropFiles, launchApp, openLibrary, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import {
+  closeLibrary,
+  dropFiles,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  type PageGlobals,
+} from './helpers';
 import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 /* The release lead's three statusbar MUSTs (28 Nov): combined warnings must fit without moving Sound/Help,
@@ -426,9 +434,12 @@ async function loadStatusCalendar(win: Page, userData: string, day: CalendarDay,
       days: [day],
     }),
   );
-  await win.evaluate((file) => (globalThis as PageGlobals).drashti.library.importPaths([file]), file);
+  // Use the real renderer import flow: it records finishedRun; the preload API alone does not.
+  await openLibrary(win);
+  await dropFiles(win, win.getByTestId('library-drop'), [file]);
   const result = win.getByTestId('import-result');
   await expect(result).toBeVisible();
+  await closeLibrary(win);
   await result.getByRole('button', { name: 'Dismiss' }).click();
   await expect(result).toHaveCount(0);
 }
@@ -558,7 +569,7 @@ for (const mode of ['pro', 'simple'] as const)
           const calendar = win.getByTestId('today-calendar');
           await expect(calendar).toHaveAccessibleName(words);
           expect.soft(await calendar.getAttribute('title')).toContain(words);
-          if (mode === 'simple') await expect.poll(neighbours).toEqual(before);
+          await expect.poll(neighbours).toEqual(before);
           expect.soft(await neighbours()).toEqual(before);
           expect.soft(await afterHelp()).toEqual(controls);
           if (index === 1 || size.width < 1536)
@@ -579,7 +590,7 @@ for (const mode of ['pro', 'simple'] as const)
         });
         await expect(win.getByTestId('today-calendar')).toHaveCount(0);
         if (mode === 'simple') await statusMode(win, 'simple');
-        if (mode === 'simple') await expect.poll(neighbours).toEqual(before);
+        await expect.poll(neighbours).toEqual(before);
         expect.soft(await neighbours()).toEqual(before);
         expect.soft(await afterHelp()).toEqual(controls);
         await fits(win, `${mode} ${size.width}: calendar removed`);
