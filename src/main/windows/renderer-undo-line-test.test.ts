@@ -30,7 +30,7 @@ it.each([
     settings.packaged = packaged;
     settings.asked = asked;
     const loadFile = vi.fn(() => Promise.resolve());
-    const win = { loadFile } as unknown as BrowserWindow;
+    const win = { loadFile, webContents: {} } as unknown as BrowserWindow;
     await loadPage(win, page);
     expect(loadFile).toHaveBeenCalledWith(expect.any(String), {
       query: enabled ? { undoLineTest: '1' } : {},

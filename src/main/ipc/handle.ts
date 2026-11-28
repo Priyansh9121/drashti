@@ -1,8 +1,7 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron';
 import { STOPPED_REFUSAL } from '../../shared/access';
 import type { InvokeChannel, InvokeResult } from '../../shared/ipc';
-import { isAppUrl } from '../windows/navigation';
-import { devServerUrl, rendererDir } from '../windows/renderer';
+import { ipcRequestAllowed } from '../security/ipc-authority';
 
 /**
  * The slowest time each channel's handler has taken in the main process
@@ -137,17 +136,14 @@ function note(channel: string, started: number): void {
 /**
  * Register a handler for a request/response channel from the shared contract.
  * Arguments arrive as `unknown`: handlers must validate them. Calls from pages
- * other than our own are rejected before the handler runs.
+ * outside their Main-assigned window, main frame or channel authority are rejected before the handler runs.
  */
 export function handle<C extends InvokeChannel>(
   channel: C,
   handler: (event: IpcMainInvokeEvent, ...args: unknown[]) => InvokeResult<C> | Promise<InvokeResult<C>>,
 ): void {
   ipcMain.handle(channel, (event, ...args: unknown[]) => {
-    const url = event.senderFrame?.url ?? '';
-    if (!isAppUrl(url, { devServerUrl: devServerUrl(), rendererDir: rendererDir() })) {
-      throw new Error(`Refused ${channel} from ${url || 'an unknown frame'}`);
-    }
+    if (!ipcRequestAllowed(event, channel)) throw new Error('Refused IPC request.');
     const tell = tellerFor(channel);
     if (access && !access(channel, event)) {
       tell?.('refused (not let in)');
@@ -187,6 +183,7 @@ export function handle<C extends InvokeChannel>(
     if (!waiting) return run();
     return waiting.then(async (done) => {
       try {
+        if (!ipcRequestAllowed(event, channel)) throw new Error('Refused IPC request.');
         return await run();
       } finally {
         done();
@@ -201,9 +198,6 @@ export function handle<C extends InvokeChannel>(
  */
 export function handleSync(channel: string, answer: () => unknown): void {
   ipcMain.on(channel, (event) => {
-    const url = event.senderFrame?.url ?? '';
-    event.returnValue = isAppUrl(url, { devServerUrl: devServerUrl(), rendererDir: rendererDir() })
-      ? answer()
-      : null;
+    event.returnValue = ipcRequestAllowed(event, channel) ? answer() : null;
   });
 }

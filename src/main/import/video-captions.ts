@@ -1,6 +1,7 @@
 import { constants } from 'node:fs';
 import { open, opendir } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
+import { folderReadPath, OutsideImportFolder } from './folder-containment';
 import type { ImportIssue } from '../../shared/import';
 import {
   addedCaptionInfo,
@@ -20,11 +21,15 @@ export interface ReadCaptionFile {
 export async function readCaptionFile(
   file: string,
   info = addedCaptionInfo(basename(file)),
+  folderRoot?: string,
 ): Promise<ReadCaptionFile> {
   if (!/\.(srt|vtt)$/iu.test(file)) return { track: null, problem: 'Choose an SRT or WebVTT caption file.' };
   let handle;
   try {
-    handle = await open(file, constants.O_RDONLY | constants.O_NONBLOCK);
+    handle = await open(
+      await folderReadPath({ path: file, folderRoot }),
+      constants.O_RDONLY | constants.O_NONBLOCK,
+    );
     const stat = await handle.stat();
     if (!stat.isFile()) return { track: null, problem: 'The caption file is not a regular file.' };
     if (stat.size > MAX_CAPTION_CHARS)
@@ -63,7 +68,8 @@ export async function readCaptionFile(
         : null,
       problem: result.problem,
     };
-  } catch {
+  } catch (error) {
+    if (error instanceof OutsideImportFolder) return { track: null, problem: error.message };
     return {
       track: null,
       problem:
@@ -77,6 +83,7 @@ export async function readCaptionFile(
 /** Runs in the import utility process, before database writes and never during playback. */
 export async function discoverVideoCaptions(
   video: string,
+  folderRoot?: string,
 ): Promise<{ tracks: VideoCaptionTrack[]; issues: ImportIssue[] }> {
   const tracks: VideoCaptionTrack[] = [];
   const issues: ImportIssue[] = [];
@@ -111,7 +118,7 @@ export async function discoverVideoCaptions(
     for (const name of names.sort().slice(0, MAX_CAPTION_TRACKS)) {
       const info = captionFileInfo(video, name);
       if (!info) continue;
-      const read = await readCaptionFile(join(dirname(video), name), info);
+      const read = await readCaptionFile(join(dirname(video), name), info, folderRoot);
       if (read.track) tracks.push(read.track);
       if (read.problem) notice(name, read.problem);
     }

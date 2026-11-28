@@ -8,6 +8,8 @@ import { DEFAULT_PIP_PLACE } from '../../shared/pip';
 import type { SimpleFeature } from '../../shared/simple-features';
 import type { SimpleScope } from '../simple-mode';
 import { simpleModeBounds, simpleModeRefusals } from '../simple-mode';
+import { assignIpcPage } from '../security/ipc-authority';
+import type { IpcPage } from '../../shared/ipc-policy';
 import { gateChannels, handle, lockChannels, refusedNow, tellRequests } from './handle';
 
 /*
@@ -33,11 +35,13 @@ vi.mock('../windows/renderer', () => ({
   rendererDir: () => '/app/out/renderer',
 }));
 
-const from = (page: string, id = 1) =>
-  ({
-    senderFrame: { url: `file:///app/out/renderer/${page}` },
-    sender: { id },
-  }) as unknown as IpcMainInvokeEvent;
+const from = (page: string, id = 1): IpcMainInvokeEvent => {
+  const frame = { url: `file:///app/out/renderer/${page}` };
+  const sender = { id, mainFrame: frame, getURL: () => frame.url, isDestroyed: () => false };
+  const event = { senderFrame: frame, sender } as unknown as IpcMainInvokeEvent;
+  assignIpcPage(event.sender, page.replace('.html', '') as IpcPage, frame.url);
+  return event;
+};
 
 afterEach(() => {
   gateChannels(null);
@@ -70,15 +74,13 @@ describe('the gate before every request (Session 54)', () => {
 
   it('asks the gate with the request’s own channel and page', () => {
     const asked: [string, number][] = [];
-    handle(IPC.library.listPresentations, () => []);
+    handle(IPC.engine.snapshot, () => null as never);
     gateChannels((channel, event) => {
       asked.push([channel, event.sender.id]);
       return false;
     });
-    expect(() => handlers.get(IPC.library.listPresentations)?.(from('output.html', 7))).toThrow(
-      STOPPED_REFUSAL,
-    );
-    expect(asked).toEqual([[IPC.library.listPresentations, 7]]);
+    expect(() => handlers.get(IPC.engine.snapshot)?.(from('output.html', 7))).toThrow(STOPPED_REFUSAL);
+    expect(asked).toEqual([[IPC.engine.snapshot, 7]]);
   });
 
   it('still refuses a page that is not Drashti’s own first, whatever the gate says', () => {

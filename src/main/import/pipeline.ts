@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { formatBytes } from '../../shared/format';
@@ -49,6 +49,7 @@ import { TRANSLIT_STYLES, type TranslitStyle } from '../../shared/translit';
 import { unreadPictureWords } from '../../shared/media';
 import { playIssues } from './probe';
 import { extOf, formatOf, type ScannedFile, scanPaths } from './scan';
+import { folderReadPath, OutsideImportFolder } from './folder-containment';
 import type { DrawPdf, PicturesResult } from '../../shared/pictures';
 import { pictureSourceOf } from '../../shared/pictures';
 import {
@@ -533,6 +534,31 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     issue: ImportIssue | null;
   }
 
+  let folderRoots = new Map<string, string>();
+  let explicitFiles = new Set<string>();
+  const skippedPaths = new Set<string>();
+  const folderRootFor = async (path: string): Promise<string | undefined> => {
+    const absolute = resolve(path);
+    if (explicitFiles.has(absolute)) return undefined;
+    for (const [chosen, canonical] of folderRoots)
+      if (isInside(chosen, absolute) || isInside(canonical, absolute)) return canonical;
+    // A stored reference may spell the selected directory through another alias (or different case).
+    // Resolve its directory ancestry without following the file itself: an outside file target must not
+    // hide that its link belongs to the selected folder. A genuinely external reference keeps its policy.
+    if (folderRoots.size === 0) return undefined;
+    for (let directory = dirname(absolute); ;) {
+      const real = await realpath(directory).catch(() => null);
+      if (real !== null)
+        for (const canonical of folderRoots.values())
+          if (relative(canonical, real) === '' || isInside(canonical, real)) return canonical;
+      const parent = dirname(directory);
+      if (parent === directory) break;
+      directory = parent;
+    }
+    return undefined;
+  };
+  const referenceFile = async (path: string) => ({ path, folderRoot: await folderRootFor(path) });
+
   /** Find each media file a document names and copy it into the media folder (no database work). */
   const stageMedia = async (refs: readonly ParsedMediaRef[], where: Where): Promise<Staged[]> => {
     if (refs.length === 0) return [];
@@ -546,7 +572,23 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         out.push({ ref, staged: null, issue: null });
         continue;
       }
-      const stage = await ctx.media.stage(found.path);
+      const source = await referenceFile(found.path);
+      try {
+        await folderReadPath(source);
+      } catch (error) {
+        if (!(error instanceof OutsideImportFolder)) throw error;
+        skippedOutside(found.path, formatOf(found.path), error.message);
+        out.push({
+          ref,
+          staged: null,
+          issue: { severity: 'warning', code: 'outside-import-folder', message: error.message, fix: null },
+        });
+        continue;
+      }
+      const stage =
+        source.folderRoot === undefined
+          ? await ctx.media.stage(found.path)
+          : await ctx.media.stage(found.path, undefined, undefined, source.folderRoot);
       time('media', t);
       out.push(
         stage.ok ? { ref, staged: stage.staged, issue: null } : { ref, staged: null, issue: stage.issue },
@@ -1012,7 +1054,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       return;
     }
     // A Keynote file saved as a package is a folder (Session 16): not something to copy or hash.
-    if (source === 'key' && (await stat(file.path)).isDirectory()) {
+    if (source === 'key' && (await stat(await folderReadPath(file))).isDirectory()) {
       fail(
         'pictures-package',
         'This Keynote file is saved as a package (a folder). Open it in Keynote, choose File > Advanced > Change File Type > Single File, then import it again.',
@@ -1022,7 +1064,9 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     let t = performance.now();
     const sourceDir = dirname(file.path);
     const fromPhone = isInside(resolve(ctx.media.dir, UPLOADS_DIR), resolve(file.path));
-    const kept = await steps.time('original', () => originals.stage(file.path, source, ctx.signal));
+    const kept = await steps.time('original', async () =>
+      originals.stage(await folderReadPath(file), source, ctx.signal),
+    );
     if (!kept.ok) {
       fail('original-not-retained', kept.message);
       return;
@@ -1482,7 +1526,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
   const importDocx = async (file: ScannedFile, where: Where) => {
     const fileName = basename(file.path);
     let t = performance.now();
-    const read = await readDocx(file.path, file.path);
+    const read = await readDocx(await folderReadPath(file), file.path);
     t = time('parse', t);
     if (!read.ok) {
       failed(where, 'text', fileName, read.message, [
@@ -1490,7 +1534,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       ]);
       return;
     }
-    const { sha256: hash } = await sha256File(file.path);
+    const { sha256: hash } = await sha256File(await folderReadPath(file));
     time('read', t);
     await importPresentation(file, where, 'docx', hash, read.parsed);
   };
@@ -1509,7 +1553,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       return;
     }
     let t = performance.now();
-    const bytes = await readFile(file.path);
+    const bytes = await readFile(await folderReadPath(file));
     const hash = sha256(bytes);
     t = time('read', t);
     const parsed = parseLyricsText(bytes, file.path);
@@ -1543,15 +1587,17 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     const name = fileNameOf(item.path).toLowerCase();
     const candidates = [item.path, ...(where.docsByName.get(name) ?? []).map((f) => f.path)];
     for (const path of candidates) {
+      const source = await referenceFile(path);
       let size: number;
       try {
-        const s = await stat(path);
+        const s = await stat(await folderReadPath(source));
         if (!s.isFile()) continue;
         size = s.size;
-      } catch {
+      } catch (error) {
+        if (error instanceof OutsideImportFolder) skippedOutside(path, formatOf(path), error.message);
         continue;
       }
-      const file: ScannedFile = { path, size, format: formatOf(path) };
+      const file: ScannedFile = { ...source, size, format: formatOf(path) };
       await importOne(file, { ...where, sourcePath: path, nearby: [dirname(path), ...where.nearby] });
       return known();
     }
@@ -1705,7 +1751,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       return;
     }
     let t = performance.now();
-    const bytes = await readFile(file.path);
+    const bytes = await readFile(await folderReadPath(file));
     const hash = sha256(bytes);
     t = time('read', t);
     let parsed;
@@ -1766,7 +1812,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       return;
     }
     let t = performance.now();
-    const bytes = await readFile(file.path);
+    const bytes = await readFile(await folderReadPath(file));
     const hash = sha256(bytes);
     t = time('read', t);
     // A .proplaylist keeps its playlist in a file called "data": name it after the bundle.
@@ -1790,7 +1836,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
 
   const importMedia = async (file: ScannedFile, where: Where) => {
     const t = performance.now();
-    const stage = await ctx.media.stage(file.path, ctx.options.maxVideoHeight);
+    const stage =
+      file.folderRoot === undefined
+        ? await ctx.media.stage(file.path, ctx.options.maxVideoHeight)
+        : await ctx.media.stage(file.path, ctx.options.maxVideoHeight, undefined, file.folderRoot);
     time('media', t);
     if (!stage.ok) {
       failed(where, 'media', basename(file.path), stage.issue.message, [stage.issue]);
@@ -1841,7 +1890,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     try {
       let extracted;
       try {
-        extracted = await extractZip(file.path, temp, {
+        extracted = await extractZip(await folderReadPath(file), temp, {
           maxBytes: Math.max(0, diskFreeBytes(temp) - 2 * 1024 ** 3),
         });
       } catch (error) {
@@ -2020,7 +2069,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       failed(where, 'unknown', fileName, `${fileName} is ${formatBytes(file.size)}, too big to load.`);
       return;
     }
-    const bytes = await readFile(file.path);
+    const bytes = await readFile(await folderReadPath(file));
     const hash = sha256(bytes);
     let raw: unknown;
     try {
@@ -2051,7 +2100,29 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     });
   };
 
+  const skippedOutside = (path: string, format: ImportFormat, message: string) => {
+    if (skippedPaths.has(path)) return;
+    skippedPaths.add(path);
+    record({
+      sourcePath: path,
+      format,
+      outcome: 'skipped',
+      name: basename(path),
+      target: null,
+      counts: NO_COUNTS,
+      message,
+      issues: [{ severity: 'warning', code: 'outside-import-folder', message, fix: null }],
+    });
+  };
+
   async function importOne(file: ScannedFile, where: Where): Promise<void> {
+    try {
+      await folderReadPath(file);
+    } catch (error) {
+      if (!(error instanceof OutsideImportFolder)) throw error;
+      skippedOutside(where.sourcePath, file.format, error.message);
+      return;
+    }
     const name = basename(file.path).toLowerCase();
     const ext = extOf(file.path);
     // Simple Mode (Session 55, Part 18): what its one playlist plays, nothing else (lyrics, the other program's files,
@@ -2102,7 +2173,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           options: ctx.options,
           db: ctx.db,
           media: ctx.media,
-          path: file.path,
+          path: await folderReadPath(file),
           sourcePath: where.sourcePath,
           ...(ctx.tempDir ? { tempDir: ctx.tempDir } : {}),
           ...(ctx.freeBytes ? { freeBytes: ctx.freeBytes } : {}),
@@ -2188,10 +2259,13 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     const scanStarted = performance.now();
     const scan = await scanPaths(ctx.paths, { skip: ctx.skipDir });
     time('scan', scanStarted);
+    folderRoots = scan.folderRoots;
+    explicitFiles = scan.explicitFiles;
     const top: Omit<Where, 'sourcePath' | 'nearby'> = {
       mediaByName: scan.mediaByName,
       docsByName: docsIndex(scan.files),
     };
+    for (const skipped of scan.skipped) skippedOutside(skipped.path, formatOf(skipped.path), skipped.message);
     for (const m of scan.missing) {
       record({
         sourcePath: m.path,
@@ -2237,7 +2311,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           status = 'cancelled';
           break;
         }
-        failed(where, file.format, basename(file.path), `Could not import this file: ${errorText(error)}`);
+        if (error instanceof OutsideImportFolder)
+          skippedOutside(where.sourcePath, file.format, error.message);
+        else
+          failed(where, file.format, basename(file.path), `Could not import this file: ${errorText(error)}`);
       }
       done++;
       if (file.format === 'kirtan-bundle' && (ctx.signal?.aborted || ctx.isCancelled?.())) {

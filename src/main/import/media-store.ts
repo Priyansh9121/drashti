@@ -21,6 +21,7 @@ import { fileProblem } from '../plain-errors';
 import type { VideoCaptionTrack } from '../../shared/video-captions';
 import { VideoCaptionsRepo } from '../db/video-captions';
 import { discoverVideoCaptions } from './video-captions';
+import { folderReadPath, OutsideImportFolder } from './folder-containment';
 import { markTaken } from '../library/media-taken';
 
 /*
@@ -270,11 +271,12 @@ export class MediaStore {
   private async judgePicture(
     path: string,
     name: string,
+    folderRoot?: string,
   ): Promise<
     | { ok: true; read: Pick<StagedMedia, 'probe' | 'read' | 'convert'> | null }
     | { ok: false; issue: ImportIssue }
   > {
-    const probe = await probeMedia(path);
+    const probe = await probeMedia(await folderReadPath({ path, folderRoot }));
     if (probe.kind === 'image' && probe.playable === true) return { ok: true, read: { probe } };
     const notAPicture = {
       ok: false as const,
@@ -288,7 +290,7 @@ export class MediaStore {
     // A video or a sound with a picture's name.
     if (probe.kind === 'video' || probe.kind === 'audio') return notAPicture;
     if (!this.options.readInfo) return { ok: true, read: null };
-    const info = await this.options.readInfo(path).catch(() => null);
+    const info = await this.options.readInfo(await folderReadPath({ path, folderRoot })).catch(() => null);
     if (!info || info.timedOut) return { ok: true, read: null };
     if (!info.video) return notAPicture;
     return {
@@ -309,9 +311,9 @@ export class MediaStore {
    * Whether a .ts file is a video at all (Session 50: .ts names an MPEG transport stream, and a TypeScript
    * file too): by its first bytes, or by FFmpeg finding a picture or sound in it.
    */
-  private async isVideo(path: string): Promise<boolean> {
-    if ((await probeMedia(path)).kind !== 'unknown') return true;
-    const info = await this.options.readInfo?.(path).catch(() => null);
+  private async isVideo(path: string, folderRoot?: string): Promise<boolean> {
+    if ((await probeMedia(await folderReadPath({ path, folderRoot }))).kind !== 'unknown') return true;
+    const info = await this.options.readInfo?.(await folderReadPath({ path, folderRoot })).catch(() => null);
     return !!info && !info.timedOut && (info.video !== null || info.audio !== null);
   }
 
@@ -343,6 +345,7 @@ export class MediaStore {
     path: string,
     maxVideoHeight?: number,
     signal?: AbortSignal,
+    folderRoot?: string,
   ): Promise<{ ok: true; staged: StagedMedia } | { ok: false; issue: ImportIssue }> {
     const kind = mediaKindOf(path);
     const name = basename(path);
@@ -358,7 +361,7 @@ export class MediaStore {
       };
     }
     // A .ts that is no video (a TypeScript file, say) is not taken, nor copied (Session 50).
-    if (extOf(path) === 'ts' && !(await this.isVideo(path)))
+    if (extOf(path) === 'ts' && !(await this.isVideo(path, folderRoot)))
       return {
         ok: false,
         issue: {
@@ -371,14 +374,15 @@ export class MediaStore {
     // A picture is judged before it is copied (Session 55, Part 5): one nothing can read is turned down, copied nowhere.
     let picture: Pick<StagedMedia, 'probe' | 'read' | 'convert'> | null = null;
     if (kind === 'image') {
-      const judged = await this.judgePicture(path, name);
+      const judged = await this.judgePicture(path, name, folderRoot);
       if (!judged.ok) return { ok: false, issue: judged.issue };
       picture = judged.read;
     }
     let hashed: { sha256: string; bytes: number };
     try {
-      hashed = await sha256File(path);
+      hashed = await sha256File(await folderReadPath({ path, folderRoot }));
     } catch (error) {
+      if (error instanceof OutsideImportFolder) throw error;
       return {
         ok: false,
         issue: {
@@ -412,10 +416,11 @@ export class MediaStore {
       try {
         await mkdir(join(this.dir, hashed.sha256.slice(0, 2)), { recursive: true });
         // A copy-on-write clone where the disk supports it (APFS), else a normal copy.
-        await copyFile(path, partial, constants.COPYFILE_FICLONE);
+        await copyFile(await folderReadPath({ path, folderRoot }), partial, constants.COPYFILE_FICLONE);
         await rename(partial, target);
       } catch (error) {
         await rm(partial, { force: true }).catch(() => undefined);
+        if (error instanceof OutsideImportFolder) throw error;
         return {
           ok: false,
           issue: {
@@ -458,7 +463,7 @@ export class MediaStore {
         ...hashed,
         ...(await this.readWithFfmpeg(kind, target, probe, maxVideoHeight)),
         ...(kind === 'video'
-          ? await discoverVideoCaptions(path).then((c) => ({
+          ? await discoverVideoCaptions(path, folderRoot).then((c) => ({
               captionTracks: c.tracks,
               captionIssues: c.issues,
             }))
