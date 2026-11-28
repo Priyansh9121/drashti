@@ -8,6 +8,7 @@ import type { Icon } from './icons';
 import { Check } from './icons';
 import { Kbd } from './Kbd';
 import { leave, useArrival } from './motion';
+import { leaveTransient } from './transient-motion';
 
 /*
  * Small menus: one under a button, or one at the pointer (right-click).
@@ -93,7 +94,8 @@ export function Menu({
       const lost = now === null || now === document.body || (ref.current?.contains(now) ?? false);
       if (lost && opener?.isConnected) opener.focus();
       // It leaves as it came (ui/motion.ts), in about 70% of the time.
-      leave(ref.current, 'pop');
+      if (document.body.classList.contains('operator')) leaveTransient(ref.current, 'pop');
+      else if (!document.body.matches('.output, .web')) leave(ref.current, 'pop');
     },
     [opener],
   );
@@ -206,22 +208,22 @@ export function Menu({
                 entry.onSelect();
               }}
             >
-              <span className="flex w-4 shrink-0 justify-center">
+              <span className="motionui-visual pointer-events-none flex w-4 shrink-0 justify-center">
                 {entry.checked === undefined
                   ? IconShape && <IconShape size={15} aria-hidden="true" />
                   : entry.checked && <Check size={15} aria-hidden="true" />}
               </span>
               {noteId === undefined ? (
-                <span className="flex-1">{entry.label}</span>
+                <span className="motionui-visual pointer-events-none flex-1">{entry.label}</span>
               ) : (
-                <span className="flex min-w-0 flex-1 flex-col">
+                <span className="motionui-visual pointer-events-none flex min-w-0 flex-1 flex-col">
                   <span>{entry.label}</span>
                   <span id={noteId} className="max-w-72 text-xs text-muted" data-testid="menu-note">
                     {entry.note}
                   </span>
                 </span>
               )}
-              {entry.kbd && <Kbd className="text-muted">{entry.kbd}</Kbd>}
+              {entry.kbd && <Kbd className="motionui-visual pointer-events-none text-muted">{entry.kbd}</Kbd>}
             </button>
           </Fragment>
         );

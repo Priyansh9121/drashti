@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import type { DataAttributes } from './cx';
 import { cx } from './cx';
 import type { Icon } from './icons';
 import { useArrival } from './motion';
+import { interfaceBody, leaveTransient } from './transient-motion';
 import { AlertTriangle, CircleAlert, CircleCheck, Info, X } from './icons';
 
 export type NoticeTone = 'info' | 'success' | 'warning' | 'danger';
@@ -60,12 +61,15 @@ export function Notice({
   compact?: boolean;
   className?: string;
 } & DataAttributes) {
-  const arriving = useArrival('notice');
+  const ref = useRef<HTMLDivElement>(null);
+  const body = interfaceBody();
+  const arriving = useArrival(body && !body.matches('.output, .web') ? 'notice' : null);
   const look = tones[tone];
   const IconShape = look.icon;
   const announce = role ?? (tone === 'warning' || tone === 'danger' ? 'alert' : 'status');
   return (
     <div
+      ref={ref}
       role={announce === 'none' ? undefined : announce}
       data-motion={arriving}
       // On the phones' pages its words are 16 px, as every word there (app.css, body.web [data-notice]).
@@ -81,10 +85,10 @@ export function Notice({
       <IconShape
         size={compact ? 14 : 16}
         aria-hidden="true"
-        className={cx('mt-0.5 shrink-0', look.iconClass)}
+        className={cx('motionui-visual pointer-events-none mt-0.5 shrink-0', look.iconClass)}
       />
       <div className="min-w-0 flex-1 space-y-1">
-        {title && <p className="font-bold">{title}</p>}
+        {title && <p className="motionui-visual pointer-events-none font-bold">{title}</p>}
         {children && <div className="break-words">{children}</div>}
         {actions && <div className="flex flex-wrap items-center gap-1.5 pt-0.5">{actions}</div>}
       </div>
@@ -92,11 +96,14 @@ export function Notice({
         <button
           type="button"
           aria-label="Dismiss"
-          onClick={onDismiss}
+          onClick={() => {
+            leaveTransient(ref.current, 'notice');
+            onDismiss();
+          }}
           // 24 × 24 at least (WCAG 2.5.8); on the phones' pages 44 (app.css).
           className="-mt-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm hover:bg-black/20"
         >
-          <X size={14} aria-hidden="true" />
+          <X size={14} aria-hidden="true" className="motionui-visual pointer-events-none" />
         </button>
       )}
     </div>

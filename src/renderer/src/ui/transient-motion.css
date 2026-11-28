@@ -1,0 +1,167 @@
+/*
+ * alpha.24 motionui: one quiet arrival, then still. Only the operator page opts in (index.html);
+ * the hall, stage, stream and phones never take these tokens or entrances. Existing motion.ts
+ * owns opening, preferences and inert exit copies. No layout, filters, loops or retained layers.
+ */
+:root:has(> body.operator) {
+  --dur-surface-tooltip: 100ms;
+  --dur-surface-menu: 160ms;
+  --dur-surface-notice: 160ms;
+  --dur-surface-dialog: 180ms;
+  --dur-surface-scrim: 120ms;
+  --dur-surface-sheet: 180ms;
+  --dur-surface-tooltip-exit: 80ms;
+  --dur-surface-exit: 100ms;
+  --dur-surface-sheet-exit: 120ms;
+  --surface-exit-name: surface-out;
+  --surface-exit-easing: var(--ease-in);
+  --surface-rise: 4px;
+  --surface-slide: 8px;
+}
+
+/* Lively has a little more distance, only with the graphics chip the existing system requires. */
+:root[data-interface-motion='lively'][data-chip='yes']:has(> body.operator) {
+  --surface-rise: 6px;
+  --surface-slide: 12px;
+}
+
+body.operator [data-motion='scrim'] {
+  animation: fade-in var(--dur-surface-scrim) var(--ease-out) both;
+}
+body.operator [data-motion='dialog'] {
+  --surface-x: 0px;
+  --surface-y: var(--surface-rise);
+  animation: surface-in var(--dur-surface-dialog) var(--ease-out) both;
+}
+body.operator [data-motion='sheet'] {
+  --surface-x: var(--surface-slide);
+  --surface-y: 0px;
+  animation: surface-in var(--dur-surface-sheet) var(--ease-out) both;
+}
+/* Live frames, padding and buttons occupy their final hit rectangles from the first frame. */
+body.operator [data-motion='pop'],
+body.operator [data-motion='notice'] {
+  animation: none;
+}
+
+/* Only pointer-free visual children travel. A notice's arbitrary actions/content remain still. */
+body.operator [data-motion='pop'] .motionui-visual {
+  --surface-x: 0px;
+  --surface-y: calc(var(--surface-rise) * -1);
+  pointer-events: none;
+  animation: surface-in var(--dur-surface-menu) var(--ease-out) both;
+}
+/* Help's selectable/clickable paragraph fades in place; its hit box never translates. */
+body.operator [data-motion='pop'] > p {
+  animation: fade-in var(--dur-surface-menu) var(--ease-out) both;
+}
+body.operator [data-motion='notice']:not([data-leaving]) .motionui-visual,
+body.operator [data-motion='notice'] > p,
+body.operator [data-motion='notice'] > svg {
+  --surface-x: 0px;
+  --surface-y: calc(var(--surface-rise) * -1);
+  pointer-events: none;
+  animation: surface-in var(--dur-surface-notice) var(--ease-out) both;
+}
+/* The tooltip itself takes no pointers. Its opening decision is latched after placement. */
+body.operator .motionui-tooltip[data-motion='pop'] {
+  --surface-x: 0px;
+  --surface-y: var(--surface-rise);
+  animation: surface-in var(--dur-surface-tooltip) var(--ease-out) both;
+}
+
+/* The chat fades on its ten-second deadline without moving its live frame or buttons. */
+body.operator .motionui-chat-pop {
+  transition-property: opacity;
+  transition-duration: var(--dur-surface-exit);
+  transition-timing-function: var(--ease-in);
+}
+body.operator .motionui-chat-pop[data-leaving='true'] {
+  animation: none;
+}
+
+/*
+ * These selectors also work inside motion.ts's closed shadow copies, which inherit the operator's
+ * tokens. The new exit values are set only by body.operator; other windows retain the existing
+ * names, times and curves through the original tokens. A copy never replays an entrance.
+ */
+[data-leaving='dialog'],
+[data-leaving='sheet'] {
+  animation: fade-out var(--dur-surface-sheet-exit, var(--dur-exit))
+    var(--surface-exit-easing, var(--ease-out)) both;
+}
+[data-leaving='dialog'] > * {
+  --surface-x: 0px;
+  --surface-y: var(--surface-rise);
+  animation: var(--surface-exit-name, drop-out) var(--dur-surface-sheet-exit, var(--dur-exit))
+    var(--surface-exit-easing, var(--ease-out)) both;
+}
+[data-leaving='sheet'] > * {
+  --surface-x: var(--surface-slide);
+  --surface-y: 0px;
+  animation: var(--surface-exit-name, sheet-out) var(--dur-surface-sheet-exit, var(--dur-exit))
+    var(--surface-exit-easing, var(--ease-drawer)) both;
+}
+[data-leaving='pop'],
+[data-leaving='notice'] {
+  --surface-x: 0px;
+  --surface-y: calc(var(--surface-rise) * -1);
+  animation: var(--surface-exit-name, drop-out) var(--dur-surface-exit, var(--dur-exit))
+    var(--surface-exit-easing, var(--ease-out)) both;
+}
+[data-leaving='pop'].motionui-tooltip {
+  animation-duration: var(--dur-surface-tooltip-exit, var(--dur-exit));
+}
+
+/* Moving an ancestor would move a show control too. Its whole surface and dim therefore stay still. */
+body.operator
+  :is([data-motion], .motionui-chat-pop, .motionui-tooltip, .motionui-visual):is(
+    [data-show-control],
+    [data-show-control] *,
+    :has([data-show-control])
+  ) {
+  animation: none !important;
+  transition: none !important;
+}
+/* A protected surface's visual children must also stay still, including siblings of a show control. */
+body.operator [data-motion]:has([data-show-control]) * {
+  animation: none !important;
+  transition: none !important;
+}
+/* Entrance selectors never restart in an inert exit, even if its parent is copied too. */
+[data-leaving] .motionui-visual {
+  animation: none;
+  transition: none;
+}
+/* An old caller may still ask motion.ts to copy a sheet containing a show control: it draws nothing. */
+[data-leaving]:is([data-show-control], [data-show-control] *, :has([data-show-control])) {
+  visibility: hidden !important;
+}
+[data-leaving]:is([data-show-control], [data-show-control] *, :has([data-show-control])),
+[data-leaving]:is([data-show-control], [data-show-control] *, :has([data-show-control])) * {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Hide existing copies synchronously; transient-motion.ts also removes their closed shadow hosts. */
+:root[data-interface-motion='off'] body.operator [data-leaving-host] {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  body.operator [data-leaving-host] {
+    display: none;
+  }
+}
+
+@keyframes surface-in {
+  from {
+    opacity: 0;
+    transform: translate(var(--surface-x), var(--surface-y));
+  }
+}
+@keyframes surface-out {
+  to {
+    opacity: 0;
+    transform: translate(var(--surface-x), var(--surface-y));
+  }
+}

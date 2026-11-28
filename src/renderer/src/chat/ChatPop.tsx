@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { create } from 'zustand';
 import { CHAT_OPERATOR_ID } from '../../../shared/chat';
@@ -6,6 +6,7 @@ import { REPORT_PRIVATE_ATTR } from '../../../shared/report-private';
 import { usePopPlace } from '../operator/pop-place';
 import { toolHereNow } from '../simple/simple-features-store';
 import { duration, motionOff } from '../ui/motion';
+import { arriveTransient, leaveTransient } from '../ui/transient-motion';
 import {
   arrivals,
   CHAT_POP_FADE_TOKEN,
@@ -38,7 +39,16 @@ export interface ChatPopViewProps {
 }
 
 export function ChatPopView({ pop, leaving, still, onOpen, onDismiss }: ChatPopViewProps) {
+  const ref = useRef<HTMLDivElement>(null);
   const words = pop ? popWords(pop) : null;
+  const shown = pop !== null;
+  useLayoutEffect(() => {
+    if (shown) arriveTransient(ref.current, 'notice', !still);
+  }, [shown, still]);
+  const close = (then: () => void) => {
+    if (!leaving && !still) leaveTransient(ref.current, 'notice');
+    then();
+  };
   return (
     <div
       role="status"
@@ -49,9 +59,10 @@ export function ChatPopView({ pop, leaving, still, onOpen, onDismiss }: ChatPopV
     >
       {words && (
         <div
+          ref={ref}
           data-testid="chat-pop"
           data-leaving={leaving || undefined}
-          className={`pointer-events-auto flex w-full items-start gap-2 rounded-lg border border-line bg-panel p-3 text-fg shadow-lg ${still ? '' : 'transition-opacity [transition-duration:var(--dur-notice)] motion-reduce:transition-none'}`}
+          className={`pointer-events-auto flex w-full items-start gap-2 rounded-lg border border-line bg-panel p-3 text-fg shadow-lg ${still ? '' : 'motionui-chat-pop transition-opacity [transition-duration:var(--dur-surface-exit)] motion-reduce:transition-none'}`}
           style={{ opacity: leaving ? 0 : 1 }}
         >
           <button
@@ -60,16 +71,18 @@ export function ChatPopView({ pop, leaving, still, onOpen, onDismiss }: ChatPopV
             data-testid="chat-pop-open"
             className="min-w-0 flex-1 text-left text-sm"
             onMouseDown={(e) => e.preventDefault()}
-            onClick={onOpen}
+            onClick={() => close(onOpen)}
           >
-            <span className="block truncate font-semibold">{words.from}</span>
-            <span
-              data-testid="chat-pop-text"
-              className="line-clamp-2 whitespace-pre-line [overflow-wrap:anywhere]"
-            >
-              {words.text}
+            <span className="motionui-visual pointer-events-none block">
+              <span className="block truncate font-semibold">{words.from}</span>
+              <span
+                data-testid="chat-pop-text"
+                className="line-clamp-2 whitespace-pre-line [overflow-wrap:anywhere]"
+              >
+                {words.text}
+              </span>
+              {words.more && <span className="block text-xs text-muted">{words.more}</span>}
             </span>
-            {words.more && <span className="block text-xs text-muted">{words.more}</span>}
           </button>
           <button
             type="button"
@@ -78,9 +91,9 @@ export function ChatPopView({ pop, leaving, still, onOpen, onDismiss }: ChatPopV
             data-testid="chat-pop-dismiss"
             className="h-6 w-6 shrink-0 rounded hover:bg-panel-2"
             onMouseDown={(e) => e.preventDefault()}
-            onClick={onDismiss}
+            onClick={() => close(onDismiss)}
           >
-            ×
+            <span className="motionui-visual pointer-events-none inline-block">×</span>
           </button>
         </div>
       )}
@@ -88,7 +101,7 @@ export function ChatPopView({ pop, leaving, still, onOpen, onDismiss }: ChatPopV
   );
 }
 
-/** The fade's length now: app.css's token, none with reduced motion or interface motion Off. */
+/** The operator transient exit token, none with reduced motion or interface motion Off. */
 const fadeNow = (): number => (motionOff() ? 0 : duration(CHAT_POP_FADE_TOKEN));
 
 /** Subscribe even with Chat folded. Mode switches do not replay already received messages. */

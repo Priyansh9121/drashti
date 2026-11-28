@@ -175,12 +175,12 @@ test('dialogs, sheets, menus and notices arrive with their tokens, and leave uns
         return `${st.animationName} ${st.animationDuration}`;
       });
 
-  // A dialog rises 8 px over 220 ms, its dim fading over 200 ms.
+  // The operator dialog settles over 180 ms, its dim fading over 120 ms.
   await win.keyboard.press('Shift+Slash');
   const keys = win.getByTestId('keys-sheet');
   await expect(keys).toBeVisible();
-  expect(await animationOf('[role="dialog"][data-motion="dialog"]')).toBe('dialog-in 0.22s');
-  expect(await animationOf('[data-motion="scrim"]')).toBe('fade-in 0.2s');
+  expect(await animationOf('[role="dialog"][data-motion="dialog"]')).toBe('surface-in 0.18s');
+  expect(await animationOf('[data-motion="scrim"]')).toBe('fade-in 0.12s');
   // It leaves as a copy no one can reach, and the show's keys work at once.
   await win.keyboard.press('Escape');
   await expect(keys).toHaveCount(0);
@@ -200,28 +200,37 @@ test('dialogs, sheets, menus and notices arrive with their tokens, and leave uns
     .toBe(presentation);
   await expect(win.locator('[data-leaving-host]')).toHaveCount(0);
 
-  // A side sheet slides 16 px from its edge over 240 ms (Screens; Themes until Session 55 took it out).
+  // A side sheet settles from its edge over 180 ms (Screens).
   await win.getByRole('button', { name: 'Screens', exact: true }).click();
   await expect(win.locator('[data-motion="sheet"]')).toBeVisible();
-  expect(await animationOf('[data-motion="sheet"]')).toBe('sheet-in 0.24s');
+  expect(await animationOf('[data-motion="sheet"]')).toBe('surface-in 0.18s');
   await win.keyboard.press('Escape');
 
-  // A menu pops from where it opened over 160 ms; "What is this?" too.
+  // Only visual contents arrive over 160 ms; the menu/help action rectangles are there at once.
   await win.getByTestId('presentation-list').getByRole('button').first().click({ button: 'right' });
   await expect(win.getByRole('menu')).toBeVisible();
-  expect(await animationOf('[role="menu"]')).toBe('pop-in 0.16s');
+  expect(await animationOf('[role="menu"]')).toBe('none 0s');
+  expect(await animationOf('[role="menu"] .motionui-visual')).toBe('surface-in 0.16s');
   await win.keyboard.press('Escape');
   await win.getByTestId('what-is-this-live').click();
-  expect(await animationOf('[data-testid="what-is-this"]')).toBe('pop-in 0.16s');
+  expect(await animationOf('[data-testid="what-is-this"]')).toBe('none 0s');
+  expect(await animationOf('[data-testid="what-is-this"] > p')).toBe('fade-in 0.16s');
+  expect(
+    await win
+      .getByTestId('what-is-this')
+      .locator(':scope > p')
+      .evaluate((el) => getComputedStyle(el).transform),
+  ).toBe('none');
 
-  // A notice rises 6 px over 200 ms (one the main process sends, as after saving diagnostics).
+  // A notice settles over 160 ms (one the main process sends, as after saving diagnostics).
   await app.evaluate(({ BrowserWindow }) => {
     for (const w of BrowserWindow.getAllWindows())
       if (w.webContents.getURL().includes('index.html'))
         w.webContents.send('app:notice', { text: 'Placeholder notice' });
   });
   await expect(win.getByTestId('operator-notice')).toBeVisible();
-  expect(await animationOf('[data-testid="operator-notice"]')).toBe('rise-notice 0.2s');
+  expect(await animationOf('[data-testid="operator-notice"]')).toBe('none 0s');
+  expect(await animationOf('[data-testid="operator-notice"] > p')).toBe('surface-in 0.16s');
   await app.close();
 });
 

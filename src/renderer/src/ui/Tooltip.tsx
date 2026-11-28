@@ -1,7 +1,9 @@
-import { cloneElement, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { cloneElement, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Kbd } from './Kbd';
+import { cx } from './cx';
+import { arriveTransient, leaveTransient } from './transient-motion';
 
 /*
  * A tooltip: shown on hover (after a moment) and on keyboard focus, hidden by
@@ -33,35 +35,40 @@ export function Tooltip({
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<{ x: number; y: number; below: boolean } | null>(null);
 
-  const clear = () => {
+  const clear = useCallback(() => {
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = null;
-  };
+  }, []);
   const show = (now: boolean) => {
     clear();
     if (now) setOpen(true);
     else timer.current = window.setTimeout(() => setOpen(true), DELAY_MS);
   };
-  const hide = () => {
+  const hide = useCallback(() => {
     clear();
+    if (tip.current?.classList.contains('motionui-tooltip')) leaveTransient(tip.current, 'pop');
     setOpen(false);
     setPlace(null);
-  };
-  useEffect(() => clear, []);
+  }, [clear]);
+  useEffect(() => clear, [clear]);
+  useLayoutEffect(() => {
+    const node = tip.current;
+    return () => {
+      if (node?.classList.contains('motionui-tooltip')) leaveTransient(node, 'pop');
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      clear();
-      setOpen(false);
-      setPlace(null);
+      hide();
     };
     window.addEventListener('keydown', onKey, true);
     return () => {
       window.removeEventListener('keydown', onKey, true);
     };
-  }, [open]);
+  }, [open, hide]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -77,6 +84,10 @@ export function Tooltip({
     const y = below ? box.bottom + 6 : box.top - own.height - 6;
     setPlace({ x, y, below });
   }, [open, side, content]);
+
+  useLayoutEffect(() => {
+    if (place) arriveTransient(tip.current, 'pop');
+  }, [place]);
 
   const child = describes && open ? cloneElement(children, { 'aria-describedby': id }) : children;
   return (
@@ -104,7 +115,10 @@ export function Tooltip({
               left: place?.x ?? -9999,
               top: place?.y ?? -9999,
             }}
-            className="pointer-events-none z-[60] flex max-w-72 items-center gap-2 rounded-md border border-line-strong bg-panel-3 px-2 py-1 text-xs text-fg shadow-overlay"
+            className={cx(
+              'pointer-events-none z-[60] flex max-w-72 items-center gap-2 rounded-md border border-line-strong bg-panel-3 px-2 py-1 text-xs text-fg shadow-overlay',
+              place && 'motionui-tooltip',
+            )}
           >
             <span className="break-words">{content}</span>
             {kbd && <Kbd>{kbd}</Kbd>}
