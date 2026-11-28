@@ -801,11 +801,15 @@ const cueFit = (win: Page) =>
       r.top >= box.top - 0.5 &&
       r.bottom <= box.bottom + 0.5;
     const cardBox = card.getBoundingClientRect();
+    const information = status.getBoundingClientRect();
+    const edges = (r: DOMRect) => [r.left, r.top, r.right, r.bottom].map((v) => v.toFixed(2)).join(',');
     const words = document.createRange();
     words.selectNodeContents(state);
     for (const r of words.getClientRects()) {
-      if (!inside(r, status.getBoundingClientRect()))
-        faults.push('state words overflow their information box');
+      if (!inside(r, information))
+        faults.push(
+          `state words overflow their information box: text ${edges(r)}, box ${edges(information)}, line ${getComputedStyle(state).lineHeight}`,
+        );
       if (!inside(r, cardBox)) faults.push('state words overflow the card');
       for (const button of buttons) {
         const b = button.getBoundingClientRect();
