@@ -361,3 +361,204 @@ test('secondary desktop exits retain their original timing, curve and animation'
     await app.close();
   }
 });
+
+
+type PressWindow = typeof globalThis & { edgePress: { down: number; up: number; click: number } };
+
+/** Native input does not wait for a stable locator. Advance the entrance while the same edge press is held. */
+async function pressThroughEntrance(win: Page, surface: Locator, action: Locator): Promise<void> {
+  const animations = await surface.evaluate((node) => {
+    const moving = node.getAnimations({ subtree: true }).filter((a) => a instanceof CSSAnimation);
+    for (const a of moving) {
+      a.pause();
+      a.currentTime = 0;
+    }
+    return moving.length;
+  });
+  expect(animations, 'the test must advance a real entrance, even after a slow IPC reply').toBeGreaterThan(0);
+  await action.evaluate((node) => {
+    const counts = { down: 0, up: 0, click: 0 };
+    (globalThis as PressWindow).edgePress = counts;
+    node.addEventListener('mousedown', () => { counts.down += 1; });
+    node.addEventListener('mouseup', () => { counts.up += 1; });
+    node.addEventListener('click', () => { counts.click += 1; });
+  });
+  const first = { card: await surface.boundingBox(), action: await action.boundingBox() };
+  if (!first.card || !first.action) throw new Error('Transient or action is not drawn');
+  const point = { x: first.action.x + first.action.width / 2, y: first.action.y + 0.5 };
+  await win.mouse.move(point.x, point.y);
+  await win.mouse.down();
+  await surface.evaluate((node) => {
+    for (const a of node.getAnimations({ subtree: true })) a.finish();
+  });
+  const last = { card: await surface.boundingBox(), action: await action.boundingBox() };
+  await win.mouse.up();
+  expect(await win.evaluate(() => (globalThis as PressWindow).edgePress)).toEqual({ down: 1, up: 1, click: 1 });
+  expect(first).toEqual(last);
+}
+
+for (const simple of [false, true]) {
+  for (const motion of ['calm', 'lively'] as const) {
+    test(`native edge presses survive chat, menu and notice entrances (${simple ? 'Simple' : 'Pro'}, ${motion})`, async () => {
+      const { app } = await launchApp(NETWORK_ENV);
+      try {
+        const win = await operatorPage(app);
+        await operatorReady(win);
+        await sizeOperatorWindow(app, win, CI_WINDOW);
+        const { port } = await networkOn(win);
+        const token = await pairToken(win, port, 'remote', 'Placeholder phone');
+        expect((await apiCall(port, CHAT_API.name, { method: 'POST', token, body: { name: 'Placeholder Sender' } })).status).toBe(200);
+        expect(await win.evaluate(async ({ simple, motion }) => {
+          const d = (globalThis as PageGlobals).drashti;
+          const made = await d.playlists.create('Placeholder edge playlist', null, false);
+          if (!made.ok) throw new Error(made.message);
+          if (simple) {
+            await d.app.setSimpleFeature('chat', true);
+            await d.app.setMode('simple');
+          }
+          const result = await d.appearance.setMotion(motion);
+          // Both chip paths are intentional: the old Lively 6 px travel is the hardest edge press.
+          document.documentElement.dataset['chip'] = 'yes';
+          return result;
+        }, { simple, motion })).toEqual({ ok: true });
+        await expect(win.getByTestId('simple-mode')).toHaveCount(simple ? 1 : 0);
+        await expect(win.locator('html')).toHaveAttribute('data-interface-motion', motion);
+        const send = async (text: string) => {
+          expect((await apiCall(port, CHAT_API.send, { method: 'POST', token, body: { text } })).status).toBe(200);
+        };
+        const chat = win.getByTestId('chat-pop');
+        await send('Placeholder dismiss during entrance');
+        await expect(chat).toBeVisible();
+        await pressThroughEntrance(win, chat, win.getByTestId('chat-pop-dismiss'));
+        await expect(chat).toHaveCount(0);
+        await send('Placeholder open during entrance');
+        await expect(chat).toBeVisible();
+        await pressThroughEntrance(win, chat, win.getByTestId('chat-pop-open'));
+        await expect(chat).toHaveCount(0);
+        await expect(win.getByTestId('group-chat-toggle')).toHaveAttribute('aria-expanded', 'true');
+        await win.getByTestId('group-chat-toggle').click();
+
+        const row = win.getByTestId('playlist-node').filter({ hasText: 'Placeholder edge playlist' });
+        await row.click({ button: 'right' });
+        const menu = win.getByRole('menu');
+        await pressThroughEntrance(win, menu, menu.getByRole('menuitem', { name: 'Rename…', exact: true }));
+        await expect(menu).toHaveCount(0);
+        await expect(win.getByTestId('rename-field')).toHaveCount(1);
+        await win.getByTestId('rename-field').press('Escape');
+
+        const showNotice = () => app.evaluate(({ BrowserWindow }) => {
+          for (const w of BrowserWindow.getAllWindows())
+            if (w.webContents.getURL().includes('index.html'))
+              w.webContents.send('app:notice', { text: 'Placeholder edge notice' });
+        });
+        const notice = win.getByTestId('operator-notice');
+        await showNotice();
+        await expect(notice).toBeVisible();
+        await pressThroughEntrance(win, notice, notice.getByRole('button', { name: 'Report this…', exact: true }));
+        const report = win.getByRole('dialog', { name: 'Report a Problem', exact: true });
+        await expect(report).toHaveCount(1);
+        await win.keyboard.press('Escape');
+        await expect(report).toHaveCount(0);
+        // A fresh notice mounts a fresh visual entrance for the dismiss press too.
+        await notice.getByRole('button', { name: 'Dismiss', exact: true }).click();
+        await expect(notice).toHaveCount(0);
+        await showNotice();
+        await expect(notice).toBeVisible();
+        await pressThroughEntrance(win, notice, notice.getByRole('button', { name: 'Dismiss', exact: true }));
+        await expect(notice).toHaveCount(0);
+      } finally {
+        await app.close();
+      }
+    });
+  }
+
+  test(`tooltip and chat shown during opening remain settled after the hold releases (${simple ? 'Simple' : 'Pro'})`, async () => {
+    const { app } = await launchApp(NETWORK_ENV);
+    try {
+      const win = await operatorPage(app);
+      await operatorReady(win);
+      const { port } = await networkOn(win);
+      const token = await pairToken(win, port, 'remote', 'Placeholder phone');
+      expect((await apiCall(port, CHAT_API.name, { method: 'POST', token, body: { name: 'Placeholder Sender' } })).status).toBe(200);
+      const send = async (text: string) => {
+        expect((await apiCall(port, CHAT_API.send, { method: 'POST', token, body: { text } })).status).toBe(200);
+      };
+      await send('Placeholder initial chat view');
+      if (simple) {
+        await win.evaluate(async () => {
+          const d = (globalThis as PageGlobals).drashti;
+          await d.app.setSimpleFeature('chat', true);
+          await d.app.setMode('simple');
+        });
+        await expect(win.getByTestId('simple-mode')).toHaveCount(1);
+      }
+      await win.addInitScript(() => {
+        const idle = window.requestIdleCallback.bind(window);
+        const cancel = window.cancelIdleCallback.bind(window);
+        const waiting = new Map<number, IdleRequestCallback>();
+        let id = 0;
+        window.requestIdleCallback = (callback) => {
+          waiting.set(++id, callback);
+          return id;
+        };
+        window.cancelIdleCallback = (key) => { waiting.delete(key); };
+        (globalThis as OpeningWindow).releaseOpening = () => {
+          window.requestIdleCallback = idle;
+          window.cancelIdleCallback = cancel;
+          for (const callback of waiting.values()) callback({ didTimeout: false, timeRemaining: () => 50 });
+          waiting.clear();
+        };
+        (globalThis as OpeningWindow).transientStarts = [];
+        document.addEventListener('animationstart', (event) => {
+          if (event.target instanceof Element && event.target.closest('.motionui-tooltip, [data-testid="chat-pop"]'))
+            (globalThis as OpeningWindow).transientStarts.push(event.animationName);
+        });
+      });
+      await win.reload();
+      await operatorReady(win);
+      await expect(win.locator('html')).not.toHaveAttribute('data-opened');
+      // A DOM click, without pointer/key down, reads the initial chat view without settling opening.
+      const toggle = win.getByTestId('group-chat-toggle');
+      await toggle.evaluate((node: HTMLElement) => node.click());
+      await expect(win.getByTestId('chat-text-box')).toBeVisible();
+      await expect(win.getByTestId('section-chat')).toContainText('Placeholder initial chat view');
+      await toggle.evaluate((node: HTMLElement) => node.click());
+      await win.getByTestId('app-info').hover();
+      const tip = win.locator('[role="tooltip"].motionui-tooltip');
+      await expect(tip).toBeVisible();
+      await send('Placeholder chat during opening');
+      const chat = win.getByTestId('chat-pop');
+      await expect(chat).toContainText('Placeholder chat during opening');
+      const noArrival = async () => {
+        for (const node of [tip, chat]) {
+          await expect(node).not.toHaveAttribute('data-motion');
+          expect(await node.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
+        }
+        expect(await win.evaluate(() => (globalThis as OpeningWindow).transientStarts)).toEqual([]);
+      };
+      await expect(win.locator('html')).not.toHaveAttribute('data-opened');
+      await noArrival();
+      await win.evaluate(() => (globalThis as OpeningWindow).releaseOpening());
+      await expect(win.locator('html')).toHaveAttribute('data-opened', '');
+      await win.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+      await noArrival();
+      // New surfaces after release still get their ordinary entrance, so the guard cannot disable all motion.
+      await win.getByTestId('chat-pop-dismiss').evaluate((node: HTMLElement) => node.click());
+      await expect(chat).toHaveCount(0);
+      await send('Placeholder chat after opening');
+      await expect(chat).toBeVisible();
+      await expect(chat).toHaveAttribute('data-motion', 'notice');
+      expect(await chat.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBeGreaterThan(0);
+      await win.mouse.move(1, 1);
+      await expect(tip).toHaveCount(0);
+      await win.getByTestId('app-info').hover();
+      await expect(tip).toBeVisible();
+      await expect(tip).toHaveAttribute('data-motion', 'pop');
+      await arrives(tip, 120);
+    } finally {
+      await app.close();
+    }
+  });
+}
+
+type OpeningWindow = typeof globalThis & { releaseOpening: () => void; transientStarts: string[] };

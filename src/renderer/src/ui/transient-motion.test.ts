@@ -19,6 +19,7 @@ afterEach(() => {
 
 class Surface {
   isConnected = true;
+  dataset: Record<string, string> = {};
   style = {
     opacity: '',
     getPropertyPriority: () => '',
@@ -155,5 +156,50 @@ describe('the existing exit system is used only for safe operator surfaces', () 
     leaveTransient(node, 'notice');
     expect(host.setAttribute).toHaveBeenCalledWith('data-report-private', '');
     expect(host.style).toMatchObject({ left: '284px', top: '384px', width: '352px', height: '112px' });
+  });
+});
+
+
+describe('transient entrance eligibility is retained for each actual surface', () => {
+  it('marks a fresh operator surface only after opening has settled', async () => {
+    const { arriveTransient, node } = await page();
+    arriveTransient(node, 'pop');
+    expect(node.dataset['motion']).toBe('pop');
+  });
+
+  it('never replays a tooltip or chat shown during an opening hold when that hold releases', async () => {
+    const { arriveTransient, opened } = await page();
+    for (const kind of ['pop', 'notice'] as const) {
+      const node = new Surface() as unknown as HTMLElement;
+      opened.mockReturnValue(false);
+      arriveTransient(node, kind);
+      expect(node.dataset['motion']).toBeUndefined();
+      opened.mockReturnValue(true);
+      arriveTransient(node, kind);
+      expect(node.dataset['motion']).toBeUndefined();
+      const fresh = new Surface() as unknown as HTMLElement;
+      arriveTransient(fresh, kind);
+      expect(fresh.dataset['motion']).toBe(kind);
+    }
+  });
+
+  it('also retains the decision for Off/reduced motion, a still chat, and secondary windows', async () => {
+    const { arriveTransient, operator } = await page();
+    const off = new Surface() as unknown as HTMLElement;
+    vi.mocked(motionOff).mockReturnValue(true);
+    arriveTransient(off, 'pop');
+    vi.mocked(motionOff).mockReturnValue(false);
+    arriveTransient(off, 'pop');
+    expect(off.dataset['motion']).toBeUndefined();
+    const still = new Surface() as unknown as HTMLElement;
+    arriveTransient(still, 'notice', false);
+    arriveTransient(still, 'notice');
+    expect(still.dataset['motion']).toBeUndefined();
+    const secondary = new Surface() as unknown as HTMLElement;
+    operator.mockReturnValue(false);
+    arriveTransient(secondary, 'notice');
+    operator.mockReturnValue(true);
+    arriveTransient(secondary, 'notice');
+    expect(secondary.dataset['motion']).toBeUndefined();
   });
 });

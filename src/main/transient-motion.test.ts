@@ -85,3 +85,36 @@ describe('operator transient motion budgets', () => {
     expect(text).not.toMatch(/will-change|translate3d|backdrop-filter|\bfilter\s*:/u);
   });
 });
+
+
+describe('live transient geometry and settled startup', () => {
+  it('puts small-surface translation on visual children or the pointer-free tooltip, never live frames', () => {
+    const rules = [...css().replace(/\/\*[\s\S]*?\*\//gu, '').matchAll(/([^{}@;]+)\{([^{}]*)\}/gu)];
+    const small = rules.filter(([_, selector, body]) =>
+      /data-motion=['"](?:pop|notice)|motionui-chat-pop|motionui-tooltip/u.test(selector ?? '') &&
+      /animation:\s*surface-in/u.test(body ?? ''),
+    );
+    expect(small.length).toBeGreaterThan(0);
+    for (const [, selector] of small) {
+      const selectors = (selector ?? '').split(',').map((part) => part.trim());
+      for (const part of selectors)
+        expect(part, 'only non-interactive visual children may translate').toMatch(
+          /(?:\.motionui-visual|> (?:p|svg)|\.motionui-tooltip\[data-motion=['"]pop['"]\])$/u,
+        );
+    }
+    const liveChat = rules.filter(([, selector]) =>
+      /body\.operator \.motionui-chat-pop/u.test(selector ?? ''),
+    );
+    for (const [, , body] of liveChat) {
+      expect(body).not.toMatch(/(?:^|;)\s*transform\s*:/u);
+      expect(body).not.toMatch(/transition-property:[^;]*transform/u);
+    }
+  });
+
+  it('requires a latched opening decision for the tooltip and chat entrances', () => {
+    const text = css().replace(/\/\*[\s\S]*?\*\//gu, '');
+    expect(text).not.toMatch(/body\.operator \.motionui-tooltip\s*\{/u);
+    expect(text).not.toMatch(/\.motionui-chat-pop:not\(\[data-leaving\]\)/u);
+    expect(text).toContain(".motionui-tooltip[data-motion='pop']");
+  });
+});
