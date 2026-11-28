@@ -219,11 +219,17 @@ test('Enter on a lit clear keeps its group focused even while animation frames a
       await expect(group).toBeFocused();
       await expect(group).toHaveAttribute('data-focus-kept', '');
       expect(
-        await win.evaluate(() => document.activeElement?.matches('[data-show-control], input, textarea, select')),
+        await win.evaluate(() =>
+          document.activeElement?.matches('[data-show-control], input, textarea, select'),
+        ),
       ).toBe(false);
-      const before = await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
+      const before = await win.evaluate(async () =>
+        (await (globalThis as PageGlobals).drashti.engine.snapshot()).state,
+      );
       await win.keyboard.press('Enter');
-      expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot())).toEqual(before);
+      expect(
+        await win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state),
+      ).toEqual(before);
     } finally {
       await resume.evaluate((restore) => restore());
       await resume.dispose();
