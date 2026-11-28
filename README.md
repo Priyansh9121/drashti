@@ -366,6 +366,8 @@ If you start Drashti from inside another Electron app's process (for example an 
 
 ## Running a show
 
+In the operator window, if a focused control disappears or becomes disabled, the keyboard stays in its part of the window and Tab continues from there; closing a dialog returns to its opener, or that part if the opener has gone.
+
 **The top bar’s LIVE** names anything up on the audience screens, the stream or the hall’s sound, including a lower third, a message, the ticker, audio, the audience’s timer or live captions. Once everything is cleared, **Off** sits beside **Cleared: …**. Turning **Help** on or off keeps the top bar’s buttons in place.
 
 This section moved to [docs/running-a-show.md](docs/running-a-show.md) (26 Nov 2026), word for word: how each part of a show works, and why, from the screens, the stage and Simple Mode to playlists, the slide editor, backgrounds, music and sound, the opening and the shortcuts.

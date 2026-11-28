@@ -8,6 +8,7 @@ import { App } from './App';
 import { AccessGate } from '../access/AccessGate';
 import { OpeningAtStart } from '../opening/OpeningAtStart';
 import { WindowBoundary } from '../ui/WindowBoundary';
+import { installFocusKeeper } from '../ui/focus-keeper';
 import { reportRenderError } from '../ui/render-errors';
 import { reportFitFailuresTo } from '../render/shrink-to-fit';
 import { installFitFailureTestIfAsked } from '../render/fit-failure-test';
@@ -26,6 +27,10 @@ setLiveWindowSize({ width: 960, height: 540, frameRate: 15 });
 window.drashti.output.onTestClock(holdClock);
 // Tests only (a test switch's, never an installed Drashti's): the motion probe's record of the opening (Session 57).
 startMotionProbeIfAsked(OPERATOR_TRACKS);
+
+// Where the keyboard goes when the control that has it goes away (alpha.24, lead 2's focus piece): the part of the
+// window it was in, never the window's body. Listeners only: nothing is drawn or measured as the window opens.
+installFocusKeeper();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');

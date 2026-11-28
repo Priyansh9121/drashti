@@ -6,12 +6,15 @@ import { Button, IconButton } from './Button';
 import { cx } from './cx';
 import type { Stacked } from './dialog-stack';
 import { DialogStack } from './dialog-stack';
+import { focusOrigin, giveFocusBack, rememberPlace } from './focus-keeper';
 import { X } from './icons';
 import { useArrival, useLeaving } from './motion';
 
 /*
  * Dialogs. While one is open the keyboard stays inside it (Tab wraps round),
- * Esc closes it, and focus goes back where it was when it closes. The show's
+ * Esc closes it, and focus goes back where it was when it closes (in the
+ * operator window, where that went: to its part of the window, alpha.24's
+ * focus keeper, never the window's body). The show's
  * keys are ignored meanwhile (useKeymap looks for aria-modal). A dialog
  * opened from another one takes over until it closes, unless the one open is
  * on top (Keep these screens?, Session 51): that one stays above every other,
@@ -58,12 +61,12 @@ export function useFocusTrap(
       const preferred = root.querySelector<HTMLElement>('[data-autofocus]') ?? focusables(root)[0] ?? root;
       preferred.focus();
     };
-    const trap: Trap = {
-      onTop,
-      root,
-      before: document.activeElement instanceof HTMLElement ? document.activeElement : null,
-      focusFirst,
-    };
+    // What had the keyboard: what has it now, or (the operator window's focus keeper) what had it and went as this
+    // opened (Set up Stage screen… goes as Screens opens: alpha.25 item 18). An autoFocus field may already have
+    // taken focus inside this root: the keeper remembers the outside opener. Its place is kept if it goes.
+    const before = focusOrigin(root);
+    if (before) rememberPlace(before);
+    const trap: Trap = { onTop, root, before, focusFirst };
     // On top: where the keyboard was in it, given back when focus lands outside it while it is innermost (a
     // dialog opened meanwhile, its autoFocus). Followed from before it takes the keyboard.
     let lastFocused: HTMLElement | null = null;
@@ -115,11 +118,12 @@ export function useFocusTrap(
       // changes?", Throw away closing both, the editor first).
       const { held, next } = stack.remove(trap, (element) => root.contains(element));
       // Only the one holding the keyboard gives it back, where it was. One on top gives it to a dialog opened
-      // meanwhile instead (where it was is under that one).
+      // meanwhile instead (where it was is under that one). Where what had it went meanwhile, the operator window's
+      // focus keeper gives it to the part of the window that was in (ui/focus-keeper.ts), never the window's body.
       if (!held) return;
-      const before = trap.before;
-      if (onTop && next && !(before && next.root.contains(before))) next.focusFirst();
-      else if (before?.isConnected) before.focus();
+      const from = trap.before;
+      if (onTop && next && !(from && next.root.contains(from))) next.focusFirst();
+      else if (from) giveFocusBack(from);
     };
   }, [ref, onTop]);
 }

@@ -18,6 +18,8 @@ Every show action has a key, so the show can be run from the keyboard alone. The
 
 ## Keys for the show
 
+When a control disappears or becomes disabled while it has the keyboard, focus stays in its part of the operator window; press Tab to continue from there. Esc closes a dialog and returns to what opened it, or to that part of the window if its button has gone.
+
 **What it is.** The keys for running a sabha, written as your computer writes them: a column for Windows, one for a Mac with Apple silicon and one for a Mac with Intel. They work while no field has the keyboard (click an empty part of the window first).
 
 **When you would use it.** All through the sabha.
