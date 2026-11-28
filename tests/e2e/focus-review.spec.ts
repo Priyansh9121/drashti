@@ -206,7 +206,7 @@ test('Enter on a lit clear keeps its group focused even while animation frames a
     const clear = win.getByRole('button', { name: 'Clear slide (on screen)' });
     await clear.focus();
     const resume = await win.evaluateHandle(() => {
-      const request = window.requestAnimationFrame;
+      const request = window.requestAnimationFrame.bind(window);
       window.requestAnimationFrame = () => 0;
       return () => {
         window.requestAnimationFrame = request;
@@ -223,8 +223,8 @@ test('Enter on a lit clear keeps its group focused even while animation frames a
           document.activeElement?.matches('[data-show-control], input, textarea, select'),
         ),
       ).toBe(false);
-      const before = await win.evaluate(async () =>
-        (await (globalThis as PageGlobals).drashti.engine.snapshot()).state,
+      const before = await win.evaluate(
+        async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state,
       );
       await win.keyboard.press('Enter');
       expect(
