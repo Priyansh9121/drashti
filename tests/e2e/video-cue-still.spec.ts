@@ -29,6 +29,10 @@ import { CI_WINDOW, liveColumnToTop, sizeOperatorWindow } from './window-size';
  * generated media only.
  */
 
+interface StillWatch {
+  cueStillWatch?: (stop?: boolean) => { looks: number; moved: string[] };
+}
+
 const OWNERS_WINDOW = { width: 1410, height: 900 } as const;
 const SIZES = [CI_WINDOW, OWNERS_WINDOW] as const;
 
@@ -122,10 +126,12 @@ const startWatching = (win: Page, selector: string) =>
     };
     requestAnimationFrame(frame);
     const timer = setInterval(look, 16);
-    (globalThis as { cueStillWatch?: () => { looks: number; moved: string[] } }).cueStillWatch = () => {
-      going = false;
-      clearInterval(timer);
-      look();
+    (globalThis as StillWatch).cueStillWatch = (stop = true) => {
+      if (stop) {
+        going = false;
+        clearInterval(timer);
+        look();
+      }
       return { looks, moved };
     };
     return parts.length;
@@ -133,10 +139,24 @@ const startWatching = (win: Page, selector: string) =>
 
 const stopWatching = (win: Page) =>
   win.evaluate(() => {
-    const stop = (globalThis as { cueStillWatch?: () => { looks: number; moved: string[] } }).cueStillWatch;
+    const stop = (globalThis as StillWatch).cueStillWatch;
     if (!stop) throw new Error('not watching');
     return stop();
   });
+
+/** Keep watching until this DOM state has supplied more than ten fresh samples, within the normal expect bound. */
+async function sampleFrames(win: Page, where: string): Promise<void> {
+  const samples = () =>
+    win.evaluate(() => {
+      const read = (globalThis as StillWatch).cueStillWatch;
+      if (!read) throw new Error('not watching');
+      return read(false).looks;
+    });
+  const before = await samples();
+  await expect
+    .poll(samples, { message: `${where}: more than ten fresh samples` })
+    .toBeGreaterThan(before + 10);
+}
 
 /**
  * Diagnostics only (no check reads them): the LIVE column's parts at a step, attached at the end. Whether the LIVE
@@ -570,10 +590,10 @@ for (const mode of ['pro', 'simple'] as const)
         rows.push(await geometry(win, `${where}: before LIVE's rows`));
         expect(await startWatching(win, selector)).toBe(before.length);
         await rowsUp(win, timerId);
-        await letTimePass(win, 500, 'LIVE’s rows up');
+        await sampleFrames(win, 'LIVE’s rows up');
         rows.push(await geometry(win, `${where}: LIVE's rows up`));
         await rowsDown(win);
-        await letTimePass(win, 500, 'frames after LIVE’s rows went');
+        await sampleFrames(win, 'frames after LIVE’s rows went');
         const watched = await stopWatching(win);
         expect(watched.looks, `${where}: looked at every frame`).toBeGreaterThan(10);
         expect(watched.moved, `${where}: what moved as LIVE’s rows came and went`).toEqual([]);
@@ -625,7 +645,7 @@ test('Pro Mode at 1024 × 645 and 1410 × 900: a cued video waiting while a vide
       ).toBe(true);
       expect((await snapshot(win)).videoCue?.id, 'the same manual cue is still waiting').toBe(waiting);
       await expect(win.getByTestId('time-bars')).toHaveCount(0);
-      await letTimePass(win, 800, 'frames after the time bar went');
+      await sampleFrames(win, 'frames after the time bar went');
       rows.push(await geometry(win, `${where}: the video taken off`));
       const watched = await stopWatching(win);
       expect(watched.looks, `${where}: looked at every frame`).toBeGreaterThan(10);
@@ -743,8 +763,15 @@ test('Pro Mode, practising: the show’s cued video’s card is not drawn (its G
     await win.getByTestId('open-playlist').getByRole('button', { name: 'Playlist actions' }).click();
     await win.getByRole('menuitem', { name: 'Practise this playlist' }).click();
     await expect(win.getByTestId('practice-banner')).toContainText('Practising “Placeholder practice”');
-    await win.getByTestId('practice-thumb').first().click();
-    await letTimePass(win, 500, 'a practice slide up');
+    const first = win.getByTestId('practice-thumb').first();
+    const slide = await first.locator('[data-slide]').getAttribute('data-slide');
+    if (!slide) throw new Error('no first practice slide');
+    await first.click();
+    await expect(first).toHaveAttribute('aria-current', 'true');
+    await expect(win.getByTestId('live-preview').locator('[data-slide]').first()).toHaveAttribute(
+      'data-slide',
+      slide,
+    );
     await expect(win.getByTestId('video-cue'), 'no show cue in practice').toHaveCount(0);
     await expect(goButton(win)).toHaveCount(0);
     expect((await snapshot(win)).videoCue?.background.mediaId, 'the show’s cue waits').toBe(videoId);
@@ -753,6 +780,164 @@ test('Pro Mode, practising: the show’s cued video’s card is not drawn (its G
     await expect(win.getByTestId('video-cue'), 'the cue’s card back after practice').toBeVisible();
     await expect(cancelButton(win)).toBeVisible();
   } finally {
+    await app.close();
+  }
+});
+
+/** State words and each button's contents must stay inside their own room and clear of one another. */
+const cueFit = (win: Page) =>
+  win.getByTestId('video-cue').evaluate((card) => {
+    const faults: string[] = [];
+    const status = card.querySelector('[role="status"]');
+    const state = status?.lastElementChild;
+    const buttons = [...card.querySelectorAll('button')];
+    if (!status || !state || buttons.length !== 2) throw new Error('no cue state or controls');
+    const inside = (r: DOMRect, box: DOMRect) =>
+      r.left >= box.left - 0.5 &&
+      r.right <= box.right + 0.5 &&
+      r.top >= box.top - 0.5 &&
+      r.bottom <= box.bottom + 0.5;
+    const cardBox = card.getBoundingClientRect();
+    const words = document.createRange();
+    words.selectNodeContents(state);
+    for (const r of words.getClientRects()) {
+      if (!inside(r, status.getBoundingClientRect()))
+        faults.push('state words overflow their information box');
+      if (!inside(r, cardBox)) faults.push('state words overflow the card');
+      for (const button of buttons) {
+        const b = button.getBoundingClientRect();
+        if (
+          Math.min(r.right, b.right) - Math.max(r.left, b.left) > 0.5 &&
+          Math.min(r.bottom, b.bottom) - Math.max(r.top, b.top) > 0.5
+        )
+          faults.push(`state words overlap ${button.textContent}`);
+      }
+    }
+    for (const button of buttons) {
+      const b = button.getBoundingClientRect();
+      if (!inside(b, cardBox)) faults.push(`${button.textContent} overflows the card`);
+      const content = document.createRange();
+      content.selectNodeContents(button);
+      const style = getComputedStyle(button);
+      for (const r of content.getClientRects()) {
+        if (
+          !inside(r, b) ||
+          r.left < b.left + parseFloat(style.paddingLeft) - 0.5 ||
+          r.right > b.right - parseFloat(style.paddingRight) + 0.5
+        )
+          faults.push(`${button.textContent} is not whole inside its button`);
+      }
+    }
+    return faults;
+  });
+
+interface CueHold {
+  cueStillPending?: { reports: number; release: () => Promise<void> };
+}
+
+test('Pro Mode, LIVE at its 300 px minimum: pending, ready and error words and buttons fit whole, and Go and Cancel never move', async () => {
+  test.setTimeout(180_000);
+  const { app, win, hall, ids } = await setupVideoCue();
+  const rows: Geometry[] = [];
+  try {
+    await slidesUp(win);
+    for (const size of [CI_WINDOW, { width: 1280, height: 720 }, OWNERS_WINDOW]) {
+      const where = `300 px LIVE at ${sizeName(size)}`;
+      await sizeOperatorWindow(app, win, size);
+      const splitter = win.getByRole('separator', { name: 'Resize the live column', exact: true });
+      await splitter.focus();
+      await splitter.press('Home');
+      await expect(splitter).toHaveAttribute('aria-valuenow', '300');
+      await expect.poll(async () => (await win.getByTestId('column-right').boundingBox())?.width).toBe(300);
+      await liveColumnToTop(liveColumn(win));
+      await win.evaluate(() => document.fonts.ready.then(() => undefined));
+      // Hold the real hall page's acknowledgement, never a wall-clock delay or a fabricated ready state.
+      await hall.evaluate(() => {
+        const g = globalThis as PageGlobals & CueHold;
+        const bridge = g.drashti;
+        const queued: Parameters<typeof bridge.engine.videoCueReady>[] = [];
+        let held = true;
+        const pending = {
+          reports: 0,
+          release: async () => {
+            held = false;
+            for (const args of queued) await bridge.engine.videoCueReady(...args);
+          },
+        };
+        g.cueStillPending = pending;
+        g.drashti = {
+          ...bridge,
+          engine: {
+            ...bridge.engine,
+            videoCueReady: async (...args) => {
+              if (held && args[1] === 'picture') {
+                queued.push(args);
+                pending.reports += 1;
+                return null;
+              }
+              return bridge.engine.videoCueReady(...args);
+            },
+          },
+        };
+      });
+      expect((await dispatch(win, { type: 'cueVideo', mediaId: ids[1] ?? '' })).ok).toBe(true);
+      await expect
+        .poll(() => hall.evaluate(() => (globalThis as CueHold).cueStillPending?.reports ?? 0))
+        .toBeGreaterThan(0);
+      const cue = (await snapshot(win)).videoCue;
+      if (!cue) throw new Error('no pending cue');
+      expect(
+        cue.required.some((id) => !cue.ready.includes(id)),
+        'a required page is still pending',
+      ).toBe(true);
+      const status = win.getByTestId('video-cue').getByRole('status');
+      await expect(status).toContainText('Preparing first frame…');
+      await expect(goButton(win)).toBeDisabled();
+      const selector = 'button[aria-label="Go cued video"], button[aria-label="Cancel video cue"]';
+      const before = await settledStill(win, selector, `${where}: pending`);
+      expect(before).toHaveLength(2);
+      const faults = [{ state: 'pending', faults: await cueFit(win) }];
+      rows.push(await geometry(win, `${where}: pending`));
+      expect(await startWatching(win, selector)).toBe(2);
+      await hall.evaluate(async () => {
+        const pending = (globalThis as CueHold).cueStillPending;
+        if (!pending) throw new Error('no held hall page');
+        await pending.release();
+      });
+      await cueReady(win);
+      await expect(status).toContainText('Cue ready');
+      await expect(goButton(win)).toBeEnabled();
+      await sampleFrames(win, `${where}: ready`);
+      faults.push({ state: 'ready', faults: await cueFit(win) });
+      rows.push(await geometry(win, `${where}: ready`));
+      await hall.evaluate(
+        (id) => (globalThis as PageGlobals).drashti.engine.videoCueReady(id, 'picture', false),
+        cue.id,
+      );
+      await expect(status).toContainText(
+        'The cued video could not load its first frame: Cancel and cue it again.',
+      );
+      await expect(goButton(win)).toBeDisabled();
+      await sampleFrames(win, `${where}: error`);
+      faults.push({ state: 'error', faults: await cueFit(win) });
+      rows.push(await geometry(win, `${where}: error`));
+      const watched = await stopWatching(win);
+      await test.info().attach(`cue-fit-${String(size.width)}.json`, {
+        body: Buffer.from(JSON.stringify({ faults, before, watched }, null, 1)),
+        contentType: 'application/json',
+      });
+      expect(
+        faults.flatMap(({ state, faults }) => faults.map((f) => `${state}: ${f}`)),
+        where,
+      ).toEqual([]);
+      expect(watched.looks, `${where}: looked at every frame`).toBeGreaterThan(10);
+      expect(watched.moved, `${where}: Go and Cancel through all three states`).toEqual([]);
+      expect(await stillParts(win, selector), `${where}: error controls stay put`).toEqual(before);
+      await cancelButton(win).click();
+      await expect(win.getByTestId('video-cue')).toHaveCount(0);
+    }
+  } finally {
+    await attachGeometry(rows);
     await app.close();
   }
 });
