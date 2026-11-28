@@ -13,10 +13,10 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * Down had gone under Order's list. In Pro and Simple Mode, at CI's window and the owner's own 1410 × 900, with the side
  * columns as they open, at their least and at their most: the header's controls on one row, and in Pro Mode the chosen
  * presentation's Order, Up and Down on one row (their middles within 1 px: each row centres them, and the ? is smaller
- * than the buttons beside it); nothing cut anywhere in the window (fit.ts's fitFaults); every name, title and test id
- * as before; the words in sight where they fit (lead 2's ask: From a Link…'s go before Add files…'s, Simple Mode's Add
- * files… always says its words, both say them in the owner's window as it opens); and nothing in either row moves when
- * the row goes live. Placeholder names only.
+ * than the buttons beside it); nothing cut anywhere in the window (fit.ts's fitFaults); every name and test id as
+ * before, each title beginning with its button's name (middlehelp); the words in sight where they fit (lead 2's ask:
+ * From a Link…'s go before Add files…'s, Simple Mode's Add files… always says its words, both say them in the owner's
+ * window as it opens); and nothing in either row moves when the row goes live. Placeholder names only.
  */
 
 /** The owner's own window (22 Nov 2026, alpha.20.1 on his Mac), in CSS pixels (operator-fit.spec.ts's). */
@@ -141,18 +141,19 @@ for (const mode of ['pro', 'simple'] as const)
       await laidOut(win);
       const header = middle.getByTestId('playlist-title').locator('..');
 
-      // Every name, title and test id as before, whether a button shows its words or its icon alone.
+      // Every name and test id as before, whether a button shows its words or its icon alone; each title begins with its
+      // name (middlehelp, uitop's rule for the top bar: it may show its icon alone).
       const addFiles = header.getByRole('button', { name: 'Add files…', exact: true });
       await expect(addFiles).toHaveAttribute('data-testid', 'playlist-add-files');
       await expect(addFiles).toHaveAttribute(
         'title',
-        'Import files and add them at the end of this playlist',
+        'Add files…: import files and add them at the end of this playlist',
       );
       const fromLink = header.getByRole('button', { name: 'From a Link…', exact: true });
       await expect(fromLink).toHaveAttribute('data-testid', 'playlist-from-link');
       await expect(fromLink).toHaveAttribute(
         'title',
-        'Download from a link and add it at the end of this playlist',
+        'From a Link…: download from a link and add it at the end of this playlist',
       );
       if (mode === 'pro') {
         await expect(moves.getByRole('button', { name: 'Up', exact: true })).toHaveAttribute(

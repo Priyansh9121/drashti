@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { afterCueStart, cueShown, cueStarted } from './cue-started';
 import { atGoMoment, type GoMomentClock } from './go-moment';
 
 /**
@@ -164,5 +165,83 @@ describe("the operator preview's own work for a cue's Go moment (QA23-CUELIVE-1)
     page.frameAt(102);
     page.frameAt(400);
     expect(gaveUp).toEqual(['lone']);
+  });
+});
+
+describe("the operator window's Go work behind LIVE's first moving frame (golive)", () => {
+  // Joined run 2's Mac M6 (video-cue-crossfade:306): released at LIVE's rate (+10.5 ms), the operator window's Go work
+  // held its main thread from +17 to +118 ms, over LIVE's first moving frames (shown at +55 and +107), so their frame
+  // callbacks never came and the spec read the third frame; the Screens previews and LIVE's scene keeper wait for the
+  // first moving frame shown.
+  it("runs a Screens preview's or LIVE's scene keeper's work once LIVE's first moving frame is shown, not at its rate", () => {
+    const page = new Page();
+    page.later(() => {
+      page.order.push('rate');
+      cueStarted('gm-a');
+    }, 100);
+    page.later(() => {
+      page.order.push('shown');
+      cueShown('gm-a');
+    }, 145);
+    atGoMoment(
+      100,
+      () => page.order.push('work'),
+      { checkNow: false, afterStart: afterCueStart('gm-a', 'shown') },
+      page,
+    );
+    page.frameAt(102);
+    expect(page.order, 'not at its rate').toEqual(['rate']);
+    page.frameAt(150);
+    expect(page.order).toEqual(['rate', 'shown', 'work']);
+  });
+
+  // a24 golive, lead 2's rule 3: Go cancelled, replaced or followed by Clear all within those 250 ms. The slot or the
+  // scene goes, its effect's cleanup cancels the wait, and nothing of the old Go runs later.
+  it('runs nothing for a Go cancelled or cleared within the 250 ms: not at its first moving frame, nor at the fallback', () => {
+    const page = new Page();
+    const seen: number[] = [];
+    const cancel = atGoMoment(
+      100,
+      (now) => seen.push(now),
+      { checkNow: false, afterStart: afterCueStart('gm-b', 'shown') },
+      page,
+    );
+    page.later(() => cueStarted('gm-b'), 100);
+    page.frameAt(102);
+    cancel();
+    page.later(() => cueShown('gm-b'), 40);
+    page.frameAt(150);
+    page.frameAt(400);
+    expect(seen).toEqual([]);
+  });
+
+  it('runs a Go replaced within the 250 ms at its own first moving frame, never at the old one', () => {
+    const page = new Page();
+    const order: string[] = [];
+    const old = atGoMoment(
+      100,
+      () => order.push('old'),
+      { checkNow: false, afterStart: afterCueStart('gm-c', 'shown') },
+      page,
+    );
+    page.later(() => cueStarted('gm-c'), 100);
+    page.frameAt(102);
+    // A new cue's Go 50 ms later: the old wait goes with its slot, a new one waits on the new cue.
+    old();
+    atGoMoment(
+      150,
+      () => order.push('new'),
+      { checkNow: false, afterStart: afterCueStart('gm-d', 'shown') },
+      page,
+    );
+    page.later(() => cueShown('gm-c'), 20);
+    page.frameAt(130);
+    expect(order, 'the old cue shown: nothing').toEqual([]);
+    page.later(() => cueStarted('gm-d'), 20);
+    page.frameAt(152);
+    expect(order, 'the new cue at its rate: not yet').toEqual([]);
+    page.later(() => cueShown('gm-d'), 40);
+    page.frameAt(200);
+    expect(order).toEqual(['new']);
   });
 });

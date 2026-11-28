@@ -192,6 +192,103 @@ describe('the operator window’s keys, as its listener takes them', () => {
   );
 });
 
+/** A button, as the page has it: a show control (data-show-control: a slide's row, Black-out, Next) or not. */
+class StandInButton extends StandInElement {
+  disabled = false;
+  constructor(
+    readonly name: string,
+    readonly showControl = false,
+    readonly spaceNext = false,
+  ) {
+    super('BUTTON');
+  }
+  closest(selector: string): StandInButton | null {
+    return (selector === '[data-show-control]' && this.showControl) ||
+      (selector === '[data-space-next]' && this.spaceNext)
+      ? this
+      : null;
+  }
+}
+
+// Space on a focused button (a25 item 1; the release lead's B, as lead 2 scoped it): a button the keyboard put the
+// focus on (Tab, or a move the page made from there: focus-origin.ts) is pressed by Space, as on any page, so Space on
+// a Tab-focused "?" opens it. Never a show control's (a slide's row, a playlist's item, Next, Black-out, the clears):
+// there Space stays Next, as the operators press it. A button a click focused keeps Space = Next too, so Space never
+// presses Black-out, Clear all or Oops again.
+describe('Space on a focused button', () => {
+  const ask = new StandInButton('What is this? Stream');
+  const dismiss = new StandInButton('Dismiss the screens line');
+  const slideRow = new StandInButton('Slide 3', true);
+  const blackout = new StandInButton('Black-out', true);
+  const byKeyboard = new Set<unknown>([ask, dismiss, slideRow]);
+  const listen = (platform: 'darwin' | 'win32') => {
+    const ran: OperatorAction[] = [];
+    const onKey = keyListener(
+      platform,
+      PAGE_KEYMAP,
+      (action) => {
+        ran.push(action);
+      },
+      (target) => byKeyboard.has(target),
+    );
+    return { ran, onKey };
+  };
+
+  it.each(['darwin', 'win32'] as const)(
+    'presses a button the keyboard put the focus on: Space is let go by to it, and no Next runs (%s)',
+    (platform) => {
+      const { ran, onKey } = listen(platform);
+      const presses = [new Press(' ', { target: ask }), new Press(' ', { target: dismiss })];
+      for (const p of presses) onKey(p);
+      expect(ran).toEqual([]);
+      expect(presses.map((p) => p.taken)).toEqual([false, false]);
+    },
+  );
+
+  it('stays Next on a show control, even one the keyboard put the focus on (a slide’s row)', () => {
+    const { ran, onKey } = listen('win32');
+    const p = new Press(' ', { target: slideRow });
+    onKey(p);
+    expect(ran).toEqual(['next']);
+    expect(p.taken).toBe(true);
+  });
+
+  it.each(['Sound on', 'Simple Mode', 'Pro Mode'])(
+    'stays Next on the keyboard-focused %s switch, taking both presses so it never switches',
+    (name) => {
+      const button = new StandInButton(name, false, true);
+      const ran: OperatorAction[] = [];
+      const onKey = keyListener(
+        'win32',
+        PAGE_KEYMAP,
+        (action) => ran.push(action),
+        () => true,
+      );
+      const presses = [new Press(' ', { target: button }), new Press(' ', { target: button })];
+      for (const p of presses) onKey(p);
+      expect(ran).toEqual(['next', 'next']);
+      expect(presses.map((p) => p.taken)).toEqual([true, true]);
+    },
+  );
+
+  it('stays Next on a button a click focused: Black-out, or a "?" clicked', () => {
+    const { ran, onKey } = listen('darwin');
+    const clickedAsk = new StandInButton('What is this? LIVE');
+    const presses = [new Press(' ', { target: blackout }), new Press(' ', { target: clickedAsk })];
+    for (const p of presses) onKey(p);
+    expect(ran).toEqual(['next', 'next']);
+    expect(presses.map((p) => p.taken)).toEqual([true, true]);
+  });
+
+  it('leaves the other keys as they were on a button the keyboard focused: → and Page Down are Next', () => {
+    const { ran, onKey } = listen('win32');
+    const presses = [new Press('ArrowRight', { target: ask }), new Press('PageDown', { target: ask })];
+    for (const p of presses) onKey(p);
+    expect(ran).toEqual(['next', 'next']);
+    expect(presses.map((p) => p.taken)).toEqual([true, true]);
+  });
+});
+
 // A window's own keys outside the keymap (alpha.24, hunt S3-3: the slide editor's Save, Find, Undo and Redo, the
 // Access List's Find): with a Gujarati or Hindi layout, Ctrl with the S key says "સ"; read as the S in its place on the
 // keyboard, as the keymap's own keys are (keyplat). With Cmd or Ctrl, anywhere but an IME's composition, as a Latin

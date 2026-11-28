@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { PipLayer, PipPlace, PipSource } from '../../../shared/engine/state';
 import type { MediaSummary } from '../../../shared/playlists';
 import { DEFAULT_PIP_PLACE } from '../../../shared/pip';
-import { useEngine } from '../engine/engine-store';
+import { getCurrentEngineState, useEngine } from '../engine/engine-store';
 import { pipName } from '../render/pip';
 
 /*
@@ -46,7 +46,7 @@ const NOT_KEPT = 'Drashti could not keep where the box goes for next time: set i
  * the next box (nothing moves). What went wrong, in words, or null.
  */
 export async function placeBox(place: PipPlace): Promise<string | null> {
-  if (useEngine.getState().state?.layers.pip) {
+  if (getCurrentEngineState()?.layers.pip) {
     const moved = await window.drashti.engine.dispatch({ type: 'placePip', place });
     if (moved.ok) usePipPlace.setState({ place });
     return moved.ok ? null : moved.message;
@@ -85,7 +85,7 @@ export function boxWhere(box: PipLayer): string {
  */
 export function followRememberedPlace(): () => void {
   void rememberedPlace();
-  let wasUp = Boolean(useEngine.getState().state?.layers.pip);
+  let wasUp = Boolean(getCurrentEngineState()?.layers.pip);
   return useEngine.subscribe((view) => {
     const up = Boolean(view.state?.layers.pip);
     if (wasUp && !up) void rememberedPlace();

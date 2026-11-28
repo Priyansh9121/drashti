@@ -40,9 +40,16 @@ import { Truncate } from '../ui/Truncate';
 import type { OperatorAction } from '../../../shared/keymap';
 import { KEYMAP, keyText, shortcutText } from '../../../shared/keymap';
 
+/**
+ * The computer the gallery is open on, as the app names it (darwin, Apple silicon or Intel alike, or win32), so its key
+ * hints are written as that computer writes them (a25 item 25). It needs nothing from the main process (main.tsx), so
+ * it reads the browser's own word for it.
+ */
+const PLATFORM = typeof navigator !== 'undefined' && /\bMac/u.test(navigator.userAgent) ? 'darwin' : 'win32';
+
 /** Simple Mode's keys as its buttons show them, from the keymap itself (only the keymap names a key). */
 const keysOf = (action: OperatorAction): string[] =>
-  KEYMAP.find((b) => b.action === action)?.keys.map((k) => keyText(k, 'darwin')) ?? [];
+  KEYMAP.find((b) => b.action === action)?.keys.map((k) => keyText(k, PLATFORM)) ?? [];
 
 /* Placeholder words only: never real kirtan or scripture text. */
 const NAMES = {
@@ -149,7 +156,7 @@ function ButtonsSection() {
           Next
         </Button>
         <Button size="xl" variant="secondary" instant icon={BlackOut}>
-          <WordsOverKeys words="Black-out" keys={[shortcutText('toggleBlackout', 'darwin')]} />
+          <WordsOverKeys words="Black-out" keys={[shortcutText('toggleBlackout', PLATFORM)]} />
         </Button>
         <Button size="xl" variant="live" icon={Wallpaper}>
           <WordsOverKeys words="Wallpaper is on" keys={keysOf('toggleWallpaper')} />
@@ -291,7 +298,9 @@ function OverlaysSection() {
           <Button>Hover or focus me</Button>
         </Tooltip>
         <span className="text-sm text-muted">
-          Next <Kbd>→</Kbd> · Clear all <Kbd>F1</Kbd> · Screens <Kbd>⌘⇧S</Kbd>
+          Next <Kbd>{shortcutText('next', PLATFORM)}</Kbd> · Clear all{' '}
+          <Kbd>{shortcutText('clearAll', PLATFORM)}</Kbd> · Screens{' '}
+          <Kbd>{shortcutText('openScreens', PLATFORM)}</Kbd>
         </span>
       </Row>
       {dialog === 'center' && (

@@ -272,6 +272,8 @@ export function PanelKindKeeper() {
       inert
       data-testid="panel-kind-keeper"
       data-chip-warm-up=""
+      // Kept at rest on purpose (item 29): this 32 x 16 chip-only layer keeps its icon in the same tile as the fill,
+      // drawn multisampled as Go live is. Removing it needs stream-panel-warm's GPU trace proof, not a motion rule.
       className="pointer-events-none absolute top-1 left-16 block h-4 w-8 will-change-transform"
     >
       {/* Drawn again as it moves a device pixel under the cover (nothing on screen changes): keeperMove. */}
