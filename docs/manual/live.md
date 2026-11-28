@@ -14,6 +14,8 @@ The right column starts with **LIVE**: what the hall sees this moment. Under it 
 2. Read the line above it: what is live, and which slide ("slide 2 of 5").
 3. A notice under it, below **Back**, **Next** and the time bars (such as **File missing**), says what to tell whoever looks after Drashti afterwards.
 
+A video cue’s words take their own row at LIVE’s smallest width. **Preparing first frame…**, **Cue ready** and any error stay whole, with **Go** and **Cancel** kept in place.
+
 ![The operator window: LIVE at the top of the right column](../screenshots/operator-1280x720.png)
 
 ## Next and Back

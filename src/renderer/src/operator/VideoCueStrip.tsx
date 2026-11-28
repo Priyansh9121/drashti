@@ -21,7 +21,7 @@ function cueMenu(target: FileTarget) {
 }
 
 /** One first-frame preview, copied from LIVE's already loaded element, never another decoder. */
-function CuedFrame({ id, ready, small }: { id: string; ready: boolean; small: boolean }) {
+function CuedFrame({ id, ready }: { id: string; ready: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     if (!ready) return;
@@ -56,10 +56,7 @@ function CuedFrame({ id, ready, small }: { id: string; ready: boolean; small: bo
       width={128}
       height={72}
       aria-label="Cued first frame"
-      className={cx(
-        'h-10 w-18 shrink-0 rounded-sm bg-black object-contain',
-        small && '@max-[28rem]/cue:h-7 @max-[28rem]/cue:w-12',
-      )}
+      className="col-start-1 row-span-2 row-start-1 h-10 w-18 shrink-0 rounded-sm bg-black object-contain @max-[28rem]/cue:row-span-1 @max-[28rem]/cue:h-7 @max-[28rem]/cue:w-12"
     />
   );
 }
@@ -71,36 +68,41 @@ export function VideoCueStrip() {
   if (!cue || mode !== 'pro') return null;
   const ready = videoCueReady(cue);
   const said = `${cue.automatic ? 'Next video · Crossfade' : 'Cued video'} · ${cue.label}`;
-  // One row in a narrow column (alpha.24, lead 2's liverows; a25 list item 46, CI's 1024 × 645): under 28 rem the first
-  // frame is drawn smaller and the words go on one line (the name cut short, its state whole), so the card is some
-  // 16 px shorter and its Go higher, nearer Next. An error keeps its own line.
+  // At ordinary narrow widths the name and state share a row. At LIVE's minimum the state has its own full-width
+  // row, with room for the first-frame error too. The buttons keep the same columns and top edge in every state.
   const row = !cue.error;
   return (
     <div className="@container/cue">
       <div
         data-testid="video-cue"
         className={cx(
-          'flex flex-wrap items-center gap-2 rounded-md border border-line bg-panel-2 p-2 text-xs',
-          row && '@max-[28rem]/cue:flex-nowrap @max-[28rem]/cue:p-1.5',
+          'grid grid-cols-[4.5rem_minmax(0,1fr)_auto_auto] grid-rows-[auto_auto] items-start gap-x-2 rounded-md border border-line bg-panel-2 p-2 text-xs',
+          '@max-[28rem]/cue:grid-cols-[3rem_minmax(0,1fr)_auto_auto_auto] @max-[28rem]/cue:p-1',
+          '@max-[22rem]/cue:grid-rows-[1.75rem_minmax(2rem,auto)] @max-[22rem]/cue:gap-y-1',
+          cue.error && '@max-[28rem]/cue:gap-y-1',
         )}
       >
-        <CuedFrame id={cue.id} ready={ready} small={row} />
+        <CuedFrame id={cue.id} ready={ready} />
         <div
           className={cx(
-            'min-w-0 flex-1',
-            row && '@max-[28rem]/cue:flex @max-[28rem]/cue:items-baseline @max-[28rem]/cue:gap-1.5',
+            'col-start-2 row-start-1 min-w-0 truncate font-semibold @max-[28rem]/cue:self-center @max-[22rem]/cue:col-span-2',
+            cue.error && '@max-[28rem]/cue:col-span-2',
+          )}
+          title={said}
+        >
+          {said}
+        </div>
+        <div
+          className={cx(
+            'col-start-2 row-start-2 min-w-0',
+            row
+              ? '@max-[28rem]/cue:col-start-3 @max-[28rem]/cue:row-start-1 @max-[28rem]/cue:self-center @max-[28rem]/cue:whitespace-nowrap'
+              : '@max-[28rem]/cue:col-span-full @max-[28rem]/cue:col-start-1 @max-[28rem]/cue:row-start-2',
+            '@max-[22rem]/cue:col-span-full @max-[22rem]/cue:col-start-1 @max-[22rem]/cue:row-start-2 @max-[22rem]/cue:self-start @max-[22rem]/cue:whitespace-normal',
           )}
           role="status"
         >
-          <div
-            className={cx('font-semibold', row && '@max-[28rem]/cue:min-w-0 @max-[28rem]/cue:truncate')}
-            title={said}
-          >
-            {said}
-          </div>
-          <div
-            className={cx(cue.error ? 'text-warning-fg' : 'text-muted', row && '@max-[28rem]/cue:shrink-0')}
-          >
+          <div className={cue.error ? 'text-warning-fg' : 'text-muted'}>
             {cue.error ?? (ready ? 'Cue ready' : 'Preparing first frame…')}
           </div>
         </div>
@@ -108,6 +110,7 @@ export function VideoCueStrip() {
           size="sm"
           variant="primary"
           aria-label="Go cued video"
+          className="col-start-3 row-span-2 row-start-1 @max-[28rem]/cue:col-start-4 @max-[28rem]/cue:row-span-1"
           // A show control (alpha.24, the bug hunt's S3-1): it changes the screens at once and never moves.
           instant
           disabled={!ready}
@@ -118,6 +121,7 @@ export function VideoCueStrip() {
         <Button
           size="sm"
           aria-label="Cancel video cue"
+          className="col-start-4 row-span-2 row-start-1 @max-[28rem]/cue:col-start-5 @max-[28rem]/cue:row-span-1"
           instant
           onClick={() => void dispatch({ type: 'cancelVideoCue' })}
         >

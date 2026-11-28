@@ -161,7 +161,8 @@ async function sampleFrames(win: Page, where: string): Promise<void> {
 /**
  * Diagnostics only (no check reads them): the LIVE column's parts at a step, attached at the end. Whether the LIVE
  * block stands, its scroller's room, and the boxes of the block, the picture, Next and Back, Oops, the card, its Go,
- * the zoom buttons and the time bars; and the lines LIVE has (its section's children), so a move from one is named.
+ * the zoom buttons and the time bars; and the lines LIVE has (its section's and live-lines' children), so a move
+ * from one is named.
  */
 const geometry = (win: Page, step: string) =>
   win.evaluate((step) => {
@@ -179,7 +180,9 @@ const geometry = (win: Page, step: string) =>
     };
     const scroll = document.querySelector<HTMLElement>('[data-testid="live-scroll"]');
     const rest = document.querySelector<HTMLElement>('[data-testid="live-rest"]');
-    const section = document.querySelector('section[aria-labelledby="live-preview-title"]');
+    const sections = document.querySelectorAll(
+      'section[aria-labelledby="live-preview-title"], [data-testid="live-lines"]',
+    );
     return {
       step,
       window: [innerWidth, innerHeight],
@@ -201,9 +204,9 @@ const geometry = (win: Page, step: string) =>
       go: box('button[aria-label="Go cued video"]'),
       zoom: box('[data-testid="live-zoom"]'),
       bars: box('[data-testid="time-bars"]'),
-      lines: section
-        ? [...section.children].map((el) => el.getAttribute('data-testid') ?? el.tagName.toLowerCase())
-        : [],
+      lines: [...sections].flatMap((section) =>
+        [...section.children].map((el) => el.getAttribute('data-testid') ?? el.tagName.toLowerCase()),
+      ),
     };
   }, step);
 
