@@ -28,7 +28,9 @@ async function watchExits(win: Page, stopNextPop = false): Promise<void> {
     Element.prototype.attachShadow = function (this: Element, init: ShadowRootInit) {
       const root = attach.call(this, init);
       let recorded = false;
-      root.addEventListener('animationstart', () => {
+      // Read the exit once leave() has built it, not at its first frame: a slow runner can draw no frame before the
+      // exit's own fallback timer removes the copy, and the record must not depend on frame timing.
+      queueMicrotask(() => {
         if (recorded) return;
         const copy = root.querySelector<HTMLElement>('[data-leaving]');
         const host = root.host as HTMLElement;
