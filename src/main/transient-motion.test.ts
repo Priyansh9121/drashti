@@ -122,3 +122,14 @@ describe('live transient geometry and settled startup', () => {
     expect(text).toContain(".motionui-tooltip[data-motion='pop']");
   });
 });
+
+
+it('keeps Help text clickable and its paragraph rectangle fixed while its words fade', () => {
+  const rules = [...css().replace(/\/\*[\s\S]*?\*\//gu, '').matchAll(/([^{}@;]+)\{([^{}]*)\}/gu)];
+  const paragraphs = rules.filter(([, selector]) => (selector ?? '').includes("[data-motion='pop'] > p"));
+  expect(paragraphs).toHaveLength(1);
+  const body = paragraphs[0]?.[2] ?? '';
+  expect(body).not.toMatch(/pointer-events:\s*none/u);
+  expect(body).not.toMatch(/(?:^|;)\s*transform:/u);
+  expect(body).toContain('animation: fade-in var(--dur-surface-menu)');
+});
