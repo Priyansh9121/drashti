@@ -70,3 +70,71 @@
   [data-variant]:not([data-show-control]):not([data-show-control] *):not(:disabled):hover:not(:active) {
   translate: 0 calc(var(--lift) * -1);
 }
+
+@keyframes motionlooks-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* The three samples hold exactly the same room. They contain no readable words or interactive targets. */
+[data-motion-preview] {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 2rem;
+  overflow: hidden;
+  border: 1px solid var(--color-field);
+  border-radius: var(--radius-md);
+  background: var(--color-ink);
+}
+[data-motion-preview-picture] {
+  position: absolute;
+  inset: 0.25rem;
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr;
+  gap: 0.2rem;
+}
+[data-motion-preview-picture] > span {
+  border-radius: var(--radius-sm);
+  background: var(--color-panel-3);
+}
+[data-motion-preview-mark] {
+  position: absolute;
+  inset: 0.4rem 40%;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+}
+
+@media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
+  /* Calm's pointed-at edge leaves the words and their colours intact (a press still dims, as before alpha.24's
+     motion looks); the keyboard focus ring stays immediate. */
+  :root[data-opened][data-chip='yes'][data-interface-motion='calm']
+    [data-variant]:not([data-show-control]):not([data-show-control] *):not(:has([data-show-control])):not(
+      :disabled
+    ):hover {
+    box-shadow: inset 0 0 0 1px var(--color-field);
+  }
+  :root[data-opened][data-chip='yes'][data-interface-motion='calm']
+    [data-motion-choice]:is(:hover, :focus-visible)
+    [data-motion-preview]:not([data-motion-preview='off'])
+    [data-motion-preview-picture],
+  :root[data-opened][data-chip='yes'][data-interface-motion='lively']
+    [data-motion-choice]:is(:hover, :focus-visible)
+    [data-motion-preview]:not([data-motion-preview='off'])
+    [data-motion-preview-picture] {
+    animation: motionlooks-in var(--dur-crossfade) var(--ease-out) both;
+  }
+  :root[data-opened][data-chip='yes'][data-interface-motion='calm']
+    [data-motion-choice]:is(:hover, :focus-visible)
+    [data-motion-preview='lively']
+    [data-motion-preview-mark],
+  :root[data-opened][data-chip='yes'][data-interface-motion='lively']
+    [data-motion-choice]:is(:hover, :focus-visible)
+    [data-motion-preview='lively']
+    [data-motion-preview-mark] {
+    animation: motionlooks-in var(--dur-step) var(--ease-out) both;
+  }
+}

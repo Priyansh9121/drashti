@@ -955,12 +955,6 @@ body.web {
   }
 }
 
-/* One appearance to the next, in Lively (Session 40): a short cross-fade of the whole window. */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: var(--dur-crossfade);
-  animation-timing-function: var(--ease-in-out);
-}
 @keyframes sheet-in {
   from {
     opacity: 0;

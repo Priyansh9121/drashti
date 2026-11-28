@@ -1,3 +1,5 @@
+import { stopInterfaceFade } from '../../../shared/interface-fade';
+
 /*
  * When the show last changed in this window (Session 40): the engine store notes each change it applies, and
  * Lively's motion (ui/motion.ts) starts nothing just after one. A module of its own, with nothing of the bridge,
@@ -8,6 +10,7 @@ let at = -Infinity;
 
 /** A change of the show was applied in this window, now. */
 export function noteShowChange(): void {
+  stopInterfaceFade();
   at = performance.now();
 }
 

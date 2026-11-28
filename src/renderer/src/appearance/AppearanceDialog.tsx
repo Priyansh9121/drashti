@@ -20,6 +20,7 @@ import { radioKeys, radioTabIndex } from '../ui/radio';
 import { Toggle } from '../ui/Toggle';
 import { AppearancePreview } from './AppearancePreview';
 import { DepthPreview } from './DepthPreview';
+import { MotionPreview } from './MotionPreview';
 import {
   chooseAppearance,
   chooseMotion,
@@ -151,6 +152,7 @@ function MotionChoice({ motion }: { motion: InterfaceMotion }) {
                 checked ? 'border-accent' : 'border-line hover:border-field',
               )}
             >
+              <MotionPreview motion={m.id} />
               <span className="flex items-center gap-2">
                 <span className="font-bold text-fg">{m.name}</span>
                 {checked && <Badge tone="info">Chosen</Badge>}
