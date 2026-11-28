@@ -417,7 +417,7 @@ async function loadStatusCalendar(win: Page, userData: string, day: CalendarDay,
     JSON.stringify({
       format: 'drashti-calendar',
       version: 1,
-      name: `Placeholder ${tag}`,
+      name: 'Placeholder status calendar',
       days: [day],
     }),
   );
@@ -543,7 +543,7 @@ for (const mode of ['pro', 'simple'] as const)
             samvat: 1002,
             tithi: { en: 'Another placeholder day' },
             festivals: Array.from({ length: 12 }, (_, i) => ({
-              en: `Placeholder ${i} ${'long '.repeat(21)}`,
+              en: `Placeholder ${i} ${'long '.repeat(21)}`.trim(),
             })),
           },
         ].entries()) {
@@ -561,6 +561,10 @@ for (const mode of ['pro', 'simple'] as const)
           expect.soft(await afterHelp()).toEqual(controls);
           if (index === 1 || size.width < 1536)
             expect.soft(await calendar.evaluate((el) => el.getBoundingClientRect().width)).toBe(24);
+          if (index === 0 && size.width === 1600)
+            expect
+              .soft(await calendar.evaluate((el) => el.getBoundingClientRect().width))
+              .toBeGreaterThan(24);
           await fits(win, `${mode} ${size.width}: calendar ${index}`);
         }
         if (mode === 'simple')

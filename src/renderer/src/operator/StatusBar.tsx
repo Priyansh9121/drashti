@@ -253,29 +253,38 @@ function TaskStatus() {
   );
 }
 
-/** Today's date and festivals; its compact place is held even before a calendar gives today. */
+/** Today's words share a bounded room held from first paint, including when no calendar supplies the date. */
 function TodayStatus({ onOpen }: { onOpen: (() => void) | null }) {
   const day = useEngine((s) => s.state?.calendar ?? null);
-  if (!day)
-    return <span aria-hidden="true" className="status-calendar hidden h-6 shrink-0 max-[1536px]:block" />;
-  const festivals = festivalsLine(day, 'en');
-  const words = `${samvatLine(day, 'en')}${festivals ? ` · ${festivals}` : ''}`;
+  const festivals = day ? festivalsLine(day, 'en') : '';
+  const words = day ? `${samvatLine(day, 'en')}${festivals ? ` · ${festivals}` : ''}` : '';
+  // Measure the held room, not the compact button: otherwise its 24 px fallback could never expand again.
+  const { slotRef, wordsRef, compact } = useStatusPriority(words, day !== null);
   return (
-    <button
-      type="button"
-      onClick={onOpen ?? undefined}
-      disabled={!onOpen}
-      aria-label={words}
-      title={`${words}${onOpen ? ' · The calendar' : ''}`}
-      data-testid="today-calendar"
-      className="status-calendar flex h-6 min-w-0 shrink-0 items-center gap-1.5 rounded-sm px-1.5 text-muted hover:text-fg disabled:hover:text-muted"
+    <span
+      ref={slotRef}
+      className="status-calendar-slot relative h-6 shrink-0"
+      aria-hidden={!day || undefined}
     >
-      <CalendarDays size={13} aria-hidden="true" className="shrink-0" />
-      <span className="truncate max-[1536px]:sr-only">
-        {samvatLine(day, 'en')}
-        {festivals && <strong className="text-warning-fg">{` · ${festivals}`}</strong>}
-      </span>
-    </button>
+      {day && (
+        <button
+          type="button"
+          onClick={onOpen ?? undefined}
+          disabled={!onOpen}
+          aria-label={words}
+          title={`${words}${onOpen ? ' · The calendar' : ''}`}
+          data-testid="today-calendar"
+          data-compact={compact}
+          className="status-calendar absolute top-0 left-0 flex h-6 min-w-0 items-center gap-1.5 rounded-sm px-1.5 text-muted hover:text-fg disabled:hover:text-muted"
+        >
+          <CalendarDays size={13} aria-hidden="true" className="shrink-0" />
+          <span ref={wordsRef} className={cx('whitespace-nowrap', compact && 'sr-only')}>
+            {samvatLine(day, 'en')}
+            {festivals && <strong className="text-warning-fg">{` · ${festivals}`}</strong>}
+          </span>
+        </button>
+      )}
+    </span>
   );
 }
 
