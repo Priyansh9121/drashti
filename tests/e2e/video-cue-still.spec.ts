@@ -13,8 +13,7 @@ import {
   operatorReady,
 } from './helpers';
 import { makeTestImage, makeTestVideo } from './test-media';
-import type { Copy } from './time-bar-helpers';
-import { backgroundTiming, dispatch, inStep, snapshot } from './time-bar-helpers';
+import { dispatch, snapshot } from './time-bar-helpers';
 import { cueReady, setupVideoCue } from './video-cue-helpers';
 import { CI_WINDOW, liveColumnToTop, sizeOperatorWindow } from './window-size';
 
@@ -384,22 +383,9 @@ async function tabFromOops(win: Page): Promise<{ stops: string[]; onlyBarsBefore
   return { stops, onlyBarsBeforeGo };
 }
 
-/**
- * Whether the page draws that background showing alone (`slot`: background-slots.ts slotKey): every background video
- * on it is that showing's, with its first frame drawn (data-state "ready"), and the one before has gone.
- */
-const drawsOnly = (page: Page, slot: string) =>
-  page.evaluate((slot) => {
-    const videos = [...document.querySelectorAll('video[data-bg-slot]')];
-    return (
-      videos.length > 0 &&
-      videos.every((v) => v.getAttribute('data-bg-slot') === slot && v.getAttribute('data-state') === 'ready')
-    );
-  }, slot);
-
 test('Pro Mode: the cued video’s Go and Cancel are the keyboard’s next stops after Oops, and Enter on each does what it says', async () => {
   test.setTimeout(180_000);
-  const { app, win, hall, stream, ids } = await setupVideoCue();
+  const { app, win, ids } = await setupVideoCue();
   try {
     const first = ids[1] ?? '';
     const second = ids[0] ?? '';
@@ -429,29 +415,12 @@ test('Pro Mode: the cued video’s Go and Cancel are the keyboard’s next stops
     await expect.poll(() => backgroundId(win)).toBe(first);
     // Cancel: cued again while that video plays: from Oops, the time bar's own stops, then Go, then Cancel; Enter on
     // it: the cue gone, the screens as they were. The video put up again going round, so its end never changes the bar.
-    // a25 item 47: a loop put up at once after Go leaves the next cue never ready; this wait stays until that is fixed.
-    // So: the Go'd video playing in step on every picture page first, then the loop, then the loop drawn alone on each
-    // (its first frame drawn, the showing before gone), and only then the cue.
-    const copies: Copy[] = [
-      { name: 'LIVE', page: win, selector: `video[data-media-id="${first}"]` },
-      { name: 'the hall', page: hall, selector: `video[data-media-id="${first}"]` },
-      { name: 'the stream', page: stream, selector: `video[data-media-id="${first}"]` },
-    ];
-    await inStep(copies, () => backgroundTiming(win), 'the Go’d video on every picture page');
     const looping = await dispatch(win, {
       type: 'setBackground',
       background: { kind: 'media', mediaId: first, media: 'video', fit: 'fill', loop: true },
     });
     expect(looping.ok).toBe(true);
     await expect(win.locator('[data-testid="time-bar-row"][data-playing="background"]')).toBeVisible();
-    const loop = (await snapshot(win)).layers.background;
-    if (loop?.kind !== 'media' || loop.mediaId !== first || !loop.loop)
-      throw new Error('no looping background');
-    const slot = `${first}@${String(loop.startedAt)}`;
-    for (const copy of copies)
-      await expect
-        .poll(() => drawsOnly(copy.page, slot), { message: `${copy.name}: the looping video drawn alone` })
-        .toBe(true);
     expect((await dispatch(win, { type: 'cueVideo', mediaId: second })).ok).toBe(true);
     await cueReady(win);
     await expect(oops).toBeEnabled();
@@ -618,7 +587,7 @@ for (const mode of ['pro', 'simple'] as const)
 
 test('Pro Mode at 1024 × 645 and 1410 × 900: a cued video waiting while a video plays, the playing video taken off (its time bar goes): the card’s Go and Cancel never move, at any frame', async () => {
   test.setTimeout(180_000);
-  const { app, win, hall, stream, ids } = await setupVideoCue();
+  const { app, win, ids } = await setupVideoCue();
   const rows: Geometry[] = [];
   try {
     await slidesUp(win);
@@ -630,7 +599,7 @@ test('Pro Mode at 1024 × 645 and 1410 × 900: a cued video waiting while a vide
       const cued = ids[(i + 1) % 2] ?? '';
       await sizeOperatorWindow(app, win, size);
       await liveColumnToTop(liveColumn(win));
-      // A video going round, drawn alone on every picture page (a25 item 47: never a cue in a loop's first moments).
+      // A video going round, then a cue while it plays.
       expect(
         (
           await dispatch(win, {
@@ -640,17 +609,6 @@ test('Pro Mode at 1024 × 645 and 1410 × 900: a cued video waiting while a vide
         ).ok,
       ).toBe(true);
       await expect(win.locator('[data-testid="time-bar-row"][data-playing="background"]')).toBeVisible();
-      const loop = (await snapshot(win)).layers.background;
-      if (loop?.kind !== 'media' || loop.mediaId !== playing) throw new Error('no looping background');
-      const slot = `${playing}@${String(loop.startedAt)}`;
-      for (const [name, page] of [
-        ['LIVE', win],
-        ['the hall', hall],
-        ['the stream', stream],
-      ] as const)
-        await expect
-          .poll(() => drawsOnly(page, slot), { message: `${where}: ${name} draws the looping video alone` })
-          .toBe(true);
       expect((await dispatch(win, { type: 'cueVideo', mediaId: cued })).ok).toBe(true);
       await cueReady(win);
       await expect(goButton(win)).toBeEnabled();
