@@ -190,6 +190,10 @@ test('a transient containing, inside, or itself a show control stays completely 
           child.dataset['motion'] = kind;
           control.append(child);
           parent.append(control);
+          const visual = document.createElement('span');
+          visual.className = 'motionui-visual';
+          visual.textContent = 'Placeholder protected visual';
+          parent.append(visual);
           fixture.append(parent);
           const self = control.cloneNode(true) as HTMLElement;
           self.dataset['motion'] = kind;

@@ -46,15 +46,15 @@ body.operator [data-motion='notice'] {
 
 /* Only pointer-free visual children travel. A notice's arbitrary actions/content remain still. */
 body.operator [data-motion='pop'] .motionui-visual,
-body.operator [data-motion='pop'][data-testid='what-is-this'] > p {
+body.operator [data-motion='pop'] > p {
   --surface-x: 0px;
   --surface-y: calc(var(--surface-rise) * -1);
   pointer-events: none;
   animation: surface-in var(--dur-surface-menu) var(--ease-out) both;
 }
 body.operator [data-motion='notice']:not([data-leaving]) .motionui-visual,
-body.operator [data-motion='notice'][data-testid='operator-notice'] > p,
-body.operator [data-motion='notice'][data-testid='operator-notice'] > svg {
+body.operator [data-motion='notice'] > p,
+body.operator [data-motion='notice'] > svg {
   --surface-x: 0px;
   --surface-y: calc(var(--surface-rise) * -1);
   pointer-events: none;

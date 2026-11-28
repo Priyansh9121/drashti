@@ -107,7 +107,7 @@ describe('live transient geometry and settled startup', () => {
         );
     }
     const liveChat = rules.filter(([, selector]) =>
-      /body\.operator \.motionui-chat-pop/u.test(selector ?? ''),
+      (selector ?? '').includes('body.operator .motionui-chat-pop'),
     );
     for (const [, , body] of liveChat) {
       expect(body).not.toMatch(/(?:^|;)\s*transform\s*:/u);
