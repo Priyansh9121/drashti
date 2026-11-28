@@ -2,6 +2,36 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## 1.0.0-alpha.24 (29 Nov 2026)
+
+Update after a sabha, and update Main and nodes together.
+
+- A calmer window: the ? and buttons’ keys show only with Help on, keys also with Alt held (Option on a Mac), and turning Help on moves nothing, its cards over the window; LIVE said once, in the top bar; clears with nothing up are dimmed icons; nothing along the bottom moves; No access list sits in the status bar.
+- The status bar keeps each item in its place at any width; the calendar shrinks to its icon when room is short.
+- LIVE’s notes sit under the show controls, so the picture, Back, Next and Go stay put as one comes or goes; the cued video’s card fits a narrow LIVE; practice shows no cue card.
+- Sections fold smoothly; menus, tooltips, notices and the chat arrive and leave gently; show controls never move, and nothing new moves without a graphics chip.
+- Four new appearances: Broadcast, Stage desk, Daylight and Signal. Follow the computer draws the Depth look; Black or White by name stays plain.
+- Focus never falls to the page, a dialog gives it back to what opened it, and Space presses a button chosen with the keyboard.
+- Safer: each window answers only its own page; the phone, remote and stream pages check requests more strictly; a folder import skips links to files outside the folder and says so.
+- Edit Video… (Pro Mode): with Add a part, Export clip… joins parts of one video into one clip, from the original.
+- From a Link…: Quality offers a YouTube video’s every height with about its size, or for Audio, Best, 192 or 128 kbps.
+- Keys: the manual lists every window’s keys for Windows, Apple-silicon and Intel Macs, Simple Mode has its own keys sheet, and B, Cmd/Ctrl+F/1/2 and the slide editor’s keys work on Gujarati and Hindi keyboards.
+- Translated captions (Trial, Pro Mode): Captions in shows Gujarati, Hindi or English on the stream and audience screens, not the stage; it needs the translation pack, and a reader should check a rehearsal.
+- Live captions keep to the language’s letters (in Gujarati, Devanagari words in Gujarati letters, English-letter ones left out); with IndicConformer a phrase shows whole about half a second after the speaker stops, except with Noisy hall.
+- Captions and video caption files leave out any word on Drashti’s short list of offensive words or the admin’s (Words Left Out…).
+- Picture in Picture… previews the box over what is up; over a wallpaper alone, the wallpaper stays behind and Swap dissolves, never to black.
+- Chat: someone else’s message pops up silently for about 10 seconds at the foot of the middle column; a click opens Chat (in Simple Mode, if chosen), × closes it.
+- Sabha flow: in Pro Mode, drop a PDF on its panel for the running order, asked first if one is loaded; drag its page to move it, or zoom 25% to 400%.
+- Mac: Drashti is signed with its own free certificate (not notarised); allow Screen Recording, camera and microphone once more if asked; later updates should keep them.
+- Mac: Show a Window… and Picture in Picture… say what to do when macOS refuses Screen Recording though System Settings shows it on.
+- Wallpapers: a picture still to convert is left out (no black turn), its tile says so.
+- A background video taking over from another or from the Wallpaper no longer flashes black on a busy computer.
+- Oops no longer brings back an ended announcement, and after a click by mistake puts back Black-out or the Wallpaper with what was under it; Put it back leaves a cover on; one Oops undoes a quick-bar picture.
+- Two hall screens of one name are each looked after on their own, the second called “… (2)”.
+- Quitting just after the start no longer leaves Drashti running, Keep showing on a node keeps its screens showing, and Quit works after Drashti asks to be restarted.
+- Cue: a video cued long before Go, or just after a loop goes up, starts on the hall, LIVE and the stream at once.
+- A quick double click on Delete or Remove in Music, Lower Thirds or the caption word lists acts once.
+
 ## 1.0.0-alpha.23 (26 Nov 2026)
 
 Update after a sabha, and update Main and nodes together.
