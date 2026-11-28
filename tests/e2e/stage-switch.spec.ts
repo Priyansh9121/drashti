@@ -240,6 +240,10 @@ test('(c) the controls and two projectors: the second is the stage by itself, sh
   await plugIn(app, 2);
   await expect.poll(() => jobs(win)).toEqual(['1: audience', '2: stage']);
   await expect.poll(() => outputPages(app).length).toBe(2);
+  // An output says "audience" until its context arrives, so pick each window only once both have their own role.
+  await expect
+    .poll(async () => (await Promise.all(outputPages(app).map(roleOf))).sort())
+    .toEqual(['audience', 'stage']);
   const hall = await outputWith(app, 'audience');
   const stage = await outputWith(app, 'stage');
   await outputReady(stage);
