@@ -76,7 +76,7 @@ import { ReportDialog } from '../help/ReportDialog';
 import { showReport } from '../help/report-store';
 import { showManual } from '../help/manual-store';
 import { LiveColumn } from './LiveColumn';
-import { LivePreview } from './LivePreview';
+import { LiveLines, LivePreview } from './LivePreview';
 import { LibraryButton, LibrarySheet } from './LibrarySheet';
 import { PlaylistFolders, usePlaylistFolders } from '../playlists/PlaylistFolders';
 import { RecoveryBanner } from './RecoveryBanner';
@@ -452,17 +452,24 @@ function ProApp({ info }: { info: AppInfo | null }) {
                 <>
                   <LivePreview />
                   <NextBack platform={platform} run={run} />
-                  {/* The time bar for what plays (Session 54), under Next and Back so they never move. */}
-                  <PlayingBars className="px-3 pt-2" />
-                  {/* The cued video's card, then the live zoom's buttons while a picture is up (alpha.24, lead 2's
-                  cuestill): under Next, Back, Oops and the time bars, so the picture, they and the bars' Play and
+                  {/* The time bar for what plays (Session 54), under Next and Back so they never move. Under it
+                  (`under`) the cued video's card, then the live zoom's buttons while a picture is up (alpha.24, lead
+                  2's cuestill): under Next, Back, Oops and the time bars, so the picture, they and the bars' Play and
                   Pause never move as either comes or goes (the card came above the picture, the buttons between it
                   and Next, 66 and 36 px); Go stays in sight at CI's 1024 × 645 with a video's bar up and every section
-                  open (video-cue-still.spec.ts). Gone while both are empty, so it keeps no room at rest. */}
-                  <div className="space-y-2 px-3 pt-2 empty:hidden">
-                    <VideoCueStrip />
-                    <LiveZoomControls />
-                  </div>
+                  open (video-cue-still.spec.ts). The bars keep their room while either is up (liverows), so a bar going
+                  never lifts Go, Cancel or + and −. Gone while both are empty, so it keeps no room at rest. */}
+                  <PlayingBars
+                    className="px-3 pt-2"
+                    under={
+                      <>
+                        <VideoCueStrip />
+                        <LiveZoomControls />
+                      </>
+                    }
+                  />
+                  {/* LIVE's own rows and lines (alpha.24, liverows): under the show controls, so they never move them. */}
+                  <LiveLines />
                   {/* Resume where it stopped (alpha.20): "Resume at …" for a long file's first 30 s. */}
                   <ResumeOffers />
                   <MarkerJumps />

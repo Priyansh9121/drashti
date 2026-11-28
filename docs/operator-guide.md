@@ -616,7 +616,7 @@ To keep it as a file too, tick **Also save a copy to a file** before **Combine**
 
 ## 15. Cue a video
 
-In Pro Mode, right-click a ready video row and choose **Cue**. LIVE keeps showing the current scene while the video loads paused at its first start point. The cue card, under **Back**, **Next** and **Oops** (and the time bars while something plays), shows its first frame and **Preparing first frame…**, then **Cue ready**. Press **Go** to start it on the screens at one shared moment, or **Cancel** to remove it. Go uses the file and points selected when you cued it. A screen that reloads must get ready again. After an unexpected restart, a manual cue waits paused for another Go.
+In Pro Mode, right-click a ready video row and choose **Cue**. LIVE keeps showing the current scene while the video loads paused at its first start point. The cue card, under **Back**, **Next** and **Oops** (and the time bars while something plays; compact where LIVE is narrow), shows its first frame and **Preparing first frame…**, then **Cue ready**. Press **Go** to start it on the screens at one shared moment, or **Cancel** to remove it. Go uses the file and points selected when you cued it. A screen that reloads must get ready again. After an unexpected restart, a manual cue waits paused for another Go. At LIVE’s smallest width, the card’s preparing, ready or error words have their own row, with **Go** and **Cancel** kept in place.
 
 Cue waits for the desired **Edit Video…** copy to be **Ready for next showing**. Saving new edits cancels that video’s private cue; cue it again after the copy is ready. A video already up keeps its file. Prepare edits before starting the show, stream or recording.
 

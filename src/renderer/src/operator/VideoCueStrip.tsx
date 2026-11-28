@@ -3,6 +3,7 @@ import { videoCueReady } from '../../../shared/video-cue';
 import { addFileMenuItems, type FileTarget } from '../files/file-menu';
 import { useEngine } from '../engine/engine-store';
 import { Button } from '../ui/Button';
+import { cx } from '../ui/cx';
 import { dispatch } from './actions';
 import { useMode } from './mode-store';
 
@@ -55,7 +56,7 @@ function CuedFrame({ id, ready }: { id: string; ready: boolean }) {
       width={128}
       height={72}
       aria-label="Cued first frame"
-      className="h-10 w-18 shrink-0 rounded-sm bg-black object-contain"
+      className="col-start-1 row-span-2 row-start-1 h-10 w-18 shrink-0 rounded-sm bg-black object-contain @max-[28rem]/cue:row-span-1 @max-[28rem]/cue:row-start-1 @max-[28rem]/cue:h-7 @max-[28rem]/cue:w-12"
     />
   );
 }
@@ -66,39 +67,69 @@ export function VideoCueStrip() {
   const mode = useMode((s) => s.mode);
   if (!cue || mode !== 'pro') return null;
   const ready = videoCueReady(cue);
+  const said = `${cue.automatic ? 'Next video · Crossfade' : 'Cued video'} · ${cue.label}`;
+  // At ordinary narrow widths the name and state share a row. At LIVE's minimum the state has its own full-width
+  // row, with room for the first-frame error too. The 20 rem cutoff leaves the default 380 px column one row even
+  // with Windows' scrollbar. Noto Sans' Windows metrics exceed a 16 px line at this size: 20 px lines contain the
+  // words, with two lines reserved at the minimum. The buttons keep the same columns and top edge in every state.
+  const row = !cue.error;
   return (
-    <div
-      data-testid="video-cue"
-      className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-panel-2 p-2 text-xs"
-    >
-      <CuedFrame id={cue.id} ready={ready} />
-      <div className="min-w-0 flex-1" role="status">
-        <div className="font-semibold">
-          {cue.automatic ? 'Next video · Crossfade' : 'Cued video'} · {cue.label}
+    <div className="@container/cue">
+      <div
+        data-testid="video-cue"
+        className={cx(
+          'grid grid-cols-[4.5rem_minmax(0,1fr)_auto_auto] grid-rows-[auto_auto] items-start gap-x-2 rounded-md border border-line bg-panel-2 p-2 text-xs',
+          '@max-[28rem]/cue:grid-cols-[3rem_minmax(0,1fr)_auto_auto_auto] @max-[28rem]/cue:p-1',
+          '@max-[20rem]/cue:grid-rows-[1.75rem_minmax(2.5rem,auto)] @max-[20rem]/cue:gap-y-1',
+          cue.error && '@max-[28rem]/cue:gap-y-1',
+        )}
+      >
+        <CuedFrame id={cue.id} ready={ready} />
+        <div
+          className={cx(
+            'col-start-2 row-start-1 min-w-0 truncate leading-5 font-semibold @max-[28rem]/cue:col-start-2 @max-[28rem]/cue:self-center @max-[20rem]/cue:col-span-2 @max-[20rem]/cue:col-start-2',
+            cue.error && '@max-[28rem]/cue:col-span-2',
+          )}
+          title={said}
+        >
+          {said}
         </div>
-        <div className={cue.error ? 'text-warning-fg' : 'text-muted'}>
-          {cue.error ?? (ready ? 'Cue ready' : 'Preparing first frame…')}
+        <div
+          className={cx(
+            'col-start-2 row-start-2 min-w-0 leading-5',
+            row
+              ? '@max-[28rem]/cue:col-start-3 @max-[28rem]/cue:row-start-1 @max-[28rem]/cue:self-center @max-[28rem]/cue:whitespace-nowrap'
+              : '@max-[28rem]/cue:col-span-full @max-[28rem]/cue:col-start-1 @max-[28rem]/cue:row-start-2',
+            '@max-[20rem]/cue:col-span-full @max-[20rem]/cue:col-start-1 @max-[20rem]/cue:row-start-2 @max-[20rem]/cue:self-start @max-[20rem]/cue:whitespace-normal',
+          )}
+          role="status"
+        >
+          <div className={cue.error ? 'text-warning-fg' : 'text-muted'}>
+            {cue.error ?? (ready ? 'Cue ready' : 'Preparing first frame…')}
+          </div>
         </div>
+        <Button
+          size="sm"
+          variant="primary"
+          aria-label="Go cued video"
+          className="col-start-3 row-span-2 row-start-1 @max-[28rem]/cue:col-start-4 @max-[28rem]/cue:row-span-1 @max-[28rem]/cue:row-start-1"
+          // A show control (alpha.24, the bug hunt's S3-1): it changes the screens at once and never moves.
+          instant
+          disabled={!ready}
+          onClick={() => void dispatch({ type: 'goVideoCue', cueId: cue.id })}
+        >
+          Go
+        </Button>
+        <Button
+          size="sm"
+          aria-label="Cancel video cue"
+          className="col-start-4 row-span-2 row-start-1 @max-[28rem]/cue:col-start-5 @max-[28rem]/cue:row-span-1 @max-[28rem]/cue:row-start-1"
+          instant
+          onClick={() => void dispatch({ type: 'cancelVideoCue' })}
+        >
+          Cancel
+        </Button>
       </div>
-      <Button
-        size="sm"
-        variant="primary"
-        aria-label="Go cued video"
-        // A show control (alpha.24, the bug hunt's S3-1): it changes the screens at once and never moves.
-        instant
-        disabled={!ready}
-        onClick={() => void dispatch({ type: 'goVideoCue', cueId: cue.id })}
-      >
-        Go
-      </Button>
-      <Button
-        size="sm"
-        aria-label="Cancel video cue"
-        instant
-        onClick={() => void dispatch({ type: 'cancelVideoCue' })}
-      >
-        Cancel
-      </Button>
     </div>
   );
 }

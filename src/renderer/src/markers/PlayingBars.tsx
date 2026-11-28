@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useEngine } from '../engine/engine-store';
 import { useMedia } from '../library/library-store';
 import { openMediaInfo } from '../library/media-info';
@@ -38,19 +38,90 @@ import { useFrameMs } from './frame-length';
  * bar and moved nothing, with Play only while something was paused. The practice show has none.
  */
 
-/** `className`: its place's own spacing (under Next and Back in Pro Mode; none under Simple Mode's LIVE picture). */
-export function PlayingBars({ className }: { className?: string } = {}) {
+/**
+ * The room the bars keep while a show control is up under them (alpha.24, lead 2's liverows; a25 list item 43): the
+ * cued video's card (Go, Cancel) and the live zoom's + and − sit under the time bars (cuestill), so a bar going (a
+ * sound ending, a video taken off) lifted them under the operator's hand, 36 px or more. While anything is drawn under
+ * them (`below` holds an element), the bars' place never shrinks: it keeps its tallest height since then, and gives the
+ * room back once nothing is under it. A bar coming still makes its room (there is none to keep for it). Read only
+ * while something is under them, so a column at rest measures nothing.
+ */
+function useHeldRoom(
+  place: RefObject<HTMLDivElement | null>,
+  below: RefObject<HTMLDivElement | null>,
+  playing: boolean,
+): number {
+  // Whether something is under the bars, and the room held since it came (one state, so a room read as it went can
+  // never be kept for the next time).
+  const [room, setRoom] = useState({ up: false, held: 0 });
+  useEffect(() => {
+    const el = below.current;
+    if (!el) return;
+    const look = () => {
+      const up = el.childElementCount > 0;
+      setRoom((was) => (was.up === up ? was : { up, held: 0 }));
+    };
+    look();
+    const seen = new MutationObserver(look);
+    seen.observe(el, { childList: true });
+    return () => {
+      seen.disconnect();
+    };
+  }, [below]);
+  // The bars' height as drawn (the room kept is its least, so it only grows), read in the frame a bar comes or grows;
+  // looked at again as the bars come or all go (the place drawn anew, or kept at its room).
+  useLayoutEffect(() => {
+    const el = place.current;
+    if (!room.up || !el) return;
+    const seen = new ResizeObserver(() => {
+      const height = el.offsetHeight;
+      setRoom((was) => (was.up && height > was.held ? { up: true, held: height } : was));
+    });
+    seen.observe(el);
+    return () => {
+      seen.disconnect();
+    };
+  }, [place, room.up, playing]);
+  return room.up ? room.held : 0;
+}
+
+/**
+ * `className`: its place's own spacing (under Next and Back in Pro Mode; none under Simple Mode's LIVE picture).
+ * `under`: what sits under the bars (the cued video's card, the live zoom's buttons), drawn in a place of its own with
+ * the same spacing, gone while empty; the bars keep their room while it holds anything (useHeldRoom).
+ */
+export function PlayingBars({ className, under }: { className?: string; under?: ReactNode } = {}) {
   const state = useEngine((s) => s.state);
   const practising = usePractice((s) => s.on);
   const pro = useMode((s) => s.mode) === 'pro';
-  const rows = useMemo(() => playingRows(state), [state]);
-  if (practising || rows.length === 0) return null;
+  const rows = useMemo(() => (practising ? [] : playingRows(state)), [state, practising]);
+  const place = useRef<HTMLDivElement>(null);
+  const below = useRef<HTMLDivElement>(null);
+  const held = useHeldRoom(place, below, rows.length > 0);
+  const bars =
+    rows.length > 0 || held > 0 ? (
+      <div
+        ref={place}
+        className={className}
+        style={held > 0 ? { minHeight: `${String(held)}px` } : undefined}
+      >
+        {rows.length > 0 && (
+          <div className="space-y-0.5" data-testid="time-bars">
+            {rows.map((row) => (
+              <Row key={row.key} row={row} pro={pro} repeating={repeatingOf(state, row.playing.ref)} />
+            ))}
+          </div>
+        )}
+      </div>
+    ) : null;
+  if (under === undefined) return bars;
   return (
-    <div className={cx('space-y-0.5', className)} data-testid="time-bars">
-      {rows.map((row) => (
-        <Row key={row.key} row={row} pro={pro} repeating={repeatingOf(state, row.playing.ref)} />
-      ))}
-    </div>
+    <>
+      {bars}
+      <div ref={below} className={cx('space-y-2 empty:hidden', className)}>
+        {under}
+      </div>
+    </>
   );
 }
 

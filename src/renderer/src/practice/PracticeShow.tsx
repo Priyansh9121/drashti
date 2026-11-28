@@ -8,9 +8,8 @@ import { LogOut } from '../ui/icons';
 import { Kbd } from '../ui/Kbd';
 import { openWelcome } from '../setup/Welcome';
 import { Columns } from '../operator/Layout';
-import { LivePreview } from '../operator/LivePreview';
+import { LiveLines, LivePreview } from '../operator/LivePreview';
 import { NextBack } from '../operator/NextBack';
-import { VideoCueStrip } from '../operator/VideoCueStrip';
 import type { OperatorAction } from '../../../shared/keymap';
 import { runPractice, stopPractice, usePractice } from './practice-store';
 
@@ -61,11 +60,10 @@ export function PracticeShow({ platform, run }: { platform: string; run: (action
           <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
             <LivePreview />
             <NextBack platform={platform} run={run} />
-            {/* The cued video's card, as LIVE drew it here before alpha.24 (lead 2's cuestill: now under Next and Back,
-            as in a show); the live zoom's buttons are the show's, never here. */}
-            <div className="px-3 pt-2 empty:hidden">
-              <VideoCueStrip />
-            </div>
+            {/* LIVE's own rows and lines, under Next and Back as in a show (alpha.24, liverows). No cued video's card
+            here (a25 item 42, B): it was the show's cue, and its Go acted on the hall's screens; the show's cue waits
+            and its card is back when practice ends. The live zoom's buttons are the show's, never here. */}
+            <LiveLines />
           </aside>
         }
       />
