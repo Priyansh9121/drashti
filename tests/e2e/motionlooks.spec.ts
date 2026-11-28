@@ -144,7 +144,9 @@ for (const kind of ['calm', 'lively'] as const) {
       await setUpScreen(win);
       const output = await outputPage(app);
       await outputReady(output);
-      await expect(output.locator('[data-warm-up]')).toHaveCount(0);
+      const root = output.getByTestId('output-root');
+      await expect(root).toHaveAttribute('data-warm-up', 'done');
+      await expect(root.locator('[data-warm-up]')).toHaveCount(0);
       const id = await makeSlides(
         win,
         'Placeholder motion safety',
