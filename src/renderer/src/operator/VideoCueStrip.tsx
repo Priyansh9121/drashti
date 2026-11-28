@@ -69,7 +69,8 @@ export function VideoCueStrip() {
   const ready = videoCueReady(cue);
   const said = `${cue.automatic ? 'Next video · Crossfade' : 'Cued video'} · ${cue.label}`;
   // At ordinary narrow widths the name and state share a row. At LIVE's minimum the state has its own full-width
-  // row, with room for the first-frame error too. The buttons keep the same columns and top edge in every state.
+  // row, with room for the first-frame error too. The 20 rem cutoff leaves the default 380 px column one row even
+  // with Windows' scrollbar. The buttons keep the same columns and top edge in every state.
   const row = !cue.error;
   return (
     <div className="@container/cue">
@@ -78,14 +79,14 @@ export function VideoCueStrip() {
         className={cx(
           'grid grid-cols-[4.5rem_minmax(0,1fr)_auto_auto] grid-rows-[auto_auto] items-start gap-x-2 rounded-md border border-line bg-panel-2 p-2 text-xs',
           '@max-[28rem]/cue:grid-cols-[3rem_minmax(0,1fr)_auto_auto_auto] @max-[28rem]/cue:p-1',
-          '@max-[22rem]/cue:grid-rows-[1.75rem_minmax(2rem,auto)] @max-[22rem]/cue:gap-y-1',
+          '@max-[20rem]/cue:grid-rows-[1.75rem_minmax(2rem,auto)] @max-[20rem]/cue:gap-y-1',
           cue.error && '@max-[28rem]/cue:gap-y-1',
         )}
       >
         <CuedFrame id={cue.id} ready={ready} />
         <div
           className={cx(
-            'col-start-2 row-start-1 min-w-0 truncate font-semibold @max-[28rem]/cue:col-start-2 @max-[28rem]/cue:self-center @max-[22rem]/cue:col-span-2 @max-[22rem]/cue:col-start-2',
+            'col-start-2 row-start-1 min-w-0 truncate font-semibold @max-[28rem]/cue:col-start-2 @max-[28rem]/cue:self-center @max-[20rem]/cue:col-span-2 @max-[20rem]/cue:col-start-2',
             cue.error && '@max-[28rem]/cue:col-span-2',
           )}
           title={said}
@@ -98,7 +99,7 @@ export function VideoCueStrip() {
             row
               ? '@max-[28rem]/cue:col-start-3 @max-[28rem]/cue:row-start-1 @max-[28rem]/cue:self-center @max-[28rem]/cue:whitespace-nowrap'
               : '@max-[28rem]/cue:col-span-full @max-[28rem]/cue:col-start-1 @max-[28rem]/cue:row-start-2',
-            '@max-[22rem]/cue:col-span-full @max-[22rem]/cue:col-start-1 @max-[22rem]/cue:row-start-2 @max-[22rem]/cue:self-start @max-[22rem]/cue:whitespace-normal',
+            '@max-[20rem]/cue:col-span-full @max-[20rem]/cue:col-start-1 @max-[20rem]/cue:row-start-2 @max-[20rem]/cue:self-start @max-[20rem]/cue:whitespace-normal',
           )}
           role="status"
         >
