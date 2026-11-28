@@ -214,7 +214,13 @@ test('dialogs, sheets, menus and notices arrive with their tokens, and leave uns
   await win.keyboard.press('Escape');
   await win.getByTestId('what-is-this-live').click();
   expect(await animationOf('[data-testid="what-is-this"]')).toBe('none 0s');
-  expect(await animationOf('[data-testid="what-is-this"] > p')).toBe('surface-in 0.16s');
+  expect(await animationOf('[data-testid="what-is-this"] > p')).toBe('fade-in 0.16s');
+  expect(
+    await win
+      .getByTestId('what-is-this')
+      .locator(':scope > p')
+      .evaluate((el) => getComputedStyle(el).transform),
+  ).toBe('none');
 
   // A notice settles over 160 ms (one the main process sends, as after saving diagnostics).
   await app.evaluate(({ BrowserWindow }) => {

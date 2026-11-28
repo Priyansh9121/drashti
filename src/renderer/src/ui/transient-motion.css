@@ -45,12 +45,15 @@ body.operator [data-motion='notice'] {
 }
 
 /* Only pointer-free visual children travel. A notice's arbitrary actions/content remain still. */
-body.operator [data-motion='pop'] .motionui-visual,
-body.operator [data-motion='pop'] > p {
+body.operator [data-motion='pop'] .motionui-visual {
   --surface-x: 0px;
   --surface-y: calc(var(--surface-rise) * -1);
   pointer-events: none;
   animation: surface-in var(--dur-surface-menu) var(--ease-out) both;
+}
+/* Help's selectable/clickable paragraph fades in place; its hit box never translates. */
+body.operator [data-motion='pop'] > p {
+  animation: fade-in var(--dur-surface-menu) var(--ease-out) both;
 }
 body.operator [data-motion='notice']:not([data-leaving]) .motionui-visual,
 body.operator [data-motion='notice'] > p,

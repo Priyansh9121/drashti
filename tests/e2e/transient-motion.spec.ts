@@ -435,11 +435,12 @@ for (const simple of [false, true]) {
               const d = (globalThis as PageGlobals).drashti;
               const made = await d.playlists.create('Placeholder edge playlist', null, false);
               if (!made.ok) throw new Error(made.message);
+              // Simple Mode locks Appearance: choose the fixture's motion while still in Pro.
+              const result = await d.appearance.setMotion(motion);
               if (simple) {
                 await d.app.setSimpleFeature('chat', true);
                 await d.app.setMode('simple');
               }
-              const result = await d.appearance.setMotion(motion);
               // Both chip paths are intentional: the old Lively 6 px travel is the hardest edge press.
               document.documentElement.dataset['chip'] = 'yes';
               return result;

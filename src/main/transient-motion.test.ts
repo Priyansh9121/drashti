@@ -123,9 +123,12 @@ describe('live transient geometry and settled startup', () => {
   });
 });
 
-
 it('keeps Help text clickable and its paragraph rectangle fixed while its words fade', () => {
-  const rules = [...css().replace(/\/\*[\s\S]*?\*\//gu, '').matchAll(/([^{}@;]+)\{([^{}]*)\}/gu)];
+  const rules = [
+    ...css()
+      .replace(/\/\*[\s\S]*?\*\//gu, '')
+      .matchAll(/([^{}@;]+)\{([^{}]*)\}/gu),
+  ];
   const paragraphs = rules.filter(([, selector]) => (selector ?? '').includes("[data-motion='pop'] > p"));
   expect(paragraphs).toHaveLength(1);
   const body = paragraphs[0]?.[2] ?? '';
