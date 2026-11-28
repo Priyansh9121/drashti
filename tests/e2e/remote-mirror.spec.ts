@@ -234,14 +234,19 @@ for (const engine of ['webkit', 'chromium'] as Engine[])
       await expect
         .poll(async () => (await windowClearWords(win)).slice(-2))
         .toEqual(['Wallpaper F12', 'Black-out']);
-      // Nor for a screen reader (aria-keyshortcuts), the Wallpaper keeping F12.
+      // Nor for a screen reader, the Wallpaper keeping F12, said once, in its name (a25 item 36: no aria-keyshortcuts
+      // says it again).
+      await expect(win.getByTestId('blackout-button')).toHaveAccessibleName('Black-out');
       await expect(win.getByTestId('blackout-button')).not.toHaveAttribute('aria-keyshortcuts');
-      await expect(win.getByTestId('wallpaper-button')).toHaveAttribute('aria-keyshortcuts', 'F12');
+      await expect(win.getByTestId('wallpaper-button')).toHaveAccessibleName('Wallpaper F12');
+      await expect(win.getByTestId('wallpaper-button')).not.toHaveAttribute('aria-keyshortcuts');
       await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setSingleKeys(true));
       await expect
         .poll(async () => (await windowClearWords(win)).slice(-2))
         .toEqual(['Wallpaper F12', 'Black-out B']);
-      await expect(win.getByTestId('blackout-button')).toHaveAttribute('aria-keyshortcuts', 'B .');
+      // Black-out's B in its name, and its "." (in no name) in aria-keyshortcuts.
+      await expect(win.getByTestId('blackout-button')).toHaveAccessibleName('Black-out B');
+      await expect(win.getByTestId('blackout-button')).toHaveAttribute('aria-keyshortcuts', '.');
     } finally {
       await phone.close();
     }

@@ -5,19 +5,36 @@ import { useWhatIsThis } from '../help/WhatIsThis';
 import type { DataAttributes } from './cx';
 import { cx } from './cx';
 import type { FoldMove } from './fold';
-import { foldArrivalMs, pressFold } from './fold';
+import { pressFold, whenArrived } from './fold';
 import type { Icon } from './icons';
 import { ChevronRight } from './icons';
 import { openAsks } from './open-asks';
 import type { Keep } from './persist';
 import { usePersistentState } from './persist';
 
+/*
+ * Headings are drawn in capitals (text-transform), and Chromium names a thing by the words as drawn: a screen reader
+ * was given "AUDIO", "STAGE SCREEN" (lead 2's item 38, alpha.24; the joined tree's hands-on, access row 32). So each
+ * heading, its fold button and its section are named in the heading's own words (aria-label), its badge's words still
+ * part of the name (aria-labelledby: the thing itself, then the badge). Playwright's names never apply text-transform:
+ * tests/e2e/live-sections.spec.ts reads Chromium's own tree.
+ */
+
 /** A small heading over a part of a panel, in the appearance's heading colour (Session 42). */
 export function SectionTitle({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <h3 className={cx('text-2xs font-bold tracking-wider text-heading uppercase', className)}>{children}</h3>
+    <h3
+      // Named in its own words, never the capitals it is drawn in (lead 2's item 38).
+      aria-label={typeof children === 'string' ? children : undefined}
+      className={cx('text-2xs font-bold tracking-wider text-heading uppercase', className)}
+    >
+      {children}
+    </h3>
   );
 }
+
+/** Insides not there to watch (never while opening): nothing arrives, so how they arrived is forgotten at once. */
+const NOTHING_ARRIVING = { getAnimations: () => [] };
 
 /**
  * A section under LIVE (alpha.22; the owner: "by default it should be collapsed, we can uncollapse it when we want"):
@@ -81,15 +98,14 @@ export function Panel({
   // The chevron turns only into the state its button's press set moving (the release lead's review, S3).
   const [turnedTo, setTurnedTo] = useState<boolean | null>(null);
   // Once the insides have arrived, how they arrived is forgotten: a change of motion later never plays it again
-  // (lead 2's hands-on pass, problem 4: Off, then Calm, faded an open section's insides in with no press).
+  // (lead 2's hands-on pass, problem 4: Off, then Calm, faded an open section's insides in with no press); since lead
+  // 2's item 8 as soon as their arrival ends or is stopped, not only 0.45 s on (ui/fold.ts, whenArrived).
+  const insides = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (opening === null) return;
-    const arrived = setTimeout(() => {
+    return whenArrived(insides.current ?? NOTHING_ARRIVING, () => {
       setOpening(null);
-    }, foldArrivalMs());
-    return () => {
-      clearTimeout(arrived);
-    };
+    });
   }, [opening]);
   const [open, setOpen] = usePersistentState<boolean>(
     remember ? `panel.${remember}.open` : null,
@@ -109,17 +125,24 @@ export function Panel({
   const shown = !collapsible || open;
   // The ?'s room held with Help off, so its heading never wraps differently as Help comes and goes (help/WhatIsThis).
   const help = useWhatIsThis(topic ?? null, { keepRoom: true });
+  // Named in the heading's own words, never its capitals; a badge's words after them (lead 2's item 38).
+  const badged = badge !== undefined && badge !== null && badge !== false && badge !== '';
+  const named = collapsible ? `${id}-toggle` : `${id}-title`;
   const heading = (
     <span className="flex min-w-0 items-center gap-1.5">
       {IconShape && <IconShape size={14} aria-hidden="true" className="shrink-0 text-heading" />}
       <span className="truncate">{title}</span>
-      {badge}
+      {badged && (
+        <span id={`${id}-badge`} className="flex shrink-0 items-center">
+          {badge}
+        </span>
+      )}
     </span>
   );
   return (
     <section
       ref={section}
-      aria-labelledby={`${id}-title`}
+      aria-labelledby={badged ? `${id}-title ${id}-badge` : `${id}-title`}
       className={cx('flex min-h-0 flex-col', className)}
       {...data}
     >
@@ -134,11 +157,16 @@ export function Panel({
         <Heading
           level={nested ? 3 : 2}
           id={`${id}-title`}
+          label={collapsible ? undefined : title}
+          labelledBy={!collapsible && badged ? `${named} ${id}-badge` : undefined}
           className="min-w-0 flex-1 basis-40 text-2xs font-bold tracking-wider text-heading uppercase"
         >
           {collapsible ? (
             <button
               type="button"
+              id={named}
+              aria-label={title}
+              aria-labelledby={badged ? `${named} ${id}-badge` : undefined}
               aria-expanded={open}
               // Only while the body is there to point at (axe: aria-controls must name an element).
               aria-controls={open ? `${id}-body` : undefined}
@@ -166,6 +194,7 @@ export function Panel({
       {help.card}
       {shown && (
         <div
+          ref={insides}
           id={`${id}-body`}
           data-fold={opening ?? undefined}
           data-lively={opening === 'lively' ? 'open' : undefined}
@@ -194,24 +223,31 @@ function FoldChevron({ open, turning }: { open: boolean; turning: boolean }) {
   );
 }
 
-/** A heading of the level given (panels in a group are a level down). */
+/**
+ * A heading of the level given (panels in a group are a level down), named `label` when it is given (a panel that does
+ * not fold: its own words, lead 2's item 38) and then by `labelledBy`.
+ */
 function Heading({
   level,
   id,
+  label,
+  labelledBy,
   className,
   children,
 }: {
   level: 2 | 3;
   id: string;
+  label?: string;
+  labelledBy?: string;
   className: string;
   children: ReactNode;
 }) {
   return level === 2 ? (
-    <h2 id={id} className={className}>
+    <h2 id={id} aria-label={label} aria-labelledby={labelledBy} className={className}>
       {children}
     </h2>
   ) : (
-    <h3 id={id} className={className}>
+    <h3 id={id} aria-label={label} aria-labelledby={labelledBy} className={className}>
       {children}
     </h3>
   );
@@ -253,15 +289,14 @@ export function PanelGroup({
   // The chevron turns only into the state its button's press set moving (the release lead's review, S3).
   const [turnedTo, setTurnedTo] = useState<boolean | null>(null);
   // Once the insides have arrived, how they arrived is forgotten: a change of motion later never plays it again
-  // (lead 2's hands-on pass, problem 4: Off, then Calm, faded an open section's insides in with no press).
+  // (lead 2's hands-on pass, problem 4: Off, then Calm, faded an open section's insides in with no press); since lead
+  // 2's item 8 as soon as their arrival ends or is stopped, not only 0.45 s on (ui/fold.ts, whenArrived).
+  const insides = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (opening === null) return;
-    const arrived = setTimeout(() => {
+    return whenArrived(insides.current ?? NOTHING_ARRIVING, () => {
       setOpening(null);
-    }, foldArrivalMs());
-    return () => {
-      clearTimeout(arrived);
-    };
+    });
   }, [opening]);
   const [open, setOpen] = usePersistentState<boolean>(
     `group.${remember}.open`,
@@ -278,6 +313,8 @@ export function PanelGroup({
         >
           <button
             type="button"
+            // Named in its own words, never the capitals it is drawn in (lead 2's item 38).
+            aria-label={title}
             aria-expanded={open}
             aria-controls={open ? `${id}-body` : undefined}
             data-testid={`group-${remember}-toggle`}
@@ -302,6 +339,7 @@ export function PanelGroup({
       {help.card}
       {open && (
         <div
+          ref={insides}
           id={`${id}-body`}
           data-fold={opening ?? undefined}
           data-lively={opening === 'lively' ? 'open' : undefined}

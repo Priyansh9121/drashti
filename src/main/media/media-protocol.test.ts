@@ -51,6 +51,8 @@ beforeAll(() => {
   writeFileSync(join(mediaDir, 'ab', 'image.png'), BYTES);
   mkdirSync(join(mediaDir, 'stills'));
   writeFileSync(join(mediaDir, stillPath(SHA)), STILL);
+  // A folder where a still would be (never written by Drashti): refused, not "not made yet".
+  mkdirSync(join(mediaDir, stillPath('ef'.repeat(32))));
   mkdirSync(join(mediaDir, 'sharpened'));
   writeFileSync(join(mediaDir, 'sharpened', `${SHA}-50.png`), COPY);
   mkdirSync(join(mediaDir, 'blurred'));
@@ -83,6 +85,7 @@ beforeAll(() => {
     link: row('ab/link.png'),
     gone: row('ij/deleted.png'),
     noStill: row('ab/image.png', false, 'cd'.repeat(32)),
+    stillFolder: row('ab/image.png', false, 'ef'.repeat(32)),
     badSha: row('ab/image.png', false, '../../outside/secret'),
   };
   const warnings: string[] = [];
@@ -122,9 +125,22 @@ describe('drashti-media:// requests', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toBe('image/jpeg');
     expect(await bytesOf(res)).toEqual(STILL);
-    for (const id of ['noStill', 'badSha', 'empty', 'missing', 'stale', 'nobody']) {
+    for (const id of ['badSha', 'empty', 'missing', 'stale', 'nobody', 'stillFolder']) {
       expect((await get(stillUrl(id))).status, id).toBe(404);
     }
+  });
+
+  it("answers a library item's still that is not made yet with 204 No Content, not as a refusal (a25 item 31)", async () => {
+    // Known, not missing, a real sha256, and no still file yet: the operator window makes one (render/stills.ts).
+    // A 404 there put one "Failed to load resource" in its console for every new video (alpha.24).
+    for (const method of ['GET', 'HEAD']) {
+      const res = await get(stillUrl('noStill'), { method });
+      expect(res.status, method).toBe(204);
+      expect(res.headers.get('Cache-Control'), method).toBe('no-store');
+      expect(await bytesOf(res), method).toEqual(new Uint8Array());
+    }
+    // Its still once made is served, at a URL of its own (the window's version).
+    expect((await get(stillUrl('image', 1))).status).toBe(200);
   });
 
   it("serves a picture's sharpened copy once it is ready, at its step only, and only the library's", async () => {

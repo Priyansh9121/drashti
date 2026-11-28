@@ -19,16 +19,18 @@ export type IconAloneButton = (typeof MAY_SHOW_ICON_ALONE)[number];
 
 /**
  * From which window width (px) each shows its words: with Phones off (`quiet`), and with Phones on (`crowded`: the
- * network's badge and Announcements in the bar too; Announcements is only there then).
+ * network's badge and Announcements in the bar too; Announcements is only there then). The crowded budget includes
+ * the 6 px shortfall measured with the held LIVE/Off room on Windows (top-bar.test.ts); its affected words wait one
+ * more 16 px step, keeping at least 48 px of the live line. Quiet widths already passed and stay as they were.
  */
 export const WORDS_FROM: Readonly<
   Record<IconAloneButton, { readonly quiet: number; readonly crowded: number }>
 > = {
   simple: { quiet: 1280, crowded: 1648 },
-  ready: { quiet: 1184, crowded: 1536 },
+  ready: { quiet: 1184, crowded: 1552 },
   phones: { quiet: 1120, crowded: 1488 },
-  announcements: { quiet: 1408, crowded: 1408 },
-  stream: { quiet: 1056, crowded: 1296 },
+  announcements: { quiet: 1408, crowded: 1424 },
+  stream: { quiet: 1056, crowded: 1312 },
 };
 
 /** Each button's class names below its width: its words for screen readers only, and itself square (32 px). */
@@ -41,7 +43,7 @@ const BELOW: Readonly<
   },
   ready: {
     quiet: { words: 'max-[1184px]:sr-only', icon: 'max-[1184px]:w-8 max-[1184px]:px-0' },
-    crowded: { words: 'max-[1536px]:sr-only', icon: 'max-[1536px]:w-8 max-[1536px]:px-0' },
+    crowded: { words: 'max-[1552px]:sr-only', icon: 'max-[1552px]:w-8 max-[1552px]:px-0' },
   },
   phones: {
     quiet: { words: 'max-[1120px]:sr-only', icon: 'max-[1120px]:w-8 max-[1120px]:px-0' },
@@ -49,11 +51,11 @@ const BELOW: Readonly<
   },
   announcements: {
     quiet: { words: 'max-[1408px]:sr-only', icon: 'max-[1408px]:w-8 max-[1408px]:px-0' },
-    crowded: { words: 'max-[1408px]:sr-only', icon: 'max-[1408px]:w-8 max-[1408px]:px-0' },
+    crowded: { words: 'max-[1424px]:sr-only', icon: 'max-[1424px]:w-8 max-[1424px]:px-0' },
   },
   stream: {
     quiet: { words: 'max-[1056px]:sr-only', icon: 'max-[1056px]:w-8 max-[1056px]:px-0' },
-    crowded: { words: 'max-[1296px]:sr-only', icon: 'max-[1296px]:w-8 max-[1296px]:px-0' },
+    crowded: { words: 'max-[1312px]:sr-only', icon: 'max-[1312px]:w-8 max-[1312px]:px-0' },
   },
 };
 
@@ -66,7 +68,7 @@ export const iconClass = (button: IconAloneButton, crowded: boolean): string =>
   BELOW[button][crowded ? 'crowded' : 'quiet'].icon;
 
 /** Announcements with some waiting: how many stays in sight beside its icon below its width. */
-export const COUNT_IF_NARROW = 'max-[1408px]:px-2';
+export const COUNT_IF_NARROW = 'max-[1424px]:px-2';
 
 /**
  * Narrower still, below 1280 px with Phones on (Session 51, S2-3's review, kept): the network's badge says its count
@@ -75,3 +77,24 @@ export const COUNT_IF_NARROW = 'max-[1408px]:px-2';
 export const WORDS_IF_NARROWER = 'max-[1280px]:sr-only';
 /** A ? beside a top bar button, gone below 1280 px while Phones is on. */
 export const HIDDEN_IF_NARROWER = 'max-[1280px]:hidden';
+
+/**
+ * Phones on below 1280 px: the header's two outer gaps are 12 px instead of 16, giving the live states 8 px more.
+ * The button group's sizes, spacing and right anchor stay as they were; Help and LIVE/Off still move no control.
+ */
+export const COMPACT_HEADER_GAP = 'max-[1280px]:gap-3';
+
+/**
+ * The ? beside Stream, Phones and Announcements (help/WhatIsThis.tsx): the header's compact room, held while Help is off
+ * (alpha.24, topbar; the a25 list's item 6), so turning Help on or off moves nothing in the bar. The widths above count
+ * that room whether Help is on or off; before, with Help off, Stream moved 40 px and Phones 20 px as Help came on.
+ */
+export const HELP_ROOM = { compact: true, keepRoom: true } as const;
+
+/**
+ * The Announcements button's colours change at once (alpha.24, topbar; the a25 list's item 30): as one comes to wait it
+ * turns the warning's colours in the same frame, never eased over 120 ms (the redesign's rule: an operator window's
+ * motion is transform and opacity). It still dims while pressed and, Lively, lifts as any button does. Important, so it
+ * holds over the motion rules (app.css, ui/motion.css: unlayered, by data-variant) as over the button's own fade.
+ */
+export const COLOURS_AT_ONCE = '[transition-property:opacity,transform,translate]!';

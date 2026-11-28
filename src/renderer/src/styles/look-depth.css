@@ -44,13 +44,13 @@
     --depth-ground: #030304;
     --elev-light: #ffffff17;
     --state-live-tint: #d42a311c;
-    --state-live-ring: #d42a313d;
+    --state-live-ring: #d42a314b;
   }
   :root[data-window-look='depth'][data-base='light'] {
     --depth-ground: #d6d9dd;
     --elev-light: #ffffff;
     --state-live-tint: #d42a3114;
-    --state-live-ring: #d42a3129;
+    --state-live-ring: #d42a314b;
   }
 
   /*
@@ -266,6 +266,28 @@
   :root[data-window-look='depth'] [data-testid='live-preview'] {
     box-shadow: inset 0 1px 0 var(--depth-light);
   }
+  /*
+   * The live picture at the width and place it had before Depth (a24-lookgap): the columns' 4 px gaps (border-inline
+   * above) take 4 px off each side of the live column's room, and a picture 8 px narrower and 4 px over changed where a
+   * deck's Cover falls on the screen's pixels and on the picture's rounded corners: the graphics chip drew a wide deck's
+   * first Cover a new way, a pipeline the warm-up had not made, mid-show (CI's Mac, deck-cover-pipelines.spec.ts:144,
+   * bisected to uilook's border). So the picture reaches the gap's 4 px into its section's room on each side: the
+   * column's edge and gaps drawn as before, the picture where it was before Depth.
+   */
+  :root[data-window-look='depth'] [data-testid='column-right'] [data-testid='live-preview'] {
+    margin-inline: calc(-1 * var(--depth-gap));
+  }
+  /*
+   * Back, Next and the next picture's row, and Oops's line, reach the gaps' room back with it, so Back and Oops start at
+   * the picture's left edge and the next picture ends at its right, as in a flat look (they were 4 px inside them): their
+   * own padding (px-3, operator/NextBack.tsx) less the gap, inside their box, so nothing reaches past the column's room
+   * (a margin would, and a scrolling LIVE column would scroll sideways by it).
+   */
+  :root[data-window-look='depth']
+    [data-testid='column-right']
+    :is(:has(> [data-testid='show-back']), :has(> [data-testid='show-oops'])) {
+    padding-inline: calc(var(--spacing) * 3 - var(--depth-gap));
+  }
   :root[data-window-look='depth'] [data-testid='live-preview'].border-live-edge {
     box-shadow:
       inset 0 1px 0 var(--depth-light),
@@ -291,5 +313,24 @@
   }
   :root[data-window-look='depth'] [data-testid='live-rest'] > div > * > header [aria-expanded='true'] {
     color: var(--color-fg);
+  }
+  /*
+   * A pill on a dark section's row (the alpha.25 list's item 10): the row is a 3 % lift of its column, so the column's
+   * pill (panel-3) all but went on it (1.06:1 at rest, 1.00:1 pressed). On the row it is a 3 % lift of panel-3 at rest
+   * (1.14:1 off the row, the side column's own step: REC's words at 4.5:1 on it cap it there), pressed it sinks to the
+   * zone's ink (1.18:1 under the row), and pointed at it goes toward the row (panel-3), as it cannot go brighter; a
+   * ghost, clear at rest, takes the pill's rest when pointed at.
+   */
+  :root[data-window-look='depth'][data-base='dark'] [data-testid='live-rest'] > div > * {
+    --state-fill: color-mix(in srgb, var(--color-fg) 3%, var(--color-panel-3));
+    --state-hover: var(--color-panel-3);
+    --state-press: var(--color-ink);
+  }
+  :root[data-window-look='depth'][data-base='dark']
+    [data-testid='live-rest']
+    > div
+    > *
+    [data-variant='ghost']:not([data-show-control], :disabled):hover:not(:active) {
+    background-color: var(--state-fill);
   }
 }

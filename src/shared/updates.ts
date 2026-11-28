@@ -70,6 +70,7 @@ export function fileUrlAllowed(url: string, packaged: boolean): boolean {
   } catch {
     return false;
   }
+  if (u.username || u.password || u.hash) return false;
   if (packaged) return u.protocol === 'https:' && u.hostname === 'github.com' && u.port === '';
   return (
     u.protocol === 'https:' ||

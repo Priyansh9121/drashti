@@ -1,3 +1,4 @@
+import { checkedUpdateFetch, type UpdateFetch } from './checked-fetch';
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { z } from 'zod';
@@ -91,7 +92,7 @@ export interface UpdateDeps {
   base: string;
   /** The Updates folder in the data folder. */
   dir: string;
-  fetch: (url: string, init: { headers: Record<string, string> }) => Promise<Response>;
+  fetch: UpdateFetch;
   installer: Installer;
   /** The stream is on air or recording: downloads wait. */
   onAir(): boolean;
@@ -116,6 +117,7 @@ export class UpdateService {
   private installOnQuit = false;
   private downloaded: string | null = null;
   private cancelled = false;
+  private networkAbort = new AbortController();
   private holdThisQuit = false;
   private dailyTimer: NodeJS.Timeout | null = null;
   private lastSent = '';
@@ -239,6 +241,15 @@ export class UpdateService {
     );
   }
 
+  private fetch(url: string, init: { headers: Record<string, string> }): Promise<Response> {
+    return checkedUpdateFetch(this.deps.fetch, url, {
+      ...init,
+      packaged: this.deps.packaged,
+      base: this.deps.base,
+      signal: this.networkAbort.signal,
+    });
+  }
+
   private busy(): boolean {
     return this.phase === 'checking' || this.phase === 'downloading' || this.phase === 'waiting';
   }
@@ -248,11 +259,12 @@ export class UpdateService {
     if (this.busy()) return { ok: false, message: 'Drashti is already looking at an update.' };
     if (this.installOnQuit && version === null)
       return { ok: false, message: 'An update is waiting to install when Drashti quits.' };
+    this.networkAbort = new AbortController();
     this.phase = 'checking';
     this.message = null;
     this.changed();
     try {
-      const response = await this.deps.fetch(manifestUrl(this.deps.base, version), { headers: {} });
+      const response = await this.fetch(manifestUrl(this.deps.base, version), { headers: {} });
       if (response.status === 404) {
         this.phase = version === null ? 'up-to-date' : 'error';
         this.manifest = null;
@@ -330,6 +342,7 @@ export class UpdateService {
     const dest = join(this.deps.dir, `${m.version}-${file.name}`.replace(/[^\w.-]/gu, '_'));
     this.phase = 'downloading';
     this.cancelled = false;
+    this.networkAbort = new AbortController();
     this.progress = { done: 0, total: file.size };
     this.message = null;
     this.changed();
@@ -340,7 +353,7 @@ export class UpdateService {
       dest,
       size: file.size,
       sha512: file.sha512,
-      fetch: this.deps.fetch,
+      fetch: (url, init) => this.fetch(url, init),
       rate,
       gate: () => this.gate(),
       cancelled: () => this.cancelled,
@@ -391,6 +404,7 @@ export class UpdateService {
   /** Stop a download (what came so far is kept, and it carries on next time). */
   cancel(): UpdateResult {
     this.cancelled = true;
+    this.networkAbort.abort();
     return { ok: true, view: this.view() };
   }
 
@@ -447,6 +461,7 @@ export class UpdateService {
 
   /** Drashti is quitting: install, if an admin said so. */
   quit(): void {
+    this.networkAbort.abort();
     if (this.dailyTimer) clearTimeout(this.dailyTimer);
     this.dailyTimer = null;
     if (!this.installOnQuit || !this.downloaded || this.holdThisQuit) return;

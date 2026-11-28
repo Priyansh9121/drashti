@@ -104,11 +104,10 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
   await expect(win.getByTestId('live-text')).toHaveText('Live: Language test slides · slide 2 of 3');
   await outputCaughtUp();
 
-  // Clear the slide (F2): the output empties but the cursor stays, so Next continues.
+  // Clear the slide (F2): the output empties but the cursor stays, so Next continues. The top bar says Off and the
+  // cleared place, never Live beside Off (topbar, a25 list item 32).
   await win.keyboard.press('F2');
-  await expect(win.getByTestId('live-text')).toHaveText(
-    'Live: Language test slides · slide 2 of 3 (cleared)',
-  );
+  await expect(win.getByTestId('live-text')).toHaveText('Cleared: Language test slides · slide 2 of 3');
   await expect(output.locator('[data-layer="slide"]')).toHaveCount(0);
   await outputCaughtUp();
   await win.keyboard.press('ArrowRight');

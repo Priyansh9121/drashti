@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { lstat, stat } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { DISPLAY_KEY_PATTERN, MEDIA_ID_PATTERN, MEDIA_SCHEME } from '../../shared/media';
@@ -14,6 +14,8 @@ import { realPlaceAsync } from './contained';
  * for the opening, Session 55); the library says which file that is, and it
  * is streamed with byte ranges, so video can seek. Whatever the library
  * says, nothing outside the media folder is served: every refusal is a 404.
+ * A library item's still not made yet is no refusal (alpha.24, a25 item 31):
+ * 204 No Content, and the window that asked makes it (render/stills.ts).
  * Two are not the library's, each served only from its own folder: a picture
  * one of the guides shows (drashti-media://guide/<name>), and Drashti's
  * default opening photo (drashti-media://opening-default/photo, the owner's
@@ -290,6 +292,28 @@ export function parseRange(header: string | null, size: number): ByteRange | nul
   return { start, end: last === '' ? size - 1 : Math.min(Number(last), size - 1) };
 }
 
+/** Nothing yet, and nothing wrong: a still not made yet (no body, never kept). */
+function notMadeYet(): Response {
+  return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
+}
+
+/**
+ * Whether a still asked for is one not made yet (alpha.24, a25 item 31): a library item, not missing, with a real
+ * sha256, and nothing at all where its still would be. A window asks to learn just that, then makes it (a thumbnail's
+ * load fails, render/stills.ts); as a 404 it was one "Failed to load resource" in its console for every new video.
+ * Anything else there (a folder, a link) stays refused.
+ */
+async function stillNotMadeYet(mediaId: string, deps: MediaProtocolDeps): Promise<boolean> {
+  const found = deps.lookup(mediaId);
+  const sha = found && !found.missing && found.sha256 && SHA256.test(found.sha256) ? found.sha256 : null;
+  if (!sha) return false;
+  const code = await lstat(join(deps.mediaDir, stillPath(sha))).then(
+    () => null,
+    (e: unknown) => (e as NodeJS.ErrnoException).code,
+  );
+  return code === 'ENOENT';
+}
+
 function refused(status: 404 | 405): Response {
   const headers: Record<string, string> = { 'Cache-Control': 'no-store' };
   if (status === 405) headers['Allow'] = 'GET, HEAD';
@@ -405,7 +429,10 @@ export async function handleMediaRequest(request: Request, deps: MediaProtocolDe
     });
   }
   const file = asked === null ? null : await fileFor(asked, deps);
-  if (!file) return refused(404);
+  if (!file)
+    return asked?.what === 'still' && (await stillNotMadeYet(asked.mediaId, deps))
+      ? notMadeYet()
+      : refused(404);
 
   const headers = new Headers({
     'Content-Type': contentTypeOf(file.path),

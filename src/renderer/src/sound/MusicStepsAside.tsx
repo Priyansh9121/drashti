@@ -17,6 +17,10 @@ export function MusicStepsAside() {
         disabled={view === null}
         onChange={(on) => void setStepsAside(on)}
         label="Music steps aside for a video"
+        // A 24 px target (WCAG 2.5.8; targets, alpha.24: 20 px until then) in the 20 px line it had: it reaches 2 px
+        // up into the padding and 2 px down into the 4 px gap under it (space-y-1), so the words under it stay put
+        // (targets-24.spec.ts).
+        className="-mt-0.5 mb-0.5 min-h-6"
         data-testid="music-steps-aside-switch"
       />
       <p className="text-xs text-muted">

@@ -68,8 +68,8 @@ function useLowerThirdShort(state: EngineState | null): { shown: number; total: 
  */
 export function LivePreview({ bars = false }: { bars?: boolean } = {}) {
   // The show, or the practice show while it is on (Session 26g: drawn here, never on a screen).
-  const state = useShowState();
-  const rev = useShowRev();
+  const state = useShowState('live');
+  const rev = useShowRev('live');
   const practising = usePractice((s) => s.on);
   const help = useWhatIsThis('live');
   // As the first audience group shows it in the live Look (its layers, languages and slide style).

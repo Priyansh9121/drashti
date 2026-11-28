@@ -29,6 +29,7 @@ import { useNodes } from '../nodes/nodes-store';
 import { playItem, runSimpleAction, useNotice } from '../operator/actions';
 import { EngineUnread } from '../operator/EngineUnread';
 import { JumpBox } from '../operator/JumpBox';
+import { KeysSheet } from '../operator/KeysSheet';
 import { LayerBar } from '../operator/LayerBar';
 import { Columns, LeftColumn } from '../operator/Layout';
 import { LiveColumn } from '../operator/LiveColumn';
@@ -224,6 +225,7 @@ function ProModeButton() {
         data-testid="simple-leave"
         onClick={toPro.onClick}
         onDoubleClick={toPro.onDoubleClick}
+        data-space-next=""
       >
         Pro Mode
       </Button>
@@ -340,6 +342,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <SimpleFeatureNotices />
       <VideoInputNotice platform={platform} />
       <SimpleFirstRun platform={platform} />
+      <KeysSheet platform={platform} simple />
       <Columns
         left={
           // Pro Mode's left column but the library (Session 56, the owner's item 14: "Several playlists on the left,

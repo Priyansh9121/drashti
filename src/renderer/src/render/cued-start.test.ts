@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { initialEngineState } from '../../../shared/engine/state';
+import { cueStarted, cueShown, heldUntilShown } from './cue-started';
 import { CuedStartKeeper } from './cued-start';
 
 it('keeps the previous slide until Go while arming the same decoded cue, and Clear invalidates the hold', () => {
@@ -192,4 +193,69 @@ it("holds LIVE's scene through Main's Go-time patch when the drawn state is prep
   keeper.at(prepared(before), 100, before);
   keeper.at(prepared(after), 400, after);
   expect(keeper.at(prepared(goPatch), 510, goPatch)?.layers.background).toEqual(before.layers.background);
+});
+
+// a24 golive, lead 2's rule 3: LIVE's scene keeper now holds past LIVE's rate until its first moving frame is shown.
+// Go cancelled, replaced or followed by Clear all within those 250 ms still lets the held scene go at once.
+it("lets LIVE's scene held for its first moving frame go at once on a Clear all, a cancel or a new cue within 250 ms", () => {
+  const scene = (cueId: string) => {
+    const before = initialEngineState();
+    before.layers.background = { kind: 'color', color: '#205020' };
+    const background = {
+      kind: 'media' as const,
+      media: 'video' as const,
+      mediaId: 'new',
+      cueId,
+      fit: 'fit' as const,
+      loop: false,
+      startedAt: 1,
+      seek: { at: 0, toMs: 1000, paused: true },
+    };
+    before.videoCue = {
+      id: cueId,
+      label: 'Placeholder',
+      background,
+      playlist: null,
+      required: [],
+      ready: [],
+    };
+    const after = {
+      ...before,
+      videoCue: null,
+      videoStart: { id: cueId, at: 500, mediaIds: ['new'], soundIds: ['new'] },
+      layers: { ...before.layers, background: { ...background, seek: { at: 500, toMs: 1000 } } },
+    };
+    return { before, after };
+  };
+  const heldPastRate = (cueId: string) => {
+    const { before, after } = scene(cueId);
+    const keeper = new CuedStartKeeper(heldUntilShown);
+    keeper.at(before, 100);
+    keeper.at(after, 400);
+    // Past Go, LIVE's rate set, no moving frame shown yet: held, through Main's patch at Go too.
+    cueStarted(cueId);
+    expect(keeper.at({ ...after, videoStart: null }, 510)?.layers.background).toEqual(
+      before.layers.background,
+    );
+    return { keeper, before, after };
+  };
+  const cleared = heldPastRate('ck-clear');
+  const clearAll = {
+    ...cleared.after,
+    videoStart: null,
+    layers: { ...cleared.after.layers, background: null, slide: null },
+  };
+  expect(cleared.keeper.at(clearAll, 520)?.layers.background, 'Clear all').toBeNull();
+  const cancelled = heldPastRate('ck-cancel');
+  const back = { ...cancelled.before, videoCue: null };
+  expect(cancelled.keeper.at(back, 520)?.layers.background, 'Go undone').toEqual(back.layers.background);
+  const replaced = heldPastRate('ck-old');
+  // A new cue within the 250 ms: Cue (its videoCue, the old cue's picture still up), then its own Go.
+  const cueNew = { ...replaced.after, videoStart: null, videoCue: scene('ck-new').before.videoCue };
+  expect(replaced.keeper.at(cueNew, 520)?.layers.background, 'a new cue: the old held scene let go').toEqual(
+    replaced.after.layers.background,
+  );
+  // And the old cue's first moving frame shown later changes nothing.
+  cueShown('ck-old');
+  expect(replaced.keeper.at(clearAll, 530)?.layers.background).toBeNull();
 });

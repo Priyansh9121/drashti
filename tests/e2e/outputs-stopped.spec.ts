@@ -194,10 +194,11 @@ test('an output given up on while Main is in the middle of a query of its own wa
       }
       return 1;
     });
-    // In Main: its own query, on its next turn, not inside this call.
-    setTimeout(() => {
+    // In Main: its own query, on its next turn, not inside this call (setImmediate, never a Node timer made inside
+    // the call: src/main/e2e-main-evaluate.test.ts).
+    setImmediate(() => {
       library.prepare('SELECT drashti_test_busy() AS n').get();
-    }, 0);
+    });
   });
   await letTimePass(win, 500, 'Main is in the middle of its own query');
   await app.evaluate((_electron, id) => {

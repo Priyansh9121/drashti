@@ -1,5 +1,6 @@
 import type { Tints, ZoneColours, Zones } from './zones';
 import { plainZones } from './zones';
+import { PROFESSIONAL_APPEARANCES } from './professional';
 
 /*
  * Drashti's appearances (Sessions 39–40): the look of its own windows, chosen in the app (View › Appearance)
@@ -122,6 +123,7 @@ export const APPEARANCE_FAMILIES = [
   'Jewels',
   'Crafts and textiles',
   'Mandir materials',
+  'Show tools',
 ] as const;
 export type AppearanceFamily = (typeof APPEARANCE_FAMILIES)[number];
 export const OWN_FAMILY = 'Your own';
@@ -3822,6 +3824,7 @@ export const BUILT_IN: readonly Appearance[] = [
     },
     tints: { left: [90, 0.035], middle: [280, 0.025], right: [10, 0.03], bar: [100, 0.03] },
   },
+  ...PROFESSIONAL_APPEARANCES,
 ];
 /** A built-in appearance by its id. */
 export const builtIn = (id: string): Appearance | undefined => BUILT_IN.find((a) => a.id === id);

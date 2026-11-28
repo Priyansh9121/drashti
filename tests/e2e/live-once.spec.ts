@@ -176,9 +176,10 @@ test('with only a background or the picture-in-picture box up, the top bar still
   await win.keyboard.press('F2');
   await expect(bar.badge).toHaveText('Live');
   await expect(bar.text).toHaveText(`Live: ${KIRTAN} · slide 2 of 5 (cleared) · Picture · ${named}`);
-  // The background cleared too: Off, the cleared slide's place as before.
+  // The background cleared too: Off, and the cleared slide's place said Cleared, never Live beside Off (topbar, a25
+  // list item 32: it said "Live: … (cleared)").
   await dispatch(win, { type: 'clearLayer', layer: 'background' });
   await expect(bar.badge).toHaveText('Off');
-  await expect(bar.text).toHaveText(`Live: ${KIRTAN} · slide 2 of 5 (cleared)`);
+  await expect(bar.text).toHaveText(`Cleared: ${KIRTAN} · slide 2 of 5`);
   await app.close();
 });

@@ -175,18 +175,18 @@ export function practiceKey(action: OperatorAction | 'back' | 'putBack'): boolea
   return true;
 }
 
-/** The show as this window draws it: the practice show while it is on, else the engine's state. */
-export function useShowState(): EngineState | null {
+/** The practice show while it is on, else the engine's state; LIVE alone hears an armed Go before other drawing. */
+export function useShowState(view: 'operator' | 'live' = 'operator'): EngineState | null {
   const on = usePractice((s) => s.on);
   const practice = usePractice((s) => s.state);
-  const real = useEngine((s) => s.state);
+  const real = useEngine((s) => (view === 'live' ? s.liveState : s.state));
   return on ? practice : real;
 }
 
 /** Its revision, so pictures know when to draw again. */
-export function useShowRev(): number {
+export function useShowRev(view: 'operator' | 'live' = 'operator'): number {
   const on = usePractice((s) => s.on);
   const practice = usePractice((s) => s.practice.rev);
-  const real = useEngine((s) => s.drawnRev);
+  const real = useEngine((s) => (view === 'live' ? s.liveRev : s.drawnRev));
   return on ? practice : real;
 }

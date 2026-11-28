@@ -15,10 +15,10 @@ import { CI_WINDOW } from './window-size';
 /*
  * Every "What is this?" a target of at least 24 × 24 px (WCAG 2.5.8, the redesign's rule; qtargets, alpha.24): the top
  * bar's beside Stream, Phones and Announcements were 20 × 20 px until then (uitop's hands-on pass, row 21). Each is now a
- * 24 px target in the 20 px room it had, so the bar grows by no more than it did and still fits; the ? come with Help
- * and take that room then, so Stream and Phones move left as they come (lead 2, 27 Nov: accepted for alpha.24, as they
- * are not show controls). The sections under LIVE hold still as Help turns on (0 px, help-switch.spec.ts's rule for the
- * show controls' keys): each heading keeps its one row with its ?, and no section moves. In CI's 1024 × 645 and the
+ * 24 px target in the 20 px room it had, held while Help is off too (topbar, alpha.24, item 6), so the bar's group and
+ * every persistent control keep their places as Help changes. The sections under LIVE hold still as Help turns on
+ * (0 px, help-switch.spec.ts's rule for the show controls' keys): each heading keeps its one row with its ?, and no
+ * section moves. In CI's 1024 × 645 and the
  * owner's 1410 × 900, Pro Mode with Phones off and on (the Announcements ? then too, from 1280 px) and every section
  * under LIVE open, and Simple Mode, which has no ? of its own.
  */
@@ -207,14 +207,17 @@ test('every What is this? is a target of at least 24 × 24 px, over no other, in
       if (mode === 'pro')
         expect(atRest.live.length, `${where}: LIVE's sections measured`).toBeGreaterThanOrEqual(20);
 
-      // Help on: the sections under LIVE hold still, then and after; the top bar's controls keep their sizes, and its
-      // group grows by each ?'s 20 px room alone (top-bar.ts counts it so).
+      // Help on: the sections under LIVE hold still, then and after. The top bar's ? rooms are already held, so its
+      // group and every persistent control keep their sizes and places (topbar, item 6).
       await help.dispatchEvent('click');
       await expect(help).toHaveAttribute('aria-pressed', 'true');
       const on = await layout(win);
       expect(on.live, `${where}: Help on, the sections under LIVE where they were`).toEqual(atRest.live);
       expect(on.top.sizes, `${where}: Help on, the top bar's controls as big as they were`).toEqual(
         atRest.top.sizes,
+      );
+      expect(on.top.places, `${where}: Help on, every top-bar control where it was`).toEqual(
+        atRest.top.places,
       );
       if (mode === 'pro') {
         // Below 1280 px with Phones on the top bar's ? go (top-bar.ts), Help on or off; each panel has its own.
@@ -225,8 +228,8 @@ test('every What is this? is a target of at least 24 × 24 px, over no other, in
         expect(on.top.asks, `${where}: the top bar's ? in sight`).toBe(inBar.length);
         expect(
           (on.top.group ?? 0) - (atRest.top.group ?? 0),
-          `${where}: the top bar's group grows by 20 px for each ?`,
-        ).toBeCloseTo(20 * inBar.length, 1);
+          `${where}: the top bar's group keeps its held rooms`,
+        ).toBe(0);
       } else await expect(asks).toHaveCount(0);
       await holdStill(
         async () => JSON.stringify((await layout(win)).live) === JSON.stringify(atRest.live),
