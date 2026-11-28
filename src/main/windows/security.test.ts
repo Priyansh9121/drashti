@@ -15,6 +15,7 @@ import {
   screenPictureAllowed,
   secureWebContents,
 } from './security';
+import { isAppUrl } from './navigation';
 
 const RENDERER = 'file:///Applications/Drashti.app/Contents/Resources/app.asar/out/renderer/';
 const AUDIO = `${RENDERER}audio.html`;
@@ -264,29 +265,47 @@ describe('a camera for a video input (Session 50)', () => {
 });
 
 describe('navigating (Sessions 31–36, SEC-15)', () => {
+  const own = (url: string) => isAppUrl(url, { rendererDir: '/app/out/renderer' });
   /** A stand-in for a window's web contents: fire an event at it, and see whether a handler stopped it. */
   function stand() {
     const emitter = new EventEmitter();
     const contents = Object.assign(emitter, {
+      getURL: () => 'file:///app/out/renderer/gallery.html',
       setWindowOpenHandler: () => undefined,
     }) as unknown as WebContents;
-    const fire = (name: string, url: string): boolean => {
+    const fire = (name: string, url: string, isMainFrame = true): boolean => {
       let stopped = false;
-      emitter.emit(name, { url, preventDefault: () => (stopped = true) }, url);
+      emitter.emit(name, { url, isMainFrame, preventDefault: () => (stopped = true) }, url);
       return stopped;
     };
     return { contents, fire };
   }
 
-  it('stops a link, a redirect and a frame going anywhere but our own pages', () => {
-    const { contents, fire } = stand();
-    secureWebContents(contents, (url) => url.startsWith('file:///app/out/renderer/'));
-    for (const name of ['will-navigate', 'will-redirect', 'will-frame-navigate']) {
+  it.each(['will-navigate', 'will-redirect', 'will-frame-navigate'])(
+    'stops renderer %s, including other app pages',
+    (name) => {
+      const { contents, fire } = stand();
+      secureWebContents(contents, own);
       expect(fire(name, 'https://example.com/'), `${name} off the app`).toBe(true);
       expect(fire(name, 'file:///elsewhere/index.html'), `${name} to another file`).toBe(true);
-      expect(fire(name, 'file:///app/out/renderer/index.html'), `${name} to our own page`).toBe(false);
-    }
-  });
+      for (const page of ['index', 'audio', 'output']) {
+        const url = `file:///app/out/renderer/${page}.html`;
+        expect(fire(name, url), `${name} to ${url}`).toBe(true);
+      }
+    },
+  );
+
+  it.each(['will-redirect', 'will-frame-navigate'])(
+    'stops child-frame %s, including the current app page',
+    (name) => {
+      const { contents, fire } = stand();
+      secureWebContents(contents, own);
+      for (const page of ['gallery', 'index', 'audio', 'output']) {
+        const url = `file:///app/out/renderer/${page}.html`;
+        expect(fire(name, url, false), `${name} child to ${url}`).toBe(true);
+      }
+    },
+  );
 });
 
 describe("a hung page's JavaScript stack (Sessions 31–36, ROB-1)", () => {

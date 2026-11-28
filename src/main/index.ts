@@ -411,6 +411,8 @@ import {
 } from './watchdog';
 import { filesUp, KeepsFailing, keptFailingNotice, stillUpOn } from './keeps-failing';
 import { allowHangStacks, applySessionSecurity, secureWebContents } from './windows/security';
+import { installElectronHardening } from './windows/electron-hardening';
+import { openSafeExternal } from './windows/external-url';
 import { StreamProfileRepo } from './db/stream-profiles';
 import { StreamKeyStore } from './stream/key-store';
 import { YOUTUBE_WORDS } from '../shared/youtube';
@@ -4350,7 +4352,7 @@ function start(): void {
     },
     endpoints: googleStandIn ? standInEndpoints(googleStandIn) : GOOGLE_ENDPOINTS,
     // The person signs in there, in the computer's own browser: Drashti never drives it.
-    openBrowser: (url) => shell.openExternal(url),
+    openBrowser: (url) => openSafeExternal(url, { loopbackOrigin: googleStandIn }),
     changed: (status) => {
       sendToOperator(IPC.youtube.changed, status);
     },
@@ -11837,6 +11839,8 @@ if (!app.requestSingleInstanceLock()) {
     if (operatorWindow.isMinimized()) operatorWindow.restore();
     operatorWindow.focus();
   });
+
+  installElectronHardening(app);
 
   app.on('web-contents-created', (_event, contents) => {
     secureWebContents(contents);
