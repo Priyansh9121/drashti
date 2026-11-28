@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useStatusPriority } from './status-priority';
 import type { ScreenStatus } from '../../../shared/screens';
 import { captionsFor, type CaptionsShown } from '../../../shared/captions';
 import { screensSummary } from '../../../shared/screens-summary';
@@ -278,49 +279,56 @@ export function LiveStatus() {
 }
 
 /**
- * "2 screens showing · 1 display not connected · 1 keeps restarting · 1 stopped", so a volunteer notices a dead
- * output (the words: shared/screens-summary.ts).
+ * The whole screens sentence remains the name and tooltip. A fixed slot, including through failures and restarts,
+ * uses the count and warning icon when the words need more room; its neighbours never move as the sentence changes.
  */
 export function ScreensSummary({ onOpen }: { onOpen: (() => void) | null }) {
-  // Select the stored array itself: a new [] per call would re-render forever.
   const status = useScreens((s) => s.snapshot?.status) ?? NO_STATUS;
   const { text, tone } = screensSummary(status);
+  const { slotRef, wordsRef, compact } = useStatusPriority(text);
+  const showing = status.filter((s) => s.state === 'showing' && s.restarts === undefined).length;
   const IconShape = tone === 'muted' ? Monitor : MonitorOff;
-  // Without anything to open: the same words, not a button.
-  if (!onOpen)
-    return (
-      <span
-        className={cx(
-          'flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5',
-          tone === 'danger'
-            ? 'bg-danger-bg text-danger-fg'
-            : tone === 'warning'
-              ? 'bg-warning-bg text-warning-fg'
-              : 'text-muted',
-        )}
-        data-testid="screens-summary"
-      >
-        <IconShape size={13} aria-hidden="true" />
+  const look = cx(
+    'status-summary flex h-6 shrink-0 items-center gap-1.5 rounded-sm px-1.5 tabular-nums',
+    tone === 'danger'
+      ? 'bg-danger-bg text-danger-fg'
+      : tone === 'warning'
+        ? 'bg-warning-bg text-warning-fg'
+        : 'text-muted',
+  );
+  const contents = (
+    <>
+      <IconShape size={13} aria-hidden="true" className="shrink-0" />
+      <span ref={wordsRef} className={cx('whitespace-nowrap', compact && 'sr-only')}>
         {text}
       </span>
-    );
-  return (
+      {compact && <span aria-hidden="true">{showing}</span>}
+    </>
+  );
+  return !onOpen ? (
+    <span
+      ref={slotRef}
+      className={look}
+      aria-label={text}
+      title={text}
+      data-testid="screens-summary"
+      data-compact={compact}
+    >
+      {contents}
+    </span>
+  ) : (
     <button
+      ref={slotRef}
       type="button"
       onClick={onOpen}
-      title="Open the screens dashboard"
-      className={cx(
-        'flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5',
-        tone === 'danger'
-          ? 'bg-danger-bg text-danger-fg'
-          : tone === 'warning'
-            ? 'bg-warning-bg text-warning-fg'
-            : 'text-muted hover:text-fg',
-      )}
+      title={`${text} · Open the screens dashboard`}
+      aria-description="Open the screens dashboard"
+      aria-label={text}
+      className={cx(look, tone === 'muted' && 'hover:text-fg')}
       data-testid="screens-summary"
+      data-compact={compact}
     >
-      <IconShape size={13} aria-hidden="true" />
-      {text}
+      {contents}
     </button>
   );
 }

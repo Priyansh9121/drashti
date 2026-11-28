@@ -1,7 +1,10 @@
+import './status-bar.css';
 import { HelpSwitch } from '../help/HelpSwitch';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { showReport } from '../help/report-store';
 import { useEffect } from 'react';
+import { kindLevel } from '../../../shared/sound';
+import { useStatusPriority } from './status-priority';
 import { createPortal } from 'react-dom';
 import { festivalsLine, samvatLine } from '../../../shared/calendar';
 import { useEngine } from '../engine/engine-store';
@@ -48,40 +51,58 @@ import { ScreensSaidNotice } from '../screens/ScreensSaid';
  * themselves (a display plugged in, Stage on with no Stage screen), and the
  * version (in its place, while the access list does not answer, the line
  * saying so). Notices pop up just above it (NoticeArea).
+ *
+ * Its own controls hold still (alpha.24, lead 2's statusbar; alpha.25 item 17): what is always there comes first, in
+ * its order (the screens' summary and Sound in fixed slots; the calendar; Help, with its ?'s room held), and
+ * what comes and goes after it (Audience off and Stage off with Turn on, the warnings, what is muted, the captions'
+ * warning), then the passing news, which gives up its room, the screens' line and the version's place. So nothing
+ * that is always there moves as anything comes or goes (until then Sound and Help moved some 163 px as Stage off came
+ * and went). Each control a 24 px target (WCAG 2.5.8), its focus ring inside its own edge (status-bar.css), so the
+ * window's edge, 1.5 px under the controls, cuts none of it.
  */
 
-/** Where the sound goes; a warning while the chosen output is not connected. */
+/** Where the sound goes, with the two effective levels when its held slot needs the compact form. */
 function SoundStatus({ onOpen }: { onOpen: (() => void) | null }) {
   const status = useSound((s) => s.status);
+  const audio = useEngine((s) => Math.round(kindLevel(s.state, 'audio') * 100));
+  const video = useEngine((s) => Math.round(kindLevel(s.state, 'video') * 100));
+  const chosen = status?.chosen;
+  const missing = status?.state === 'missing' && chosen != null;
+  const words = missing
+    ? `Sound output "${chosen.label}" not connected`
+    : `Sound: ${status?.chosen?.label ?? 'System default'}`;
+  const { slotRef, wordsRef, compact } = useStatusPriority(words, status !== null);
   useEffect(() => {
     connectSound();
   }, []);
-  if (!status) return null;
-  const missing = status.state === 'missing' && status.chosen !== null;
-  if (missing && status.chosen)
-    return (
-      <button
-        type="button"
-        onClick={onOpen ?? undefined}
-        disabled={!onOpen}
-        data-testid="sound-warning"
-        className="flex min-w-0 items-center gap-1.5 rounded-sm bg-warning-bg px-1.5 py-0.5 text-warning-fg"
-      >
-        <AlertTriangle size={13} aria-hidden="true" className="shrink-0" />
-        <span className="truncate">{`Sound output "${status.chosen.label}" not connected`}</span>
-      </button>
-    );
+  if (!status) return <span aria-hidden="true" className="status-sound h-6 shrink-0" />;
+  const IconShape = missing ? AlertTriangle : Volume2;
+  const levels = `Audio: ${audio}%, Video: ${video}%`;
   return (
     <button
+      ref={slotRef}
       type="button"
       onClick={onOpen ?? undefined}
       disabled={!onOpen}
-      title={onOpen ? 'Choose the sound output in Screens' : undefined}
-      className="flex min-w-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-muted hover:text-fg"
-      data-testid="sound-status"
+      aria-label={words}
+      aria-description={`${levels}${onOpen ? ' · Choose the sound output in Screens' : ''}`}
+      title={`${words} · ${levels}${onOpen ? ' · Choose the sound output in Screens' : ''}`}
+      className={cx(
+        'status-sound flex h-6 shrink-0 items-center gap-1.5 rounded-sm px-1.5 tabular-nums',
+        missing ? 'bg-warning-bg text-warning-fg' : 'text-muted hover:text-fg',
+      )}
+      data-testid={missing ? 'sound-warning' : 'sound-status'}
+      data-compact={compact}
     >
-      <Volume2 size={13} aria-hidden="true" className="shrink-0" />
-      <span className="truncate">{`Sound: ${status.chosen?.label ?? 'System default'}`}</span>
+      <IconShape size={13} aria-hidden="true" className="shrink-0" />
+      <span ref={wordsRef} className={cx('whitespace-nowrap', compact && 'sr-only')}>
+        {words}
+      </span>
+      {compact && (
+        <span aria-hidden="true" className="truncate">
+          {audio === video ? `${audio}%` : `${audio}/${video}%`}
+        </span>
+      )}
     </button>
   );
 }
@@ -131,7 +152,7 @@ function ImportStatus() {
           label="Import"
           className="w-24 shrink-0"
         />
-        <Button variant="ghost" size="sm" className="h-5" onClick={() => void cancelImport(active.runId)}>
+        <Button variant="ghost" size="sm" className="h-6!" onClick={() => void cancelImport(active.runId)}>
           Cancel
         </Button>
       </div>
@@ -145,7 +166,7 @@ function ImportStatus() {
       >
         {finished.totals.failed > 0 && <AlertTriangle size={13} aria-label="Problems" className="shrink-0" />}
         <Truncate text={describeRun(finished)} />
-        <Button variant="ghost" size="sm" className="h-5" onClick={dismissFinished}>
+        <Button variant="ghost" size="sm" className="h-6!" onClick={dismissFinished}>
           Dismiss
         </Button>
       </div>
@@ -174,7 +195,7 @@ function SaveStatus({ platform }: { platform: string }) {
         <Button
           variant="ghost"
           size="sm"
-          className="h-5"
+          className="h-6!"
           data-testid="save-stop"
           onClick={() => void stopSave(going.id)}
         >
@@ -206,11 +227,11 @@ function SaveStatus({ platform }: { platform: string }) {
         }
       />
       {last.state === 'done' && (
-        <Button variant="secondary" size="sm" className="h-5" onClick={() => void showSave(last.id)}>
+        <Button variant="secondary" size="sm" className="h-6!" onClick={() => void showSave(last.id)}>
           {platform === 'darwin' ? 'Show in Finder' : 'Show in Explorer'}
         </Button>
       )}
-      <Button variant="ghost" size="sm" className="h-5" onClick={dismiss}>
+      <Button variant="ghost" size="sm" className="h-6!" onClick={dismiss}>
         Dismiss
       </Button>
     </div>
@@ -232,26 +253,38 @@ function TaskStatus() {
   );
 }
 
-/** Today's Samvat date and tithi, with any festival (from the loaded calendars); nothing when they do not give today. */
+/** Today's words share a bounded room held from first paint, including when no calendar supplies the date. */
 function TodayStatus({ onOpen }: { onOpen: (() => void) | null }) {
   const day = useEngine((s) => s.state?.calendar ?? null);
-  if (!day) return null;
-  const festivals = festivalsLine(day, 'en');
+  const festivals = day ? festivalsLine(day, 'en') : '';
+  const words = day ? `${samvatLine(day, 'en')}${festivals ? ` · ${festivals}` : ''}` : '';
+  // Measure the held room, not the compact button: otherwise its 24 px fallback could never expand again.
+  const { slotRef, wordsRef, compact } = useStatusPriority(words, day !== null);
   return (
-    <button
-      type="button"
-      onClick={onOpen ?? undefined}
-      disabled={!onOpen}
-      title={onOpen ? 'The calendar' : undefined}
-      data-testid="today-calendar"
-      className="flex min-w-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-muted hover:text-fg disabled:hover:text-muted"
+    <span
+      ref={slotRef}
+      className="status-calendar-slot relative h-6 shrink-0"
+      aria-hidden={!day || undefined}
     >
-      <CalendarDays size={13} aria-hidden="true" className="shrink-0" />
-      <span className="truncate">
-        {samvatLine(day, 'en')}
-        {festivals && <strong className="text-warning-fg">{` · ${festivals}`}</strong>}
-      </span>
-    </button>
+      {day && (
+        <button
+          type="button"
+          onClick={onOpen ?? undefined}
+          disabled={!onOpen}
+          aria-label={words}
+          title={`${words}${onOpen ? ' · The calendar' : ''}`}
+          data-testid="today-calendar"
+          data-compact={compact}
+          className="status-calendar absolute top-0 left-0 flex h-6 min-w-0 items-center gap-1.5 rounded-sm px-1.5 text-muted hover:text-fg disabled:hover:text-muted"
+        >
+          <CalendarDays size={13} aria-hidden="true" className="shrink-0" />
+          <span ref={wordsRef} className={cx('whitespace-nowrap', compact && 'sr-only')}>
+            {samvatLine(day, 'en')}
+            {festivals && <strong className="text-warning-fg">{` · ${festivals}`}</strong>}
+          </span>
+        </button>
+      )}
+    </span>
   );
 }
 
@@ -271,7 +304,7 @@ function NodeWarnings() {
       onClick={openDashboard}
       title="Open the screens dashboard"
       data-testid="node-warning"
-      className="flex min-w-0 items-center gap-1.5 rounded-sm bg-warning-bg px-1.5 py-0.5 text-warning-fg"
+      className="flex min-h-6 min-w-0 items-center gap-1.5 rounded-sm bg-warning-bg px-1.5 text-warning-fg"
     >
       <AlertTriangle size={13} aria-hidden="true" className="shrink-0" />
       <span className="truncate">
@@ -293,35 +326,38 @@ export function StatusBar({
   /** The Calendar dialog (Pro Mode). */
   onOpenCalendar?: (() => void) | null;
 }) {
-  // What is this? (Sessions 31–36): its ? before the bar's passing news, its words just above it (Pro Mode only).
-  const help = useWhatIsThis('statusbar');
+  // What is this? (Sessions 31–36): its ? before the bar's passing news, its words just above it (Pro Mode only); its
+  // room held while Help is off, so nothing after it moves as Help goes on or off (alpha.24, statusbar).
+  const help = useWhatIsThis('statusbar', { keepRoom: true });
   // Live Captions… opens from the captions' line in Pro Mode only (the dialog is Pro Mode's).
   const pro = useMode((s) => s.mode === 'pro');
   return (
     <>
       {help.card && <div className="shrink-0 border-t border-line pt-2">{help.card}</div>}
       <footer
-        className="flex h-7 shrink-0 items-center gap-3 border-t border-line bg-ink px-2 text-xs text-muted"
+        className="flex h-7 shrink-0 items-center gap-3 border-t border-line bg-ink px-2 text-xs text-muted max-[1280px]:gap-2"
         aria-label="Status"
       >
-        {/* The screens dashboard opens from here in both modes (Simple Mode only looks). */}
+        {/* Fixed slots reserve the compact budget before any warning arrives. Their words collapse within the
+            slots, so neither a disconnected output nor a failed screen can move the next control. */}
         <ScreensSummary onOpen={openDashboard} />
-        {/* Audience or Stage off (Session 50), with Turn on: in both modes. */}
+        <SoundStatus onOpen={onOpenScreens} />
+        <TodayStatus onOpen={onOpenCalendar} />
+        {/* Help (alpha.24): the one switch for every ? and the buttons' keys, where the bar's ? was, in both modes; the
+            bar's own ? after it while Help is on (Pro Mode's), from 1280 px wide, its room held while Help is off. */}
+        <HelpSwitch platform={info?.platform ?? 'darwin'} ask={help.button} />
+        {/* What comes and goes, after it, its room taken from the passing news'. Audience or Stage off (Session 50),
+            with Turn on: in both modes. */}
         <SwitchedOffStatus />
         <NodeWarnings />
         <BackupWarning />
         <UpdateStatus />
         <LinkStatus platform={info?.platform ?? 'darwin'} />
-        <SoundStatus onOpen={onOpenScreens} />
         {/* Audio or Video muted (X33): in red while it is, in both modes. */}
         <MutedStatus />
         {/* Captions on but showing nothing, and why (cap-threads): in both modes. */}
         <CaptionsWarning canOpen={pro} />
-        <TodayStatus onOpen={onOpenCalendar} />
-        {/* Ahead of what comes and goes: an import's long line runs on under the version's words, never under a button.
-            Help (alpha.24): the one switch for every ? and the buttons' keys, where the bar's ? was, in both modes; the
-            bar's own ? after it while Help is on (Pro Mode's), from 1280 px wide. */}
-        <HelpSwitch platform={info?.platform ?? 'darwin'} ask={help.button} />
+        {/* Ahead of what comes and goes: an import's long line runs on under the version's words, never under a button. */}
         <div aria-live="polite" className="flex min-w-0 flex-1 items-center gap-3">
           <LinkConversionStatus />
           <ImportStatus />
@@ -365,7 +401,7 @@ function LinkConversionStatus() {
       <Truncate text={text} />
       <Button
         size="sm"
-        className="h-5 shrink-0"
+        className="h-6! shrink-0"
         aria-label={`Stop converting ${job.name}`}
         onClick={() => void cancelLinkConversion(job.id)}
       >
@@ -506,12 +542,13 @@ function NoticeCard({ notice, canShowMedia }: { notice: string; canShowMedia: bo
  * system's after it for screen readers and in its tooltip, the whole line there, so the row fits CI's 1024 × 645.
  */
 function AppInfoWords({ info }: { info: AppInfo | null }) {
-  if (!info) return <span data-testid="app-info" className="shrink-0 text-faint" />;
+  // As wide as its place (the access line's room, AccessOfflineNotice), its words at the place's end, as before.
+  if (!info) return <span data-testid="app-info" className="flex-1 shrink-0 text-right text-faint" />;
   const { short, rest } = appInfoParts(info);
   return (
     // Its words are in it already, for screen readers: the tooltip only shows the whole line.
     <Tooltip content={describeAppInfo(info)} describes={false}>
-      <span data-testid="app-info" className="shrink-0 text-faint">
+      <span data-testid="app-info" className="flex-1 shrink-0 text-right text-faint">
         {short}
         <span className="sr-only">{rest}</span>
       </span>

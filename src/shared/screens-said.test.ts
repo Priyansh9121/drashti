@@ -39,20 +39,29 @@ describe('the screens’ line: each part’s own tooltip', () => {
     expect(saidTips({ kind: 'no-stage', text: NO_STAGE_SCREEN })).toEqual({
       words: 'No screen is set to Stage.',
       action: `${SET_UP_STAGE}: opens Screens, to give a display the Stage job`,
+      described: 'Opens Screens, to give a display the Stage job.',
       dismiss: 'Dismiss: No screen is set to Stage.',
     });
     const set = { kind: 'set', text: '“Placeholder projector” shows the audience picture.' } as const;
     expect(saidTips(set)).toEqual({
       words: '“Placeholder projector” shows the audience picture.',
       action: 'Change…: opens Screens at this display, to give it another job',
+      described: 'Opens Screens at this display, to give it another job.',
       dismiss: 'Dismiss: “Placeholder projector” shows the audience picture.',
     });
     // Mirroring has no action button.
     expect(saidTips({ kind: 'mirroring', text: 'Placeholder words.' }).action).toBeNull();
+    expect(saidTips({ kind: 'mirroring', text: 'Placeholder words.' }).described).toBeNull();
     for (const kind of ['no-stage', 'set', 'mirroring'] as const) {
       const tips = saidTips({ kind, text: 'Placeholder words.' });
       expect(tips.dismiss).toMatch(/^Dismiss: /u);
       if (tips.action !== null) expect(tips.action).not.toBe(tips.words);
+      // The action button's description (alpha.25 item 48): what its tooltip says it does, never its name again.
+      if (tips.action !== null && tips.described !== null) {
+        const [name, does] = tips.action.split(': ');
+        expect(tips.described.toLowerCase()).toBe(`${does ?? ''}.`.toLowerCase());
+        expect(tips.described).not.toContain(name ?? '');
+      }
     }
   });
 });

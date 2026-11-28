@@ -1,0 +1,60 @@
+/*
+ * The status bar's focus rings (alpha.24, lead 2's statusbar; alpha.25 items 41 and 11): the bar is 28 px tall at the
+ * window's very bottom and its controls are 24 px (WCAG 2.5.8), so the window's 2 px ring 2 px out lost its bottom
+ * 2.5 px to the window's edge (Help, the bar's ?, Turn on, Set up Stage screen…, the line's X). Here the ring is drawn
+ * inside each control's own edge: the same 2 px solid ring in the same colour, whole, cut by nothing.
+ */
+footer[aria-label='Status'] :focus-visible {
+  outline-offset: -2px;
+}
+
+/* Reserve the combined-state budget from first paint. Only the words inside a slot collapse, never its width. */
+footer[aria-label='Status'] .status-summary {
+  width: 144px;
+}
+footer[aria-label='Status'] .status-sound {
+  width: 176px;
+}
+/* The entire silence sentence stays visible. Two short lines inside the same footer surrender no words or
+ * target area. Noto Sans's 12 px font box is 16.344 px: two 10 px baselines use 26.344 of the row's 27 inner px. */
+footer[aria-label='Status'] [data-testid='sound-muted-status'] {
+  max-width: 128px;
+  min-height: 24px;
+  line-height: 10px;
+  white-space: normal;
+  padding-block: 0;
+}
+
+/* Bound the calendar's allocation by the combined warning budget, independently of its current words/presence.
+ * The measuring hook reads the same padding/gap as the full button. Only that button falls back to 24 px; the room
+ * stays put, so Help/Turn on and the show controls cannot move when a date arrives, changes or disappears. */
+footer[aria-label='Status'] .status-calendar-slot {
+  width: clamp(24px, calc(100vw - 1360px), 200px);
+  padding-inline: 6px;
+  column-gap: 6px;
+}
+footer[aria-label='Status'] .status-calendar {
+  width: 100%;
+}
+footer[aria-label='Status'] .status-calendar[data-compact='true'] {
+  width: 24px;
+  justify-content: center;
+  column-gap: 0;
+  padding-inline: 0;
+}
+@media (width < 1536px) {
+  footer[aria-label='Status'] .status-calendar-slot {
+    width: 24px;
+  }
+  footer[aria-label='Status'] .status-summary,
+  footer[aria-label='Status'] .status-sound {
+    column-gap: 4px;
+    padding-inline: 2px;
+  }
+  footer[aria-label='Status'] .status-summary {
+    width: 36px;
+  }
+  footer[aria-label='Status'] .status-sound {
+    width: 72px;
+  }
+}

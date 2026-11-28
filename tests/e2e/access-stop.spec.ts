@@ -182,6 +182,13 @@ async function oneLineOverNothing(win: Page, what: string): Promise<void> {
     const inSight = words?.getBoundingClientRect();
     if (inSight && (inSight.left < box.left - 0.5 || inSight.right > box.right + 0.5))
       problems.push('its words in sight run out of it');
+    // The time left after them (alpha.25 item 5), whole and inside it too.
+    const left = line.querySelector('[data-testid="access-offline-left"]');
+    if (!left) problems.push('its time left is not in it');
+    if (left && left.scrollWidth > left.clientWidth + 1) problems.push('its time left in sight is cut');
+    const leftBox = left?.getBoundingClientRect();
+    if (leftBox && (leftBox.left < box.left - 0.5 || leftBox.right > box.right + 0.5))
+      problems.push('its time left in sight runs out of it');
     if (whole && line.getAttribute('title') !== whole.textContent)
       problems.push(`its tooltip is “${String(line.getAttribute('title'))}”, not its whole line`);
     // Nor cut at the bottom.
@@ -271,6 +278,12 @@ async function inTheVersionsPlace(win: Page, version: Place | null, what: string
   await expect(slot, what).toHaveAttribute('role', 'status');
   // In sight the short words (lead 2's decision inside the owner's A); read out and in its tooltip the whole line.
   await expect(line.getByTestId('access-offline-short'), what).toHaveText(OFFLINE_SHORT_TEXT);
+  // And the time left in sight after them (alpha.25 item 5, the delegate's words): "· 9 minutes" here, whole.
+  await expect(line.getByTestId('access-offline-left'), what).toHaveText(/^ · \d+ (days?|hours?|minutes?)$/u);
+  await expect(line.getByTestId('access-offline-left'), what).toHaveCSS(
+    'font-variant-numeric',
+    'tabular-nums',
+  );
   await expect(slot.getByTestId('access-offline-words'), what).toHaveText(LINE);
   await expect(line, what).toHaveAttribute('title', LINE);
   await expect(win.getByTestId('app-info'), `${what}: the version hidden`).toBeHidden();
@@ -506,7 +519,7 @@ test('the line’s words in sight in the status bar (alpha.24): whole, never cut
         expect(shown, where).not.toBeNull();
         expect(shown?.cut, `${where}: the words in sight cut`).toBe(false);
         expect(shown?.text, where).toContain('access list');
-        expect(shown?.text, where).toBe(OFFLINE_SHORT_TEXT);
+        expect(shown?.text, where).toBe(`${OFFLINE_SHORT_TEXT} · 9 minutes`);
         // The whole line in its tooltip, wherever the mouse rests on it.
         await expect(line, where).toHaveAttribute('title', LINE);
       }
@@ -589,6 +602,8 @@ test('the line in days and hours: started with no internet 18 hours after an ans
       'Can’t reach the access list: Drashti keeps working for 14 days 5 hours more.',
       { timeout: 30_000 },
     );
+    // In sight, the days left (alpha.25 item 5): rounded down.
+    await expect(win.getByTestId('access-offline-left')).toHaveText(' · 14 days');
     await sizeOperatorWindow(app, win, CI_WINDOW);
     await oneLineOverNothing(win, 'the line in days and hours at 1024 × 645');
   } finally {
