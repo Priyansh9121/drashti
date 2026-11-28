@@ -56,7 +56,7 @@ function CuedFrame({ id, ready }: { id: string; ready: boolean }) {
       width={128}
       height={72}
       aria-label="Cued first frame"
-      className="col-start-1 row-span-2 row-start-1 h-10 w-18 shrink-0 rounded-sm bg-black object-contain @max-[28rem]/cue:row-span-1 @max-[28rem]/cue:h-7 @max-[28rem]/cue:w-12"
+      className="col-start-1 row-span-2 row-start-1 h-10 w-18 shrink-0 rounded-sm bg-black object-contain @max-[28rem]/cue:row-span-1 @max-[28rem]/cue:row-start-1 @max-[28rem]/cue:h-7 @max-[28rem]/cue:w-12"
     />
   );
 }
@@ -85,7 +85,7 @@ export function VideoCueStrip() {
         <CuedFrame id={cue.id} ready={ready} />
         <div
           className={cx(
-            'col-start-2 row-start-1 min-w-0 truncate font-semibold @max-[28rem]/cue:self-center @max-[22rem]/cue:col-span-2',
+            'col-start-2 row-start-1 min-w-0 truncate font-semibold @max-[28rem]/cue:col-start-2 @max-[28rem]/cue:self-center @max-[22rem]/cue:col-span-2 @max-[22rem]/cue:col-start-2',
             cue.error && '@max-[28rem]/cue:col-span-2',
           )}
           title={said}
@@ -110,7 +110,7 @@ export function VideoCueStrip() {
           size="sm"
           variant="primary"
           aria-label="Go cued video"
-          className="col-start-3 row-span-2 row-start-1 @max-[28rem]/cue:col-start-4 @max-[28rem]/cue:row-span-1"
+          className="col-start-3 row-span-2 row-start-1 @max-[28rem]/cue:col-start-4 @max-[28rem]/cue:row-span-1 @max-[28rem]/cue:row-start-1"
           // A show control (alpha.24, the bug hunt's S3-1): it changes the screens at once and never moves.
           instant
           disabled={!ready}
@@ -121,7 +121,7 @@ export function VideoCueStrip() {
         <Button
           size="sm"
           aria-label="Cancel video cue"
-          className="col-start-4 row-span-2 row-start-1 @max-[28rem]/cue:col-start-5 @max-[28rem]/cue:row-span-1"
+          className="col-start-4 row-span-2 row-start-1 @max-[28rem]/cue:col-start-5 @max-[28rem]/cue:row-span-1 @max-[28rem]/cue:row-start-1"
           instant
           onClick={() => void dispatch({ type: 'cancelVideoCue' })}
         >
