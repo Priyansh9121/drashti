@@ -1,6 +1,6 @@
-import { request as httpRequest, type IncomingMessage } from 'node:http';
+import { request as httpRequest, type IncomingMessage, type RequestOptions } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { isIP, type LookupFunction } from 'node:net';
+import { isIP, type LookupFunction, type TcpSocketConnectOpts } from 'node:net';
 import { bounded, type PinnedTarget } from './outbound-policy';
 
 export type PinnedRequest = (
@@ -18,19 +18,16 @@ export const pinnedRequest: PinnedRequest = (target, signal, headers = {}) =>
     };
     const secure = target.url.protocol === 'https:';
     const host = target.url.hostname.replace(/^\[|\]$/gu, '');
-    const request = (secure ? httpsRequest : httpRequest)(
-      target.url,
-      {
-        method: 'GET',
-        lookup,
-        autoSelectFamily: true,
-        agent: false,
-        signal,
-        headers: { Accept: '*/*', ...headers },
-        ...(secure && !isIP(host) ? { servername: host } : {}),
-      },
-      resolve,
-    );
+    const options: RequestOptions & Pick<TcpSocketConnectOpts, 'autoSelectFamily'> = {
+      method: 'GET',
+      lookup,
+      autoSelectFamily: true,
+      agent: false,
+      signal,
+      headers: { Accept: '*/*', ...headers },
+      ...(secure && !isIP(host) ? { servername: host } : {}),
+    };
+    const request = (secure ? httpsRequest : httpRequest)(target.url, options, resolve);
     request.on('error', reject);
     request.setTimeout(10_000, () => request.destroy(new Error('Read timed out')));
     request.end();

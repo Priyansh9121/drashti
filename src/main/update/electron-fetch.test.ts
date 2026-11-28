@@ -14,7 +14,12 @@ const options = () => ({
   base: 'https://github.com/o/r/releases',
   signal: new AbortController().signal,
 });
-type Reply = { status: number; location?: string; body?: Buffer; stream?: Readable };
+interface Reply {
+  status: number;
+  location?: string;
+  body?: Buffer;
+  stream?: Readable;
+}
 
 /** Electron 44 emits redirect instead of a response, then cancels when it was not followed synchronously. */
 function transport(replies: Record<string, Reply>) {
