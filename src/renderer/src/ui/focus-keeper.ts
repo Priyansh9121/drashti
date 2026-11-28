@@ -11,7 +11,8 @@
  *
  * Last of all: the window's own code puts the keyboard back first where it knows better (a menu to what opened it, the
  * Library sheet to Library, the open playlist's rows after a move, ui/Dialog.tsx to what opened a dialog), so the keeper
- * looks two frames later, and only while the keyboard is still nowhere. This also leaves usable focus restored by a
+ * looks two frames later for removals, and only while the keyboard is still nowhere. Disabled controls recover at
+ * the mutation checkpoint after local handlers, without waiting for a paint. This leaves usable focus restored by a
  * list's own handler alone (the open playlist's items and slide rows after a move). A focusable list remaining on the
  * page does not mean its handler restored focus: rename and removal still need the regional fallback when it did not.
  *
@@ -238,11 +239,16 @@ export function installFocusKeeper(): void {
   new MutationObserver((records) => {
     const el = held;
     if (
-      el &&
-      (!el.isConnected ||
-        records.some((r) => r.type === 'attributes' && (r.target === el || r.target.contains(el))))
+      !el ||
+      (el.isConnected &&
+        !records.some((r) => r.type === 'attributes' && (r.target === el || r.target.contains(el))))
     )
-      lookSoon();
+      return;
+    // A Mac can leave a newly disabled button active until a later paint. Its containing region already looks
+    // correct, but the keyboard is still on a show control. Recover at this mutation checkpoint (after the local
+    // handlers/commit), even if animation frames are withheld. Usable focus already restored elsewhere wins.
+    if (el.matches(':disabled') && nowhere(el) && keepFrom(el)) return;
+    lookSoon();
   }).observe(document.body, {
     subtree: true,
     childList: true,
